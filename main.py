@@ -1,0 +1,1821 @@
+import os
+import json
+import hashlib
+from datetime import datetime, time
+from pathlib import Path
+from random import shuffle, choice, uniform, random
+import types
+
+from kivy.animation import Animation
+from kivy.clock import Clock
+from kivy.metrics import dp
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.image import Image
+from kivy.uix.scrollview import ScrollView
+from kivy.graphics import Color, Rectangle, Line
+from kivy.uix.button import Button
+from kivy.uix.togglebutton import ToggleButton
+from kivy.uix.label import Label
+from kivy.uix.textinput import TextInput
+from kivy.uix.slider import Slider
+from kivy.app import App
+from kivy.core.window import Window
+
+# ------------------ KONFIG ------------------
+APP_DIR = Path(__file__).parent
+IMAGE_DIR = Path("/home/pi/Desktop/v2_Tripple S/BilderVertex")
+IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png')
+ACCOUNTS_PATH = Path("/home/pi/Desktop/v2_Tripple S/Accounts.txt")
+MODES_PATH = APP_DIR / "modes.json"
+IMAGE_META_PATH = APP_DIR / "image_meta.json"
+
+DEFAULT_INTERVAL = 5
+SCHEDULER_INTERVAL_SEC = 60
+FADE_OUT_DUR = 0.35
+FADE_IN_DUR = 0.45
+THUMB_SIZE = dp(140)
+MAX_IMAGES_DISPLAY = 2000
+SHOW_DELETE_BUTTONS = True
+
+SHOW_INFO_LABEL = False
+SHOW_FAB_GALLERY = False
+HIDE_TOOLBAR_TITLE = True
+ENABLE_SOFT_KEYBOARD = True
+
+INTERVAL_NEW_FILES = 3
+TOOLBAR_FADE_DURATION = 0.4
+TOOLBAR_VISIBLE_SECS = 7
+
+IMAGE_SCALE_MODE = "cover"
+
+UPSCALE_MODE = "esrgan"
+UPSCALE_CACHE_DIR = APP_DIR / "cache_upscaled"
+UPSCALE_CACHE_DIR.mkdir(exist_ok=True)
+
+# Empfehlung: Scale=2 für Performance
+ESRGAN_SCALE = 4
+ESRGAN_MODEL = "RealESRGAN_x2plus"
+ESRGAN_OUTPUT_DIR = APP_DIR / "upscaled"
+ESRGAN_OUTPUT_DIR.mkdir(exist_ok=True)
+
+UPSCALE_PREFLIGHT = True
+UPSCALE_PREFLIGHT_FORCE = False
+UPSCALE_PREFLIGHT_PROGRESS_OVERLAY = True
+UPSCALE_PREFLIGHT_SENTINEL = APP_DIR / "preflight_done_esrgan.txt"
+
+EFFECTS_AVAILABLE = [
+    ("fade", "Fade"),
+    ("slide_left", "Slide Links"),
+    ("slide_right", "Slide Rechts"),
+    ("zoom_in", "Zoom In"),
+    ("zoom_pan", "Zoom+Pan"),
+    ("rotate", "Rotate"),
+    ("none", "Keine")
+]
+DEFAULT_EFFECTS = {"fade"}
+
+SHOW_DEBUG_OVERLAY = True
+DEBUG_OVERLAY_FONT_SIZE = 16
+DEBUG_OVERLAY_POSITION = "top_left"
+# --------------------------------------------
+
+KIVYMD_OK = False
+try:
+    from kivymd.uix.toolbar import MDToolbar
+    from kivymd.uix.textfield import MDTextField
+    from kivymd.app import MDApp
+    AppBarClass = MDToolbar
+    KIVYMD_OK = True
+except Exception:
+    AppBarClass = None
+    KIVYMD_OK = False
+
+if UPSCALE_MODE == "esrgan":
+    import traceback
+    print("[ESRGAN] Versuche Import esrgan_worker + realesrgan-Funktionen...")
+    try:
+        from esrgan_worker import (
+            start_esrgan_worker,
+            enqueue_image,
+            get_upscaled_candidate,
+            expected_upscaled_path,
+            has_upscaled_result
+        )
+        print("[ESRGAN] Import OK – ESRGAN aktiv!")
+    except Exception as e:
+        print("[ESRGAN] Import-Fehler (Fallback auf lanczos):", repr(e))
+        traceback.print_exc()
+        UPSCALE_MODE = "lanczos"
+else:
+    print("[ESRGAN] ESRGAN deaktiviert, aktueller Mode:", UPSCALE_MODE)
+
+# ------------------ Account / Auth ------------------
+def hash_password(pw: str) -> str:
+    return hashlib.sha256(pw.encode('utf-8')).hexdigest()
+
+def load_accounts():
+    if not ACCOUNTS_PATH.exists():
+        return {}
+    accounts = {}
+    with ACCOUNTS_PATH.open("r", encoding="utf-8") as f:
+        for line in f:
+            parts = line.strip().split(";")
+            if len(parts) >= 6:
+                username, pw_hash, vorname, nachname, email, firma = parts[:6]
+                accounts[username.lower()] = {
+                    "benutzername": username,
+                    "passwort": pw_hash,
+                    "vorname": vorname,
+                    "nachname": nachname,
+                    "email": email,
+                    "firma": firma
+                }
+    return accounts
+
+def save_account(benutzername, passwort, vorname, nachname, email, firma):
+    pw_hash = hash_password(passwort)
+    line = ";".join([benutzername, pw_hash, vorname, nachname, email, firma])
+    ACCOUNTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with ACCOUNTS_PATH.open("a", encoding="utf-8") as f:
+        f.write(line + "\n")
+
+def account_exists(benutzername):
+    return benutzername.lower() in load_accounts()
+
+def check_account(benutzername, passwort):
+    if benutzername.lower() == "dennis" and passwort == "wojtyczka":
+        return True
+    acc = load_accounts()
+    return benutzername.lower() in acc and acc[benutzername.lower()]["passwort"] == hash_password(passwort)
+
+# ------------------ Mode / Scheduler ------------------
+def parse_time(hhmm: str):
+    try:
+        h, m = hhmm.strip().split(":")
+        return time(int(h), int(m))
+    except Exception:
+        return None
+
+def time_in_window(now_t: time, start_t: time, end_t: time):
+    if start_t <= end_t:
+        return start_t <= now_t <= end_t
+    return now_t >= start_t or now_t <= end_t
+
+class Mode:
+    def __init__(self, name, images=None, interval=DEFAULT_INTERVAL, windows=None,
+                 auto=True, randomize=False):
+        self.name = name
+        self.images = images[:] if images else []
+        self.interval = interval
+        self.windows = windows[:] if windows else []
+        self.auto = auto
+        self.randomize = randomize
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "images": self.images,
+            "interval": self.interval,
+            "windows": self.windows,
+            "auto": self.auto,
+            "randomize": self.randomize
+        }
+    @staticmethod
+    def from_dict(d):
+        return Mode(
+            name=d.get("name", "Unbenannt"),
+            images=d.get("images", []),
+            interval=d.get("interval", DEFAULT_INTERVAL),
+            windows=d.get("windows", []),
+            auto=d.get("auto", True),
+            randomize=d.get("randomize", False),
+        )
+    def is_active_now(self):
+        if not self.auto or not self.windows:
+            return False
+        now_t = datetime.now().time()
+        for w in self.windows:
+            st = parse_time(w.get("start", "00:00"))
+            et = parse_time(w.get("end", "23:59"))
+            if st and et and time_in_window(now_t, st, et):
+                return True
+        return False
+    def existing_images(self):
+        return [p for p in self.images if os.path.isfile(p)]
+
+class ModeManager:
+    def __init__(self, path: Path):
+        self.path = path
+        self.modes = []
+        self.load()
+        self.ensure_defaults()
+    def load(self):
+        if self.path.exists():
+            try:
+                data = json.loads(self.path.read_text(encoding="utf-8"))
+                self.modes = [Mode.from_dict(x) for x in data.get("modes", [])]
+            except Exception:
+                self.modes = []
+        else:
+            self.modes = []
+    def save(self):
+        self.path.write_text(
+            json.dumps({"modes": [m.to_dict() for m in self.modes]}, indent=2, ensure_ascii=False),
+            encoding="utf-8"
+        )
+    def ensure_defaults(self):
+        names = [m.name for m in self.modes]
+        changed = False
+        if "Alle Bilder" not in names:
+            self.modes.insert(0, Mode("Alle Bilder", images=[], interval=5, windows=[], auto=False)); changed = True
+        if "Tag" not in names:
+            self.modes.append(Mode("Tag", images=[], interval=5,
+                                   windows=[{"start": "06:00", "end": "21:00"}], auto=True)); changed = True
+        if "Standard" not in names:
+            self.modes.append(Mode("Standard", images=[], interval=5, windows=[], auto=False)); changed = True
+        if "Nacht" not in names:
+            self.modes.append(Mode("Nacht", images=[], interval=7,
+                                   windows=[{"start": "21:00", "end": "05:30"}], auto=True)); changed = True
+        if "Blitz" not in names:
+            self.modes.append(Mode("Blitz", images=[], interval=2, windows=[], auto=False, randomize=True)); changed = True
+        if "Zufall" not in names:
+            self.modes.append(Mode("Zufall", images=[], interval=5, windows=[], auto=False, randomize=True)); changed = True
+        if "Ruhe" not in names:
+            self.modes.append(Mode("Ruhe", images=[], interval=15,
+                                   windows=[{"start": "12:30", "end": "13:30"}], auto=True)); changed = True
+        if changed:
+            self.save()
+    def get(self, name):
+        for m in self.modes:
+            if m.name == name:
+                return m
+        return None
+    def scheduled_mode(self):
+        for m in self.modes:
+            if m.name in ("Alle Bilder", "Standard"):
+                continue
+            if m.is_active_now():
+                return m
+        return None
+
+# ---- UI Helpers ----
+def make_text_field(hint, password=False):
+    if KIVYMD_OK:
+        try:
+            return MDTextField(hint_text=hint, password=password)
+        except Exception:
+            pass
+    box = BoxLayout(orientation="vertical", size_hint_y=None, height=dp(78))
+    lbl = Label(text=hint, size_hint_y=None, height=dp(22), color=(0.85,0.85,0.9,1))
+    ti = TextInput(password=password, multiline=False,
+                   background_color=(0.2,0.2,0.24,1),
+                   foreground_color=(1,1,1,1),
+                   font_size=dp(20),
+                   padding=[10,10,10,10],
+                   height=dp(50), size_hint_y=None)
+    box.add_widget(lbl); box.add_widget(ti); box._ti = ti
+    return box
+
+def get_text(widget):
+    if hasattr(widget, "text"):
+        try: return widget.text
+        except: pass
+    if hasattr(widget, "_ti"): return widget._ti.text
+    for c in getattr(widget, "children", []):
+        if isinstance(c, TextInput): return c.text
+    return ""
+
+def get_underlying_textinput(widget):
+    if isinstance(widget, TextInput):
+        return widget
+    if hasattr(widget, "_ti"): return widget._ti
+    return None
+
+# ---- Soft Keyboard ----
+class SoftKeyboard(FloatLayout):
+    def __init__(self, on_close, **kw):
+        super().__init__(**kw)
+        self.on_close = on_close
+        self.target = None
+        with self.canvas.before:
+            Color(0,0,0,0.85)
+            self.bg = Rectangle(pos=self.pos,size=self.size)
+        self.bind(pos=self._upd_bg,size=self._upd_bg)
+        rows = [
+            "1 2 3 4 5 6 7 8 9 0 ←",
+            "q w e r t z u i o p",
+            "a s d f g h j k l",
+            "⇧ y x c v b n m .",
+            "SPACE OK"
+        ]
+        self.shift = False
+        root = BoxLayout(orientation="vertical", size_hint=(1,None), height=dp(320), pos_hint={'x':0,'y':0})
+        for r in rows:
+            rb = BoxLayout(spacing=dp(4), size_hint_y=None, height=dp(56), padding=[dp(4),0,dp(4),0])
+            for key in r.split():
+                btn = Button(text=key,
+                             background_normal='',
+                             background_color=(0.25,0.25,0.3,1),
+                             color=(1,1,1,1),
+                             font_size=dp(20))
+                btn.bind(on_release=lambda inst, k=key: self.press(k))
+                rb.add_widget(btn)
+            root.add_widget(rb)
+        self.add_widget(root)
+    def _upd_bg(self,*a):
+        self.bg.pos=self.pos; self.bg.size=self.size
+    def set_target(self, widget):
+        self.target = get_underlying_textinput(widget)
+    def press(self, key):
+        if key == "⇧":
+            self.shift = not self.shift; return
+        if key == "←":
+            if self.target: self.target.text = self.target.text[:-1]
+            return
+        if key == "SPACE": key = " "
+        if key == "OK":
+            self.on_close(); return
+        if self.target:
+            self.target.insert_text(key.upper() if self.shift and len(key)==1 else key)
+
+# ---- Auth Screens (Login / Register) ----
+class LoginScreen(FloatLayout):
+    def __init__(self, on_success, on_register, **kw):
+        super().__init__(**kw)
+        self.on_success=on_success
+        self.on_register=on_register
+        self.keyboard_widget=None
+        self.last_input=None
+        with self.canvas.before:
+            Color(0.07,0.07,0.09,1)
+            self.bg=Rectangle(pos=self.pos,size=self.size)
+        self.bind(pos=self._upd_bg,size=self._upd_bg)
+        card=BoxLayout(orientation="vertical", size_hint=(None,None),
+                       size=(480,560),
+                       pos_hint={"center_x":0.5,"center_y":0.55},
+                       padding=dp(28), spacing=dp(18))
+        with card.canvas.before:
+            Color(0.16,0.16,0.20,1)
+            self._c_bg=Rectangle(pos=card.pos,size=card.size)
+        card.bind(pos=lambda *a:setattr(self._c_bg,'pos',card.pos),
+                  size=lambda *a:setattr(self._c_bg,'size',card.size))
+        self.add_widget(card)
+        card.add_widget(Label(text="Login", size_hint_y=None, height=dp(64),
+                              font_size=dp(32), color=(1,1,1,1)))
+        self.user=make_text_field("Benutzername")
+        self.pw=make_text_field("Passwort", password=True)
+        for w in (self.user,self.pw):
+            ti=get_underlying_textinput(w)
+            if ti: ti.bind(focus=self._on_focus)
+        card.add_widget(self.user); card.add_widget(self.pw)
+        kb_btn=Button(text="Tastatur", size_hint_y=None, height=dp(50),
+                      background_normal='', background_color=(0.3,0.35,0.5,1),
+                      color=(1,1,1,1), font_size=dp(20))
+        kb_btn.bind(on_release=lambda *_: self.toggle_keyboard())
+        card.add_widget(kb_btn)
+        self.status=Label(text="", size_hint_y=None, height=dp(30),
+                          color=(1,0.4,0.4,1), font_size=dp(18))
+        card.add_widget(self.status)
+        row=BoxLayout(size_hint_y=None, height=dp(70), spacing=dp(20))
+        b_login=Button(text="Login", background_normal='',
+                       background_color=(0.25,0.45,0.25,1),
+                       color=(1,1,1,1), font_size=dp(22))
+        b_reg=Button(text="Registrieren", background_normal='',
+                     background_color=(0.3,0.3,0.35,1),
+                     color=(1,1,1,1), font_size=dp(22))
+        b_login.bind(on_release=self.try_login)
+        b_reg.bind(on_release=lambda *_: self.on_register())
+        row.add_widget(b_login); row.add_widget(b_reg)
+        card.add_widget(row)
+    def _on_focus(self, textinput, focused):
+        if focused:
+            self.last_input=textinput
+            if self.keyboard_widget:
+                self.keyboard_widget.set_target(textinput)
+    def toggle_keyboard(self):
+        if not ENABLE_SOFT_KEYBOARD: return
+        if self.keyboard_widget:
+            self.remove_widget(self.keyboard_widget); self.keyboard_widget=None
+        else:
+            self.keyboard_widget=SoftKeyboard(on_close=self.toggle_keyboard,
+                                              size_hint=(1,None),
+                                              height=dp(320),
+                                              pos_hint={'x':0,'y':0})
+            target=self.last_input or get_underlying_textinput(self.user)
+            self.keyboard_widget.set_target(target)
+            self.add_widget(self.keyboard_widget)
+    def _upd_bg(self,*a):
+        self.bg.pos=self.pos; self.bg.size=self.size
+    def try_login(self,*_):
+        username=get_text(self.user).strip()
+        password=get_text(self.pw)
+        if check_account(username,password):
+            self.status.text=""
+            if self.keyboard_widget: self.remove_widget(self.keyboard_widget)
+            self.on_success()
+        else:
+            self.status.text="Falscher Benutzername oder Passwort"
+
+class RegisterScreen(FloatLayout):
+    def __init__(self, on_done, **kw):
+        super().__init__(**kw)
+        self.on_done=on_done
+        self.keyboard_widget=None
+        self.last_input=None
+        with self.canvas.before:
+            Color(0.07,0.07,0.09,1)
+            self.bg=Rectangle(pos=self.pos,size=self.size)
+        self.bind(pos=self._upd_bg,size=self._upd_bg)
+        card=BoxLayout(orientation="vertical", size_hint=(None,None),
+                       size=(520,820),
+                       pos_hint={"center_x":0.5,"center_y":0.53},
+                       padding=dp(28), spacing=dp(16))
+        with card.canvas.before:
+            Color(0.16,0.16,0.20,1)
+            self._c2_bg=Rectangle(pos=card.pos,size=card.size)
+        card.bind(pos=lambda *a:setattr(self._c2_bg,'pos',card.pos),
+                  size=lambda *a:setattr(self._c2_bg,'size',card.size))
+        self.add_widget(card)
+        card.add_widget(Label(text="Registrieren", size_hint_y=None, height=dp(56),
+                              font_size=dp(30), color=(1,1,1,1)))
+        self.fname=make_text_field("Vorname")
+        self.lname=make_text_field("Nachname")
+        self.user=make_text_field("Benutzername")
+        self.mail=make_text_field("E-Mail")
+        self.company=make_text_field("Firma")
+        self.pw1=make_text_field("Passwort", password=True)
+        self.pw2=make_text_field("Passwort wiederholen", password=True)
+        fields=[self.fname,self.lname,self.user,self.mail,self.company,self.pw1,self.pw2]
+        for w in fields:
+            ti=get_underlying_textinput(w)
+            if ti: ti.bind(focus=self._on_focus)
+            card.add_widget(w)
+        kb_btn=Button(text="Tastatur", size_hint_y=None, height=dp(50),
+                      background_normal='', background_color=(0.3,0.35,0.5,1),
+                      color=(1,1,1,1), font_size=dp(20))
+        kb_btn.bind(on_release=lambda *_: self.toggle_keyboard())
+        card.add_widget(kb_btn)
+        self.status=Label(text="", size_hint_y=None, height=dp(34),
+                          color=(1,0.4,0.4,1), font_size=dp(16))
+        card.add_widget(self.status)
+        row=BoxLayout(size_hint_y=None, height=dp(64), spacing=dp(18))
+        b_ok=Button(text="Speichern", background_normal='',
+                    background_color=(0.25,0.45,0.25,1), color=(1,1,1,1), font_size=dp(22))
+        b_cancel=Button(text="Abbrechen", background_normal='',
+                        background_color=(0.3,0.3,0.35,1), color=(1,1,1,1), font_size=dp(22))
+        b_ok.bind(on_release=self.try_register)
+        b_cancel.bind(on_release=lambda *_: self.on_done())
+        row.add_widget(b_ok); row.add_widget(b_cancel)
+        card.add_widget(row)
+    def _on_focus(self, textinput, focused):
+        if focused:
+            self.last_input=textinput
+            if self.keyboard_widget:
+                self.keyboard_widget.set_target(textinput)
+    def toggle_keyboard(self):
+        if not ENABLE_SOFT_KEYBOARD: return
+        if self.keyboard_widget:
+            self.remove_widget(self.keyboard_widget); self.keyboard_widget=None
+        else:
+            self.keyboard_widget=SoftKeyboard(on_close=self.toggle_keyboard,
+                                              size_hint=(1,None),height=dp(320),
+                                              pos_hint={'x':0,'y':0})
+            target=self.last_input or get_underlying_textinput(self.fname)
+            self.keyboard_widget.set_target(target)
+            self.add_widget(self.keyboard_widget)
+    def _upd_bg(self,*a):
+        self.bg.pos=self.pos; self.bg.size=self.size
+    def try_register(self,*_):
+        vorname=get_text(self.fname).strip()
+        nachname=get_text(self.lname).strip()
+        benutzername=get_text(self.user).strip()
+        email=get_text(self.mail).strip()
+        firma=get_text(self.company).strip()
+        pw1=get_text(self.pw1)
+        pw2=get_text(self.pw2)
+        def fail(msg): self.status.text=msg
+        if not all([vorname,nachname,benutzername,email,pw1,pw2]): return fail("Bitte alle Felder")
+        if '@' not in email or '.' not in email: return fail("Mail ungültig")
+        if len(pw1)<6: return fail("Passwort zu kurz")
+        if pw1!=pw2: return fail("Passwörter verschieden")
+        if account_exists(benutzername): return fail("Benutzer existiert")
+        try:
+            save_account(benutzername,pw1,vorname,nachname,email,firma)
+        except Exception:
+            return fail("Fehler beim Speichern")
+        self.status.text="Registriert!"
+        Clock.schedule_once(lambda dt:self.on_done(),0.8)
+
+# ---- CustomAppBar ----
+class CustomAppBar(BoxLayout):
+    def __init__(self, title="App", **kwargs):
+        super().__init__(orientation="horizontal", size_hint=(1,None), height=dp(60), **kwargs)
+        with self.canvas.before:
+            Color(0.12,0.12,0.14,1)
+            self.bg=Rectangle(pos=self.pos,size=self.size)
+        self.bind(pos=self._upd_bg,size=self._upd_bg)
+        self._title_label=Label(text=("" if HIDE_TOOLBAR_TITLE else title),
+                                color=(1,1,1,1), size_hint_x=1,
+                                halign='left', valign='middle')
+        self._title_label.bind(size=lambda inst,*a:setattr(inst,"text_size",inst.size))
+        self.add_widget(self._title_label)
+        self._buttons_box=BoxLayout(size_hint=(None,1)); self._buttons_box.width=0
+        self.add_widget(self._buttons_box)
+        self.opacity=1
+        self.disabled=False
+        self._fade_anim=None
+    def _upd_bg(self,*a):
+        self.bg.pos=self.pos; self.bg.size=self.size
+    @property
+    def title(self): return self._title_label.text
+    @title.setter
+    def title(self,v): self._title_label.text = "" if HIDE_TOOLBAR_TITLE else v
+    def set_right_actions(self, items):
+        self._buttons_box.clear_widgets(); total_w=0
+        for text,cb in items:
+            btn=Button(text=text,size_hint=(None,1),width=dp(110),
+                       background_normal='',background_color=(0.20,0.22,0.26,1),
+                       color=(1,1,1,1),font_size=dp(16))
+            btn.bind(on_release=lambda inst,c=cb:c())
+            self._buttons_box.add_widget(btn); total_w+=btn.width
+        self._buttons_box.width=total_w
+    def fade_in(self,duration=TOOLBAR_FADE_DURATION):
+        self.disabled=False
+        if self._fade_anim: self._fade_anim.stop(self)
+        self._fade_anim=Animation(opacity=1,d=duration,t='out_quad')
+        self._fade_anim.start(self)
+    def fade_out(self,duration=TOOLBAR_FADE_DURATION):
+        if self._fade_anim: self._fade_anim.stop(self)
+        def _dis(*_): self.disabled=True
+        self._fade_anim=Animation(opacity=0,d=duration,t='in_quad')
+        self._fade_anim.bind(on_complete=_dis)
+        self._fade_anim.start(self)
+
+# ---- Persistenz Bild-Meta ----
+def load_image_meta():
+    base = {"effects":{}, "intervals":{}, "weights":{}, "brightness":{}, "global_interval": None, "global_brightness": None}
+    if not IMAGE_META_PATH.exists():
+        return base
+    try:
+        data=json.loads(IMAGE_META_PATH.read_text(encoding="utf-8"))
+        for k,v in base.items():
+            if k not in data: data[k]=v
+        return data
+    except Exception:
+        return base
+
+def save_image_meta(meta):
+    try:
+        IMAGE_META_PATH.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+    except Exception as e:
+        print("[META] Speichern fehlgeschlagen:", e)
+
+# ---- Image Settings Popup (per Bild) ----
+class ImageSettingsPopup(FloatLayout):
+    def __init__(self, image_path, slideshow, on_close=None, on_deleted=None, **kw):
+        super().__init__(**kw)
+        self.image_path=image_path
+        self.slideshow=slideshow
+        self.on_close=on_close
+        self.on_deleted=on_deleted
+        with self.canvas.before:
+            Color(0,0,0,0.65)
+            self.bg=Rectangle(pos=self.pos,size=self.size)
+        self.bind(pos=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)))
+        panel=BoxLayout(orientation='vertical',size_hint=(None,None),
+                        size=(dp(500),dp(720)),
+                        pos_hint={'center_x':0.5,'center_y':0.5},
+                        padding=dp(20),spacing=dp(14))
+        with panel.canvas.before:
+            Color(0.16,0.16,0.2,0.97)
+            panel._bg=Rectangle(pos=panel.pos,size=panel.size)
+        panel.bind(pos=lambda *a:setattr(panel._bg,'pos',panel.pos),
+                   size=lambda *a:setattr(panel._bg,'size',panel.size))
+        name=Path(image_path).name
+        panel.add_widget(Label(text=name,size_hint_y=None,height=dp(40),
+                               font_size=dp(18),color=(1,1,1,1)))
+
+        # Effekt Override
+        panel.add_widget(Label(text="Effekt Override:",size_hint_y=None,height=dp(28),
+                               font_size=dp(16),color=(1,1,1,0.9)))
+        from kivy.uix.gridlayout import GridLayout
+        grid=GridLayout(cols=2,spacing=dp(6),size_hint_y=None)
+        grid.bind(minimum_height=lambda inst,val:setattr(inst,'height',val))
+        cur_eff=self.slideshow.image_effect_overrides.get(image_path)
+        def add_eff(key,label):
+            btn=ToggleButton(text=("Standard" if key is None else label),
+                             group="imgfx",
+                             state='down' if cur_eff==key else ('down' if (key is None and cur_eff is None) else 'normal'),
+                             size_hint_y=None,height=dp(44),
+                             background_normal='',background_down='',
+                             background_color=(0.25,0.35,0.5,1),
+                             color=(1,1,1,1),font_size=dp(14))
+            btn.bind(on_release=lambda inst,k=key:self._set_effect(k))
+            grid.add_widget(btn)
+        add_eff(None,"Standard")
+        for k,lbl in EFFECTS_AVAILABLE: add_eff(k,lbl)
+        scr=ScrollView(size_hint=(1,0.38)); scr.add_widget(grid)
+        panel.add_widget(scr)
+
+        # Per-Bild Intervall
+        panel.add_widget(Label(text="Anzeigedauer (s, 0 = Aus):",size_hint_y=None,height=dp(26),
+                               font_size=dp(16),color=(1,1,1,0.9)))
+        cur_int=self.slideshow.image_interval_overrides.get(image_path,0)
+        self.int_slider=Slider(min=0,max=120,value=cur_int,step=1,size_hint_y=None,height=dp(42))
+        self.int_label=Label(text=f"{cur_int}s" if cur_int>0 else "Aus",size_hint_y=None,height=dp(22),
+                             font_size=dp(16),color=(0.9,0.9,1,1))
+        self.int_slider.bind(value=lambda inst,val:self._upd_int(val))
+        panel.add_widget(self.int_slider); panel.add_widget(self.int_label)
+
+        # Priorität / Gewicht
+        panel.add_widget(Label(text="Priorität / Gewicht (1-5):",size_hint_y=None,height=dp(26),
+                               font_size=dp(16),color=(1,1,1,0.9)))
+        cur_w=self.slideshow.image_priority_weights.get(image_path,1)
+        self.w_slider=Slider(min=1,max=5,value=cur_w,step=1,size_hint_y=None,height=dp(42))
+        self.w_label=Label(text=str(int(cur_w)),size_hint_y=None,height=dp(22),
+                           font_size=dp(16),color=(0.9,0.9,1,1))
+        self.w_slider.bind(value=lambda inst,val:self.w_label.__setattr__('text',str(int(val))))
+        panel.add_widget(self.w_slider); panel.add_widget(self.w_label)
+
+        # Per-Bild Helligkeit
+        panel.add_widget(Label(text="Helligkeit (50% - 150%):",size_hint_y=None,height=dp(26),
+                               font_size=dp(16),color=(1,1,1,0.9)))
+        cur_b = self.slideshow.image_brightness_overrides.get(image_path,1.0)
+        self.bright_slider=Slider(min=0.5,max=1.5,value=cur_b,step=0.01,size_hint_y=None,height=dp(42))
+        self.bright_label=Label(text=f"{cur_b*100:.0f}%",size_hint_y=None,height=dp(22),
+                                font_size=dp(16),color=(0.9,0.9,1,1))
+        self.bright_slider.bind(value=lambda inst,val:self.bright_label.__setattr__('text',f"{float(val)*100:.0f}%"))
+        panel.add_widget(self.bright_slider); panel.add_widget(self.bright_label)
+
+        # Buttons
+        row=BoxLayout(size_hint_y=None,height=dp(56),spacing=dp(14))
+        save_btn=Button(text="Speichern",background_normal='',background_color=(0.25,0.55,0.25,1),
+                        color=(1,1,1,1),font_size=dp(18))
+        del_btn=Button(text="Löschen",background_normal='',background_color=(0.6,0.25,0.25,1),
+                       color=(1,1,1,1),font_size=dp(18))
+        close_btn=Button(text="Schließen",background_normal='',background_color=(0.35,0.45,0.55,1),
+                         color=(1,1,1,1),font_size=dp(18))
+        save_btn.bind(on_release=lambda *_: self._save())
+        del_btn.bind(on_release=lambda *_: self._confirm_delete())
+        close_btn.bind(on_release=lambda *_: self._close())
+        row.add_widget(save_btn); row.add_widget(del_btn); row.add_widget(close_btn)
+        panel.add_widget(row)
+        self._confirm_box=None
+        self.add_widget(panel)
+    def _set_effect(self,key):
+        if key is None:
+            self.slideshow.image_effect_overrides.pop(self.image_path, None)
+        else:
+            self.slideshow.image_effect_overrides[self.image_path]=key
+    def _upd_int(self,val):
+        v=int(val); self.int_label.text=f"{v}s" if v>0 else "Aus"
+    def _save(self):
+        # Interval
+        v=int(self.int_slider.value)
+        if v<=0:
+            self.slideshow.image_interval_overrides.pop(self.image_path, None)
+        else:
+            self.slideshow.image_interval_overrides[self.image_path]=v
+        # Gewicht
+        w=int(self.w_slider.value)
+        self.slideshow.image_priority_weights[self.image_path]=w
+        # Brightness
+        b=float(self.bright_slider.value)
+        # Standard = 1.0 -> wenn 1.0 dann raus für Clean
+        if abs(b-1.0)<0.001:
+            self.slideshow.image_brightness_overrides.pop(self.image_path, None)
+        else:
+            self.slideshow.image_brightness_overrides[self.image_path]=b
+        self.slideshow.persist_meta()
+        # Falls aktuelles Bild -> sofort anwenden
+        if self.slideshow.current_original_path == self.image_path:
+            self.slideshow._apply_current_brightness()
+            self.slideshow._reschedule_for_current()
+        self._close()
+    def _confirm_delete(self):
+        if self._confirm_box: return
+        box=BoxLayout(orientation='vertical',size_hint=(None,None),
+                      size=(dp(340),dp(160)),
+                      pos_hint={'center_x':0.5,'center_y':0.5},
+                      padding=dp(16),spacing=dp(12))
+        with box.canvas.before:
+            Color(0.3,0.15,0.15,0.95)
+            box._bg=Rectangle(pos=box.pos,size=box.size)
+        box.bind(pos=lambda *a:setattr(box._bg,'pos',box.pos),
+                 size=lambda *a:setattr(box._bg,'size',box.size))
+        box.add_widget(Label(text="Bild wirklich löschen?",size_hint_y=None,
+                             height=dp(40),font_size=dp(20),color=(1,1,1,1)))
+        r=BoxLayout(size_hint_y=None,height=dp(50),spacing=dp(10))
+        ja=Button(text="Ja",background_normal='',background_color=(0.7,0.2,0.2,1),color=(1,1,1,1))
+        nein=Button(text="Nein",background_normal='',background_color=(0.4,0.4,0.5,1),color=(1,1,1,1))
+        ja.bind(on_release=lambda *_: self._delete_now())
+        nein.bind(on_release=lambda *_: self._remove_confirm())
+        r.add_widget(ja); r.add_widget(nein)
+        box.add_widget(r)
+        self.add_widget(box); self._confirm_box=box
+    def _remove_confirm(self):
+        if self._confirm_box and self._confirm_box in self.children:
+            self.remove_widget(self._confirm_box)
+        self._confirm_box=None
+    def _delete_now(self):
+        self._remove_confirm()
+        p=self.image_path
+        try:
+            if os.path.isfile(p): os.remove(p)
+        except Exception as e: print("[Delete] Fehler:",e)
+        for d in (self.slideshow.image_effect_overrides,
+                  self.slideshow.image_interval_overrides,
+                  self.slideshow.image_priority_weights,
+                  self.slideshow.image_brightness_overrides):
+            d.pop(p, None)
+        for m in self.slideshow.mode_manager.modes:
+            if p in m.images: m.images.remove(p)
+        self.slideshow.mode_manager.save()
+        self.slideshow.persist_meta()
+        if self.slideshow.current_original_path == p:
+            if p in self.slideshow.images:
+                self.slideshow.images.remove(p)
+            self.slideshow.index=0
+            self.slideshow.show_current_image(initial=True)
+        if self.on_deleted: self.on_deleted(p)
+        self._close()
+    def _close(self):
+        if self.on_close: self.on_close()
+        if self.parent: self.parent.remove_widget(self)
+
+# ---- Globale Settings Hierarchie ----
+class SettingsRootPopup(FloatLayout):
+    def __init__(self, slideshow, **kw):
+        super().__init__(**kw)
+        self.slideshow=slideshow
+        with self.canvas.before:
+            Color(0,0,0,0.55); self.bg=Rectangle(pos=self.pos,size=self.size)
+        self.bind(pos=self._upd,size=self._upd)
+        panel=BoxLayout(orientation='vertical',size_hint=(None,None),
+                        size=(dp(500),dp(480)),
+                        pos_hint={'center_x':0.5,'center_y':0.5},
+                        padding=dp(24),spacing=dp(18))
+        with panel.canvas.before:
+            Color(0.16,0.16,0.2,0.97); panel._bg=Rectangle(pos=panel.pos,size=panel.size)
+        panel.bind(pos=lambda *a:setattr(panel._bg,'pos',panel.pos),
+                   size=lambda *a:setattr(panel._bg,'size',panel.size))
+        panel.add_widget(Label(text="Einstellungen",
+                               size_hint_y=None,height=dp(56),
+                               font_size=dp(34),color=(1,1,1,1)))
+        def make_btn(text, cb):
+            b=Button(text=text,size_hint_y=None,height=dp(70),
+                     background_normal='',background_color=(0.25,0.35,0.5,1),
+                     color=(1,1,1,1),font_size=dp(22))
+            b.bind(on_release=lambda *_: cb())
+            return b
+        panel.add_widget(make_btn("Allgemein", self._open_general))
+        panel.add_widget(make_btn("Bilddauer", self._open_duration))
+        panel.add_widget(make_btn("Schließen", self._close))
+        self.add_widget(panel)
+    def _upd(self,*a):
+        self.bg.pos=self.pos; self.bg.size=self.size
+    def _open_general(self):
+        self.slideshow.open_single(GeneralSettingsPopup(self.slideshow))
+    def _open_duration(self):
+        self.slideshow.open_single(GlobalDurationPopup(self.slideshow))
+    def _close(self):
+        if self.parent: self.parent.remove_widget(self)
+        if self.slideshow.current_overlay is self:
+            self.slideshow.current_overlay=None
+
+class GeneralSettingsPopup(FloatLayout):
+    def __init__(self, slideshow, **kw):
+        super().__init__(**kw)
+        self.slideshow=slideshow
+        with self.canvas.before:
+            Color(0,0,0,0.55); self.bg=Rectangle(pos=self.pos,size=self.size)
+        self.bind(pos=self._upd,size=self._upd)
+        panel=BoxLayout(orientation='vertical',size_hint=(None,None),
+                        size=(dp(520),dp(420)),
+                        pos_hint={'center_x':0.5,'center_y':0.5},
+                        padding=dp(22),spacing=dp(16))
+        with panel.canvas.before:
+            Color(0.18,0.18,0.22,0.97); panel._bg=Rectangle(pos=panel.pos,size=panel.size)
+        panel.bind(pos=lambda *a:setattr(panel._bg,'pos',panel.pos),
+                   size=lambda *a:setattr(panel._bg,'size',panel.size))
+        panel.add_widget(Label(text="Allgemein",size_hint_y=None,height=dp(54),
+                               font_size=dp(30),color=(1,1,1,1)))
+        # Globale Helligkeit
+        panel.add_widget(Label(text="Globale Helligkeit (50% - 150%):",size_hint_y=None,height=dp(28),
+                               font_size=dp(16),color=(1,1,1,0.9)))
+        cur = self.slideshow.global_brightness_override or 1.0
+        self.b_slider=Slider(min=0.5,max=1.5,value=cur,step=0.01,size_hint_y=None,height=dp(42))
+        self.b_label=Label(text=f"{cur*100:.0f}%",size_hint_y=None,height=dp(24),
+                           font_size=dp(16),color=(0.9,0.9,1,1))
+        self.b_slider.bind(value=lambda inst,val:self.b_label.__setattr__('text',f"{float(val)*100:.0f}%"))
+        panel.add_widget(self.b_slider)
+        panel.add_widget(self.b_label)
+        # Buttons
+        row=BoxLayout(size_hint_y=None,height=dp(60),spacing=dp(14))
+        save=Button(text="Speichern",background_normal='',background_color=(0.25,0.55,0.25,1),
+                    color=(1,1,1,1),font_size=dp(20))
+        back=Button(text="Zurück",background_normal='',background_color=(0.4,0.4,0.5,1),
+                    color=(1,1,1,1),font_size=dp(20))
+        save.bind(on_release=lambda *_: self._save())
+        back.bind(on_release=lambda *_: self._back())
+        row.add_widget(save); row.add_widget(back)
+        panel.add_widget(row)
+        self.add_widget(panel)
+    def _upd(self,*a):
+        self.bg.pos=self.pos; self.bg.size=self.size
+    def _save(self):
+        val=float(self.b_slider.value)
+        if abs(val-1.0)<0.001:
+            self.slideshow.global_brightness_override=None
+        else:
+            self.slideshow.global_brightness_override=val
+        self.slideshow.persist_meta()
+        self.slideshow._apply_current_brightness()
+        self._back()
+    def _back(self):
+        self.slideshow.open_single(SettingsRootPopup(self.slideshow))
+
+class GlobalDurationPopup(FloatLayout):
+    def __init__(self, slideshow, **kw):
+        super().__init__(**kw)
+        self.slideshow=slideshow
+        with self.canvas.before:
+            Color(0,0,0,0.55); self.bg=Rectangle(pos=self.pos,size=self.size)
+        self.bind(pos=self._upd,size=self._upd)
+        panel=BoxLayout(orientation='vertical',size_hint=(None,None),
+                        size=(dp(520),dp(380)),
+                        pos_hint={'center_x':0.5,'center_y':0.5},
+                        padding=dp(22),spacing=dp(16))
+        with panel.canvas.before:
+            Color(0.18,0.18,0.22,0.97); panel._bg=Rectangle(pos=panel.pos,size=panel.size)
+        panel.bind(pos=lambda *a:setattr(panel._bg,'pos',panel.pos),
+                   size=lambda *a:setattr(panel._bg,'size',panel.size))
+        panel.add_widget(Label(text="Bilddauer",size_hint_y=None,height=dp(54),
+                               font_size=dp(30),color=(1,1,1,1)))
+        panel.add_widget(Label(text="Globale Bilddauer (Sek, 0 = deaktiviert):",size_hint_y=None,height=dp(30),
+                               font_size=dp(16),color=(1,1,1,0.9)))
+        cur = self.slideshow.global_interval_override or 0
+        self.gl_slider=Slider(min=0,max=120,value=cur,step=1,size_hint_y=None,height=dp(42))
+        self.gl_label=Label(text=f"{cur}s" if cur>0 else "Deaktiviert",
+                            size_hint_y=None,height=dp(24),
+                            font_size=dp(16),color=(0.9,0.9,1,1))
+        self.gl_slider.bind(value=lambda inst,val:self.gl_label.__setattr__('text', f"{int(val)}s" if int(val)>0 else "Deaktiviert"))
+        panel.add_widget(self.gl_slider); panel.add_widget(self.gl_label)
+        row=BoxLayout(size_hint_y=None,height=dp(60),spacing=dp(14))
+        save=Button(text="Speichern",background_normal='',background_color=(0.25,0.55,0.25,1),
+                    color=(1,1,1,1),font_size=dp(20))
+        back=Button(text="Zurück",background_normal='',background_color=(0.4,0.4,0.5,1),
+                    color=(1,1,1,1),font_size=dp(20))
+        save.bind(on_release=lambda *_: self._save())
+        back.bind(on_release=lambda *_: self._back())
+        row.add_widget(save); row.add_widget(back)
+        panel.add_widget(row)
+        self.add_widget(panel)
+    def _upd(self,*a):
+        self.bg.pos=self.pos; self.bg.size=self.size
+    def _save(self):
+        v=int(self.gl_slider.value)
+        self.slideshow.global_interval_override = v if v>0 else None
+        self.slideshow.persist_meta()
+        self.slideshow._reschedule_for_current()
+        self._back()
+    def _back(self):
+        self.slideshow.open_single(SettingsRootPopup(self.slideshow))
+
+# ---- Gallery Editor / Tiles (angepasst) ----
+class ImageTile(BoxLayout):
+    def __init__(self, path, on_toggle, is_selected_fn, open_settings, **kw):
+        super().__init__(orientation="vertical",
+                         size_hint=(None,None), width=THUMB_SIZE,
+                         height=THUMB_SIZE+dp(60), spacing=dp(4), **kw)
+        self.path=path
+        self.on_toggle=on_toggle
+        self.open_settings=open_settings
+        self.is_selected_fn=is_selected_fn
+        with self.canvas.before:
+            Color(0.18,0.18,0.20,1)
+            self.bg_rect=Rectangle(pos=self.pos,size=self.size)
+            self.sel_color=Color(0,0.7,0,0)
+            self.sel_line=Line(rectangle=(self.x,self.y,self.width,self.height),width=2)
+        self.bind(pos=self._upd,size=self._upd)
+        self.img=Image(source=path,size_hint=(1,None),height=THUMB_SIZE,allow_stretch=True,keep_ratio=True)
+        self.add_widget(self.img)
+        name=os.path.basename(path)
+        self.lbl=Label(text=self._short(name),size_hint=(1,None),height=dp(26),
+                       halign='center',valign='middle',color=(1,1,1,1),font_size=dp(13))
+        self.lbl.bind(size=lambda inst,*a:setattr(inst,'text_size',inst.size))
+        self.add_widget(self.lbl)
+        row=BoxLayout(size_hint=(1,None),height=dp(30),spacing=dp(4))
+        self.toggle_btn=Button(text="Auswählen",background_normal='',
+                               background_color=(0.25,0.35,0.55,1),
+                               color=(1,1,1,1),font_size=dp(12))
+        self.toggle_btn.bind(on_release=lambda *_: self.on_toggle(self.path))
+        gear=Button(text="⚙",size_hint=(None,1),width=dp(36),
+                    background_normal='',background_color=(0.35,0.35,0.5,1),
+                    color=(1,1,1,1),font_size=dp(16))
+        gear.bind(on_release=lambda *_: self.open_settings(self.path))
+        row.add_widget(self.toggle_btn); row.add_widget(gear)
+        self.add_widget(row)
+        self.refresh_state()
+    def _short(self,name,maxlen=18):
+        return name if len(name)<=maxlen else name[:maxlen-3]+"..."
+    def _upd(self,*a):
+        self.bg_rect.pos=self.pos; self.bg_rect.size=self.size
+        self.sel_line.rectangle=(self.x,self.y,self.width,self.height)
+    def refresh_state(self):
+        sel=self.is_selected_fn(self.path)
+        if sel:
+            self.sel_color.rgba=(0.1,0.8,0.1,1)
+            self.toggle_btn.text="Entfernen"
+            self.toggle_btn.background_color=(0.4,0.25,0.25,1)
+        else:
+            self.sel_color.rgba=(0,0.7,0,0)
+            self.toggle_btn.text="Auswählen"
+            self.toggle_btn.background_color=(0.25,0.35,0.55,1)
+
+class GalleryEditor(FloatLayout):
+    def __init__(self, slideshow, **kw):
+        super().__init__(**kw)
+        self.slideshow=slideshow
+        self.manager=slideshow.mode_manager
+        self.target_mode=None
+        self.filter_selected_only=False
+        with self.canvas.before:
+            Color(0,0,0,0.7)
+            self.bg=Rectangle(pos=self.pos,size=self.size)
+        self.bind(pos=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)))
+        root=BoxLayout(orientation="horizontal",size_hint=(0.95,0.92),
+                       pos_hint={"center_x":0.5,"center_y":0.5},spacing=dp(18))
+        with root.canvas.before:
+            Color(0.14,0.14,0.17,0.95)
+            self.inner_bg=Rectangle(pos=root.pos,size=root.size)
+        root.bind(pos=lambda *a:setattr(self.inner_bg,'pos',root.pos),
+                  size=lambda *a:setattr(self.inner_bg,'size',root.size))
+        left=BoxLayout(orientation="vertical",size_hint=(0.22,1),spacing=dp(12),padding=dp(6))
+        left.add_widget(Label(text="Modi",size_hint_y=None,height=dp(40),
+                              font_size=dp(24),color=(1,1,1,1)))
+        self.mode_box=BoxLayout(orientation="vertical",spacing=dp(8),size_hint_y=None)
+        ms=ScrollView(); ms.add_widget(self.mode_box); left.add_widget(ms)
+        self.status_lbl=Label(text="Modus wählen",size_hint_y=None,height=dp(40),
+                              font_size=dp(16),color=(1,1,1,0.85))
+        left.add_widget(self.status_lbl)
+        close_btn=Button(text="Schließen",size_hint_y=None,height=dp(60),
+                         font_size=dp(22),background_normal='',
+                         background_color=(0.4,0.4,0.45,1),color=(1,1,1,1))
+        close_btn.bind(on_release=lambda *_: self.close())
+        left.add_widget(close_btn)
+        right=BoxLayout(orientation="vertical",size_hint=(0.78,1),spacing=dp(10),padding=[0,6,6,6])
+        header=BoxLayout(size_hint_y=None,height=dp(46),spacing=dp(12))
+        header.add_widget(Label(text="Alle Bilder im Ordner",font_size=dp(24),color=(1,1,1,1)))
+        self.filter_btn=Button(text="Nur Modus-Bilder: AUS",size_hint=(None,1),width=dp(260),
+                               background_normal='',background_color=(0.25,0.35,0.55,1),
+                               color=(1,1,1,1),font_size=dp(16))
+        self.filter_btn.bind(on_release=self.toggle_filter)
+        header.add_widget(self.filter_btn)
+        right.add_widget(header)
+        from kivy.uix.gridlayout import GridLayout
+        self.gallery_grid=GridLayout(cols=4,spacing=dp(14),padding=dp(6),size_hint_y=None)
+        self.gallery_grid.bind(minimum_height=lambda inst,val:setattr(inst,'height',val))
+        gs=ScrollView(); gs.add_widget(self.gallery_grid); right.add_widget(gs)
+        root.add_widget(left); root.add_widget(right)
+        self.add_widget(root)
+        self.all_images_cache=[]
+        self._build_modes()
+        self._reload_all_images()
+        self._populate()
+    def _build_modes(self):
+        self.mode_box.clear_widgets(); h=0
+        for m in self.manager.modes:
+            if m.name in ("Alle Bilder","Standard"): continue
+            btn=Button(text=m.name,size_hint_y=None,height=dp(70),
+                       background_normal='',background_color=(0.25,0.28,0.33,1),
+                       color=(1,1,1,1),font_size=dp(20))
+            btn.bind(on_release=lambda inst,mm=m:self.select_mode(mm))
+            self.mode_box.add_widget(btn); h+=btn.height+dp(8)
+        self.mode_box.height=h if h>10 else 10
+    def select_mode(self,mode):
+        self.target_mode=mode
+        self.status_lbl.text=f"Modus: {mode.name}"
+        self._populate()
+    def toggle_filter(self,*_):
+        self.filter_selected_only=not self.filter_selected_only
+        self.filter_btn.text="Nur Modus-Bilder: AN" if self.filter_selected_only else "Nur Modus-Bilder: AUS"
+        self._populate()
+    def _reload_all_images(self):
+        if IMAGE_DIR.exists():
+            files=[str(p) for p in IMAGE_DIR.iterdir()
+                   if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS]
+            files.sort()
+        else: files=[]
+        if len(files)>MAX_IMAGES_DISPLAY: files=files[:MAX_IMAGES_DISPLAY]
+        self.all_images_cache=files
+    def _is_selected(self,path):
+        return self.target_mode and path in self.target_mode.images
+    def _toggle(self,path):
+        if not self.target_mode:
+            self.status_lbl.text="Bitte Modus links wählen."; return
+        if path in self.target_mode.images:
+            self.target_mode.images.remove(path)
+        else:
+            self.target_mode.images.append(path)
+        self.manager.save()
+        if self.slideshow.current_mode and self.slideshow.current_mode.name==self.target_mode.name:
+            self.slideshow.set_mode(self.target_mode.name, manual=True)
+        for tile in self.gallery_grid.children:
+            if isinstance(tile,ImageTile) and tile.path==path: tile.refresh_state()
+        self._update_count()
+    def _open_settings(self,path):
+        popup=ImageSettingsPopup(path,self.slideshow,
+                                 on_close=None,
+                                 on_deleted=lambda p: self._after_delete_refresh())
+        self.add_widget(popup)
+    def _after_delete_refresh(self):
+        self._reload_all_images()
+        self._populate()
+        if self.slideshow.current_mode:
+            self.slideshow.set_mode(self.slideshow.current_mode.name, manual=True)
+    def _update_count(self):
+        if self.target_mode:
+            self.status_lbl.text=f"Modus: {self.target_mode.name} | {len(self.target_mode.images)} Bild(er)"
+    def _populate(self):
+        self.gallery_grid.clear_widgets()
+        if not self.all_images_cache: self._reload_all_images()
+        imgs=self.all_images_cache
+        if self.filter_selected_only and self.target_mode:
+            imgs=[p for p in imgs if p in self.target_mode.images]
+        for p in imgs:
+            self.gallery_grid.add_widget(ImageTile(p,self._toggle,self._is_selected,self._open_settings))
+        self._update_count()
+    def close(self):
+        if self.parent: self.parent.remove_widget(self)
+        if self.slideshow.current_overlay is self:
+            self.slideshow.current_overlay=None
+
+# ---- TimePicker & ScheduleEditor (wie zuvor) ----
+class TimePickerPopup(FloatLayout):
+    def __init__(self,title,sh,sm,eh,em,on_save,on_cancel,**kw):
+        super().__init__(**kw)
+        self.on_save=on_save; self.on_cancel=on_cancel
+        with self.canvas.before:
+            Color(0,0,0,0.65); self.bg=Rectangle(pos=self.pos,size=self.size)
+        self.bind(pos=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)))
+        panel=BoxLayout(orientation='vertical',size_hint=(0.75,0.7),
+                        pos_hint={'center_x':0.5,'center_y':0.5},
+                        spacing=dp(14),padding=dp(18))
+        with panel.canvas.before:
+            Color(0.16,0.16,0.2,0.97); self.pbg=Rectangle(pos=panel.pos,size=panel.size)
+        panel.bind(pos=lambda *a:setattr(self.pbg,'pos',panel.pos),
+                   size=lambda *a:setattr(self.pbg,'size',panel.size))
+        panel.add_widget(Label(text=title,size_hint_y=None,height=dp(48),
+                               font_size=dp(30),color=(1,1,1,1)))
+        self.start_h=Slider(min=0,max=23,value=sh,step=1)
+        self.start_m=Slider(min=0,max=59,value=sm,step=1)
+        self.end_h=Slider(min=0,max=23,value=eh,step=1)
+        self.end_m=Slider(min=0,max=59,value=em,step=1)
+        def row(lbl,s):
+            b=BoxLayout(orientation='vertical',size_hint_y=None,height=dp(90))
+            b.add_widget(Label(text=lbl,size_hint_y=None,height=dp(28),
+                               font_size=dp(20),color=(1,1,1,1)))
+            b.add_widget(s)
+            val=Label(text=str(int(s.value)),size_hint_y=None,height=dp(28),
+                      font_size=dp(18),color=(0.8,0.8,0.9,1))
+            s.bind(value=lambda inst,value,val_label=val:setattr(val_label,'text',str(int(value))))
+            b.add_widget(val); return b
+        for lab,sl in [("Start Stunde",self.start_h),("Start Minute",self.start_m),
+                       ("Ende Stunde",self.end_h),("Ende Minute",self.end_m)]:
+            panel.add_widget(row(lab,sl))
+        self.preview=Label(text="",size_hint_y=None,height=dp(40),
+                           font_size=dp(20),color=(0.9,0.9,1,1))
+        panel.add_widget(self.preview)
+        def upd(*_):
+            self.preview.text=f"{int(self.start_h.value):02d}:{int(self.start_m.value):02d}  ->  {int(self.end_h.value):02d}:{int(self.end_m.value):02d}"
+        for s in [self.start_h,self.start_m,self.end_h,self.end_m]:
+            s.bind(value=lambda inst,val:upd())
+        upd()
+        btn_row=BoxLayout(size_hint_y=None,height=dp(70),spacing=dp(16))
+        ok=Button(text="Übernehmen",background_normal='',background_color=(0.25,0.45,0.25,1),
+                  color=(1,1,1,1),font_size=dp(22))
+        cancel=Button(text="Abbrechen",background_normal='',background_color=(0.4,0.35,0.35,1),
+                      color=(1,1,1,1),font_size=dp(22))
+        ok.bind(on_release=lambda *_: self._save())
+        cancel.bind(on_release=lambda *_: self._cancel())
+        btn_row.add_widget(ok); btn_row.add_widget(cancel); panel.add_widget(btn_row)
+        self.add_widget(panel)
+    def _save(self):
+        sh,sm=int(self.start_h.value),int(self.start_m.value)
+        eh,em=int(self.end_h.value),int(self.end_m.value)
+        self.on_save(f"{sh:02d}:{sm:02d}", f"{eh:02d}:{em:02d}")
+        if self.parent: self.parent.remove_widget(self)
+    def _cancel(self):
+        self.on_cancel()
+        if self.parent: self.parent.remove_widget(self)
+
+class ScheduleEditor(FloatLayout):
+    def __init__(self, slideshow, **kw):
+        super().__init__(**kw)
+        self.slideshow=slideshow
+        self.manager=slideshow.mode_manager
+        self.mode_rows={}
+        with self.canvas.before:
+            Color(0,0,0,0.65); self.bg=Rectangle(pos=self.pos,size=self.size)
+        self.bind(pos=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)))
+        panel=BoxLayout(orientation="vertical",size_hint=(0.7,0.6),
+                        pos_hint={"center_x":0.5,"center_y":0.5},
+                        spacing=dp(16),padding=dp(20))
+        with panel.canvas.before:
+            Color(0.16,0.16,0.2,0.97); self.pbg=Rectangle(pos=panel.pos,size=panel.size)
+        panel.bind(pos=lambda *a:setattr(self.pbg,'pos',panel.pos),
+                   size=lambda *a:setattr(self.pbg,'size',panel.size))
+        panel.add_widget(Label(text="Zeitplan Tag / Nacht",
+                               size_hint_y=None,height=dp(50),
+                               font_size=dp(30),color=(1,1,1,1)))
+        for name in ("Tag","Nacht"): panel.add_widget(self._row(name))
+        self.status_lbl=Label(text="",size_hint_y=None,height=dp(40),
+                              font_size=dp(18),color=(1,0.7,0.4,1))
+        panel.add_widget(self.status_lbl)
+        buttons=BoxLayout(size_hint_y=None,height=dp(70),spacing=dp(20))
+        save=Button(text="Speichern & Schließen",font_size=dp(22),
+                    background_normal='',background_color=(0.25,0.45,0.25,1),
+                    color=(1,1,1,1))
+        cancel=Button(text="Abbrechen",font_size=dp(22),
+                      background_normal='',background_color=(0.35,0.35,0.4,1),
+                      color=(1,1,1,1))
+        save.bind(on_release=self.save_all); cancel.bind(on_release=lambda *_: self.close())
+        buttons.add_widget(save); buttons.add_widget(cancel); panel.add_widget(buttons)
+        self.add_widget(panel)
+    def _row(self,name):
+        m=self.manager.get(name)
+        if m and m.windows:
+            w=m.windows[0]
+            start=w.get("start","06:00" if name=="Tag" else "21:00")
+            end=w.get("end","21:00" if name=="Tag" else "05:30")
+        else:
+            start="06:00" if name=="Tag" else "21:00"
+            end="21:00" if name=="Tag" else "05:30"
+        row=BoxLayout(size_hint_y=None,height=dp(90),spacing=dp(12))
+        lbl=Label(text=name,size_hint_x=0.2,font_size=dp(24),color=(1,1,1,1))
+        s_lbl=Label(text=start,size_hint_x=0.18,font_size=dp(22),color=(0.8,0.9,1,1))
+        e_lbl=Label(text=end,size_hint_x=0.18,font_size=dp(22),color=(0.8,0.9,1,1))
+        edit=Button(text="Bearbeiten",size_hint_x=0.25,
+                    background_normal='',background_color=(0.3,0.4,0.6,1),
+                    color=(1,1,1,1),font_size=dp(18))
+        def open_pick(*_):
+            sh,sm=[int(x) for x in s_lbl.text.split(":")]
+            eh,em=[int(x) for x in e_lbl.text.split(":")]
+            picker=TimePickerPopup(f"{name} Zeitfenster",sh,sm,eh,em,
+                                   on_save=lambda s,e:self._apply(name,s,e),
+                                   on_cancel=lambda:None)
+            self.add_widget(picker)
+        edit.bind(on_release=open_pick)
+        row.add_widget(lbl); row.add_widget(s_lbl); row.add_widget(e_lbl); row.add_widget(edit)
+        self.mode_rows[name]={'start':s_lbl,'end':e_lbl}
+        return row
+    def _apply(self,name,start,end):
+        self.mode_rows[name]['start'].text=start
+        self.mode_rows[name]['end'].text=end
+    def save_all(self,*_):
+        for name,data in self.mode_rows.items():
+            m=self.manager.get(name)
+            if not m: continue
+            s=data['start'].text; e=data['end'].text
+            if parse_time(s) is None or parse_time(e) is None:
+                self.status_lbl.text=f"Ungültige Zeit: {name}"; return
+            m.windows=[{"start":s,"end":e}]; m.auto=True
+        self.manager.save()
+        self.slideshow.manual_override=False
+        self.slideshow.force_reschedule()
+        self.status_lbl.text="Gespeichert."
+        Clock.schedule_once(lambda dt:self.close(),0.7)
+    def close(self):
+        if self.parent: self.parent.remove_widget(self)
+        if self.slideshow.current_overlay is self:
+            self.slideshow.current_overlay=None
+
+# ---- Slideshow ----
+class Slideshow(FloatLayout):
+    def __init__(self, mode_manager: ModeManager, **kw):
+        super().__init__(**kw)
+        self.mode_manager=mode_manager
+        self.current_mode=None
+        self.images=[]
+        self.index=0
+        self.event=None
+        self.scheduler_event=None
+        self.manual_override=False
+
+        self.selected_effects = set(DEFAULT_EFFECTS)
+        self.randomize_effects = False
+        self.effect_state_seed = 0
+
+        meta = load_image_meta()
+        self.image_effect_overrides = meta.get("effects", {})
+        self.image_interval_overrides = meta.get("intervals", {})
+        self.image_priority_weights = meta.get("weights", {})
+        self.image_brightness_overrides = meta.get("brightness", {})
+        self.global_interval_override = meta.get("global_interval", None)
+        self.global_brightness_override = meta.get("global_brightness", None)
+
+        self._toolbar_timer=None
+        self._toolbar_anim=None
+        self.current_overlay=None
+
+        self.debug_label=None
+        self.current_original_path=None
+        self.current_display_path=None
+
+        if UPSCALE_MODE == "esrgan":
+            try:
+                start_esrgan_worker(ESRGAN_SCALE, ESRGAN_MODEL, ESRGAN_OUTPUT_DIR)
+            except Exception as e:
+                print("[ESRGAN] Startfehler:", e)
+            if UPSCALE_PREFLIGHT and (UPSCALE_PREFLIGHT_FORCE or not UPSCALE_PREFLIGHT_SENTINEL.exists()):
+                Clock.schedule_once(lambda dt: self._run_preflight_upscale(), 0.8)
+
+        with self.canvas.before:
+            Color(0.02,0.02,0.03,1)
+            self.bg=Rectangle(pos=self.pos,size=self.size)
+        self.bind(pos=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)),
+                  size=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)))
+
+        self.img_a = Image(allow_stretch=True, keep_ratio=True, opacity=1, color=(1,1,1,1))
+        self.img_b = Image(allow_stretch=True, keep_ratio=True, opacity=0, color=(1,1,1,1))
+        self.active_img = self.img_a
+        self.back_img = self.img_b
+        self.add_widget(self.img_a)
+        self.add_widget(self.img_b)
+
+        self.img_a.bind(texture=lambda *_: (self._resize_image(self.img_a), self._update_debug_overlay()))
+        self.img_b.bind(texture=lambda *_: (self._resize_image(self.img_b), self._update_debug_overlay()))
+        self.bind(size=lambda *_: (self._resize_image(self.img_a), self._resize_image(self.img_b)))
+
+        self.toolbar=self._create_toolbar()
+        self.add_widget(self.toolbar)
+
+        self.placeholder=Label(text="",color=(1,1,1,0.7),font_size=dp(26),opacity=0)
+        self.add_widget(self.placeholder)
+
+        if SHOW_INFO_LABEL:
+            self.info_label=Label(text="",color=(1,1,1,0.85),
+                                  size_hint=(1,None),height=dp(36),
+                                  font_size=dp(20),
+                                  pos_hint={'center_x':0.5,'y':0.01})
+            self.add_widget(self.info_label)
+
+        if SHOW_DEBUG_OVERLAY:
+            self.debug_label=Label(text="",color=(0.9,0.95,1,0.85),
+                                   size_hint=(None,None),
+                                   font_size=DEBUG_OVERLAY_FONT_SIZE,
+                                   pos=(dp(8), self.height - dp(40)))
+            self.add_widget(self.debug_label)
+            self.bind(size=lambda *_: self._reposition_debug())
+
+        if SHOW_FAB_GALLERY: self.add_gallery_fab()
+
+        self._new_files_timer=Clock.schedule_interval(lambda dt:self._check_new_files(), INTERVAL_NEW_FILES)
+
+        self.auto_select_initial_mode()
+        self.start_slideshow()
+        self.scheduler_event=Clock.schedule_interval(lambda dt:self.auto_scheduler(), SCHEDULER_INTERVAL_SEC)
+        self._show_toolbar_immediate()
+
+    # Persistenz
+    def persist_meta(self):
+        meta = {
+            "effects": self.image_effect_overrides,
+            "intervals": self.image_interval_overrides,
+            "weights": self.image_priority_weights,
+            "brightness": self.image_brightness_overrides,
+            "global_interval": self.global_interval_override,
+            "global_brightness": self.global_brightness_override
+        }
+        save_image_meta(meta)
+
+    # Overlay Manager
+    def open_single(self, widget):
+        if self.current_overlay and self.current_overlay.parent:
+            self.remove_widget(self.current_overlay)
+        self.current_overlay = widget
+        self.add_widget(widget)
+
+    # Preflight (gekürzt)
+    def _run_preflight_upscale(self):
+        print("[Preflight] Starte Prüfung vorhandener Bilder...")
+        all_files=[]
+        if IMAGE_DIR.exists():
+            for p in IMAGE_DIR.iterdir():
+                if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS:
+                    all_files.append(str(p))
+        self._preflight_total=len(all_files)
+        self._preflight_files=all_files
+        self._preflight_done_check=0
+        self._preflight_enqueued=0
+        if UPSCALE_PREFLIGHT_PROGRESS_OVERLAY:
+            self._show_preflight_overlay()
+        for path in all_files:
+            if has_upscaled_result(path, ESRGAN_SCALE, ESRGAN_MODEL, ESRGAN_OUTPUT_DIR):
+                self._preflight_done_check+=1
+            else:
+                enqueue_image(path); self._preflight_enqueued+=1
+        print(f"[Preflight] Insgesamt {self._preflight_total} Bilder. {self._preflight_done_check} vorhanden, {self._preflight_enqueued} enqueued.")
+        if self._preflight_total==0:
+            self._finish_preflight()
+        else:
+            Clock.schedule_interval(lambda dt:self._poll_preflight_progress(),2)
+    def _poll_preflight_progress(self):
+        done=0
+        for p in self._preflight_files:
+            if has_upscaled_result(p, ESRGAN_SCALE, ESRGAN_MODEL, ESRGAN_OUTPUT_DIR):
+                done+=1
+        self._preflight_done_check=done
+        if UPSCALE_PREFLIGHT_PROGRESS_OVERLAY:
+            self._update_preflight_overlay(done,self._preflight_total)
+        if done>=self._preflight_total:
+            self._finish_preflight(); return False
+        return True
+    def _finish_preflight(self):
+        print("[Preflight] Fertig – alle vorhandenen Bilder geprüft.")
+        try: UPSCALE_PREFLIGHT_SENTINEL.write_text("done",encoding="utf-8")
+        except Exception as e: print("[Preflight] Sentinel Fehler:",e)
+        if UPSCALE_PREFLIGHT_PROGRESS_OVERLAY: self._hide_preflight_overlay()
+    def _show_preflight_overlay(self):
+        if hasattr(self,'_preflight_overlay') and self._preflight_overlay: return
+        overlay=FloatLayout(size_hint=(1,1))
+        with overlay.canvas.before:
+            Color(0,0,0,0.48); overlay._bg=Rectangle(pos=self.pos,size=self.size)
+        overlay.bind(pos=lambda *a:setattr(overlay._bg,'pos',overlay.pos),
+                     size=lambda *a:setattr(overlay._bg,'size',overlay.size))
+        box=BoxLayout(orientation='vertical',size_hint=(None,None),
+                      size=(dp(440),dp(240)),
+                      pos_hint={'center_x':0.5,'center_y':0.5},
+                      padding=dp(24),spacing=dp(18))
+        with box.canvas.before:
+            Color(0.25,0.40,0.65,0.98); box._bg=Rectangle(pos=box.pos,size=box.size)
+        box.bind(pos=lambda *a:setattr(box._bg,'pos',box.pos),
+                 size=lambda *a:setattr(box._bg,'size',box.size))
+        title=Label(text="Bilder werden verbessert…",size_hint_y=None,height=dp(48),
+                    font_size=dp(28),color=(1,1,1,1))
+        self._preflight_progress_lbl=Label(text="Scanne…",size_hint_y=None,height=dp(38),
+                                           font_size=dp(22),color=(1,1,0.98,1))
+        info=Label(text="Du kannst das Fenster ignorieren!\nDie Verbesserung läuft im Hintergrund,\ndie Galerie ist nutzbar.",
+                   size_hint_y=None,height=dp(70),font_size=dp(16),
+                   color=(0.9,0.9,1,1),halign='center',valign='middle')
+        info.bind(size=lambda inst,*a:setattr(inst,'text_size',inst.size))
+        btn=Button(text="Schließen",size_hint_y=None,height=dp(52),
+                   background_normal='',background_color=(0.35,0.45,0.60,1),
+                   color=(1,1,1,1),font_size=dp(20))
+        btn.bind(on_release=lambda *_: self._hide_preflight_overlay())
+        box.add_widget(title); box.add_widget(self._preflight_progress_lbl)
+        box.add_widget(info); box.add_widget(btn)
+        overlay.add_widget(box)
+        self.add_widget(overlay)
+        self._preflight_overlay=overlay
+    def _update_preflight_overlay(self,done,total):
+        if hasattr(self,'_preflight_progress_lbl') and self._preflight_progress_lbl:
+            self._preflight_progress_lbl.text=f"{done}/{total} verbessert"
+    def _hide_preflight_overlay(self):
+        if hasattr(self,'_preflight_overlay') and self._preflight_overlay and self._preflight_overlay in self.children:
+            self.remove_widget(self._preflight_overlay)
+        self._preflight_overlay=None
+
+    # Upscaling / Resize
+    def _lanczos_upscale_local(self,path):
+        if UPSCALE_MODE!="lanczos": return path
+        try:
+            from PIL import Image as PILImage
+        except Exception: return path
+        try:
+            target_w,target_h=int(self.width),int(self.height)
+            if target_w<=0 or target_h<=0: return path
+            im=PILImage.open(path)
+            if im.width>=target_w and im.height>=target_h: return path
+            if IMAGE_SCALE_MODE=="cover":
+                scale=max(target_w/im.width,target_h/im.height)
+            elif IMAGE_SCALE_MODE=="contain":
+                scale=min(target_w/im.width,target_h/im.height)
+            else:
+                scale=max(target_w/im.width,target_h/im.height)
+            if scale<=1: return path
+            new_size=(int(im.width*scale),int(im.height*scale))
+            h=hashlib.sha1(f"{path}-{new_size}-{IMAGE_SCALE_MODE}".encode()).hexdigest()[:12]
+            cache_file=UPSCALE_CACHE_DIR / f"{Path(path).stem}_{h}.png"
+            if not cache_file.exists():
+                im=im.resize(new_size,PILImage.LANCZOS)
+                im.save(cache_file)
+            return str(cache_file)
+        except Exception:
+            return path
+    def _maybe_upscale(self,path):
+        if UPSCALE_MODE=="esrgan":
+            up=get_upscaled_candidate(path)
+            if up and isinstance(up,str) and Path(up).exists():
+                return up
+            enqueue_image(path); return path
+        if UPSCALE_MODE=="lanczos":
+            return self._lanczos_upscale_local(path)
+        return path
+    def _resize_image(self,img_widget):
+        if not img_widget.texture: return
+        win_w,win_h=self.width,self.height
+        tex_w,tex_h=img_widget.texture.size
+        if tex_w==0 or tex_h==0: return
+        if IMAGE_SCALE_MODE=="stretch":
+            img_widget.keep_ratio=False
+            img_widget.size=(win_w,win_h); img_widget.pos=(0,0); return
+        img_widget.keep_ratio=False
+        ratio_w=win_w/tex_w; ratio_h=win_h/tex_h
+        scale=max(ratio_w,ratio_h) if IMAGE_SCALE_MODE=="cover" else min(ratio_w,ratio_h)
+        new_w=tex_w*scale; new_h=tex_h*scale
+        img_widget.size=(new_w,new_h)
+        img_widget.pos=((win_w-new_w)/2,(win_h-new_h)/2)
+
+    def _create_toolbar(self):
+        if AppBarClass:
+            bar=AppBarClass(title=("" if HIDE_TOOLBAR_TITLE else "Slideshow"),
+                            elevation=8,pos_hint={"top":1})
+            bar.right_action_items=[
+                ["calendar",lambda x:self.open_schedule_editor()],
+                ["image-multiple",lambda x:self.open_gallery()],
+                ["cog",lambda x:self.open_settings_root()],
+                ["logout",lambda x:self.logout()],
+                ["power",lambda x:self.exit_app()],
+            ]
+            def md_fade_in(self_,duration=TOOLBAR_FADE_DURATION):
+                self_.disabled=False
+                Animation.cancel_all(self_,'opacity')
+                Animation(opacity=1,d=duration,t='out_quad').start(self_)
+            def md_fade_out(self_,duration=TOOLBAR_FADE_DURATION):
+                Animation.cancel_all(self_,'opacity')
+                def _dis(*_): self_.disabled=True
+                a=Animation(opacity=0,d=duration,t='in_quad'); a.bind(on_complete=_dis); a.start(self_)
+            bar.fade_in=types.MethodType(md_fade_in,bar)
+            bar.fade_out=types.MethodType(md_fade_out,bar)
+            return bar
+        bar=CustomAppBar(title=("Slideshow" if not HIDE_TOOLBAR_TITLE else ""))
+        bar.set_right_actions([
+            ("Zeiten", self.open_schedule_editor),
+            ("Galerie", self.open_gallery),
+            ("Einstellungen", self.open_settings_root),
+            ("Logout", self.logout),
+            ("Exit", self.exit_app),
+        ])
+        return bar
+
+    def _bring_toolbar_to_front(self):
+        if self.toolbar in self.children:
+            self.remove_widget(self.toolbar); self.add_widget(self.toolbar)
+
+    def open_gallery(self): self.open_single(GalleryEditor(self))
+    def open_schedule_editor(self): self.open_single(ScheduleEditor(self))
+    def open_settings_root(self): self.open_single(SettingsRootPopup(self))
+
+    def force_reschedule(self):
+        scheduled=self.mode_manager.scheduled_mode()
+        target=scheduled.name if scheduled else "Alle Bilder"
+        self.set_mode(target, manual=False)
+
+    def exit_app(self): App.get_running_app().stop()
+    def logout(self):
+        app=App.get_running_app()
+        if hasattr(app,'show_login'): app.show_login()
+
+    # Interval & Brightness
+    def _get_interval_for_path(self, path):
+        if path in self.image_interval_overrides:
+            return max(1, self.image_interval_overrides[path])
+        if self.global_interval_override is not None:
+            return max(1, self.global_interval_override)
+        if self.current_mode:
+            return max(1, self.current_mode.interval)
+        return max(1, DEFAULT_INTERVAL)
+
+    def _apply_current_brightness(self):
+        b_global = self.global_brightness_override or 1.0
+        b_image = self.image_brightness_overrides.get(self.current_original_path, 1.0)
+        b = max(0.1, min(2.0, b_global * b_image))
+        for w in (self.img_a, self.img_b):
+            r,g,bl,_ = w.color
+            w.color = (b, b, b, 1)
+
+    def _reschedule_for_current(self):
+        if self.event: Clock.unschedule(self.event)
+        interval = self._get_interval_for_path(self.current_original_path)
+        self.event = Clock.schedule_once(lambda dt:self.next_image(), interval)
+
+    def auto_select_initial_mode(self):
+        scheduled=self.mode_manager.scheduled_mode()
+        if scheduled: self.set_mode(scheduled.name, manual=False)
+        else: self.set_mode("Alle Bilder", manual=False)
+
+    def auto_scheduler(self):
+        if self.manual_override: return
+        scheduled=self.mode_manager.scheduled_mode()
+        target=scheduled.name if scheduled else "Alle Bilder"
+        if not self.current_mode or self.current_mode.name!=target:
+            self.set_mode(target, manual=False)
+
+    def _scan_global(self):
+        if IMAGE_DIR.exists():
+            files=[str(p) for p in IMAGE_DIR.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS]
+            files.sort(); return files
+        return []
+
+    def _check_new_files(self):
+        if not (self.current_mode and self.current_mode.name in ("Alle Bilder","Standard")):
+            return
+        cur=self._scan_global()
+        if cur!=self.images:
+            self.images=cur
+            if UPSCALE_MODE=="esrgan":
+                for nf in cur: enqueue_image(nf)
+            self.index=min(self.index,len(self.images)-1) if self.images else 0
+            self.show_current_image(initial=True)
+            self.update_info()
+
+    def set_mode(self,name,manual=False):
+        mode=self.mode_manager.get(name)
+        if not mode: return
+        self.current_mode=mode
+        if manual: self.manual_override=True
+        if mode.name in ("Alle Bilder","Standard"):
+            self.images=self._scan_global()
+        else:
+            self.images=mode.existing_images()
+        if mode.randomize: shuffle(self.images)
+        self.index=0
+        self.show_current_image(initial=True)
+        self.update_info()
+        if hasattr(self.toolbar,'title'):
+            self.toolbar.title = "" if HIDE_TOOLBAR_TITLE else mode.name
+        self._bring_toolbar_to_front()
+        self._reschedule_for_current()
+
+    def start_slideshow(self):
+        self.show_current_image(initial=True)
+        self._reschedule_for_current()
+
+    def _choose_effect(self):
+        avail=list(self.selected_effects)
+        if len(avail)==1: return avail[0]
+        if "none" in avail and len(avail)>1:
+            avail=[e for e in avail if e!="none"]
+        if self.randomize_effects:
+            return choice(avail)
+        return sorted(avail)[0]
+
+    def _weighted_next_index(self):
+        weights=[]
+        total=0
+        for p in self.images:
+            w=self.image_priority_weights.get(p,1)
+            if w<1: w=1
+            weights.append(w); total+=w
+        if total<=len(self.images):
+            return (self.index+1)%len(self.images)
+        r=random()*total
+        acc=0
+        for i,w in enumerate(weights):
+            acc+=w
+            if r<=acc:
+                return i
+        return (self.index+1)%len(self.images)
+
+    def show_current_image(self, initial=False):
+        self._bring_toolbar_to_front()
+        if not self.images:
+            self.img_a.source=""; self.img_b.source=""
+            self.placeholder.text=f"Keine Bilder im Modus '{self.current_mode.name}'." if self.current_mode else "Keine Bilder."
+            self.placeholder.opacity=1
+            self.update_info(empty=True)
+            return
+        self.placeholder.opacity=0
+        path=self.images[self.index % len(self.images)]
+        self.current_original_path=path
+        path_final=self._maybe_upscale(path)
+        if not isinstance(path_final,str) or not Path(path_final).exists():
+            path_final=path
+        self.current_display_path=path_final
+        self.back_img.source=path_final
+        self.back_img.opacity=0
+        self.back_img.reload()
+        Clock.schedule_once(lambda dt:(self._resize_image(self.back_img), self._update_debug_overlay(), self._apply_current_brightness()))
+        if initial:
+            self.active_img.opacity=0
+            self.back_img.opacity=1
+            self.active_img,self.back_img=self.back_img,self.active_img
+            self._apply_current_brightness()
+            self._update_debug_overlay()
+            return
+        effect_override=self.image_effect_overrides.get(path)
+        effect=effect_override if effect_override else self._choose_effect()
+        mapping={
+            "fade":self._apply_fade,
+            "slide_left":lambda nw,ow:self._apply_slide(nw,ow,'left'),
+            "slide_right":lambda nw,ow:self._apply_slide(nw,ow,'right'),
+            "zoom_in":self._apply_zoom_in,
+            "zoom_pan":self._apply_zoom_pan,
+            "rotate":self._apply_rotate,
+            "none":self._apply_none
+        }
+        mapping.get(effect,self._apply_fade)(self.back_img,self.active_img)
+
+    # Effekte
+    def _apply_slide(self,new_widget,old_widget,direction='left'):
+        if not new_widget.texture: return self._apply_none(new_widget,old_widget)
+        self._resize_image(new_widget)
+        if direction=='left':
+            new_widget.x=self.width; target_old=-self.width
+        else:
+            new_widget.x=-self.width; target_old=self.width
+        new_widget.opacity=1
+        new_widget.y=(self.height-new_widget.height)/2
+        old_widget.y=(self.height-old_widget.height)/2
+        a_old=Animation(x=target_old,d=0.6,t='out_quad')
+        a_new=Animation(x=(self.width-new_widget.width)/2,d=0.6,t='out_quad')
+        def finish(*_):
+            old_widget.opacity=0; self._transition_done()
+        a_old.start(old_widget); a_new.bind(on_complete=finish); a_new.start(new_widget)
+    def _apply_fade(self,new_widget,old_widget):
+        self._resize_image(new_widget)
+        new_widget.opacity=0
+        a_out=Animation(opacity=0,d=FADE_OUT_DUR,t="in_quad")
+        a_in=Animation(opacity=1,d=FADE_IN_DUR,t="out_quad")
+        def after_out(*_):
+            a_in.bind(on_complete=lambda *_: self._transition_done()); a_in.start(new_widget)
+        a_out.bind(on_complete=after_out); a_out.start(old_widget)
+    def _apply_none(self,new_widget,old_widget):
+        self._resize_image(new_widget)
+        old_widget.opacity=0; new_widget.opacity=1
+        self._transition_done()
+    def _apply_zoom_in(self,new_widget,old_widget):
+        self._resize_image(new_widget)
+        bw,bh=new_widget.width,new_widget.height
+        new_widget.width=bw*1.1; new_widget.height=bh*1.1
+        new_widget.x=(self.width-new_widget.width)/2
+        new_widget.y=(self.height-new_widget.height)/2
+        new_widget.opacity=0
+        a_out=Animation(opacity=0,d=0.4)
+        def do_new(*_):
+            a_new=Animation(opacity=1,width=bw,height=bh,
+                            x=(self.width-bw)/2,y=(self.height-bh)/2,
+                            d=1.2,t='out_quad')
+            a_new.bind(on_complete=lambda *_: self._transition_done()); a_new.start(new_widget)
+        a_out.bind(on_complete=lambda *_: do_new()); a_out.start(old_widget)
+    def _apply_zoom_pan(self,new_widget,old_widget):
+        self._resize_image(new_widget)
+        bw,bh=new_widget.width,new_widget.height
+        new_widget.width=bw*1.08; new_widget.height=bh*1.08
+        dx=uniform(-0.05,0.05)*self.width; dy=uniform(-0.05,0.05)*self.height
+        new_widget.x=(self.width-new_widget.width)/2+dx
+        new_widget.y=(self.height-new_widget.height)/2+dy
+        new_widget.opacity=0
+        a_out=Animation(opacity=0,d=0.45)
+        def anim_new(*_):
+            a_new=Animation(opacity=1,width=bw,height=bh,
+                            x=(self.width-bw)/2,y=(self.height-bh)/2,
+                            d=1.8,t='out_quad')
+            a_new.bind(on_complete=lambda *_: self._transition_done()); a_new.start(new_widget)
+        a_out.bind(on_complete=lambda *_: anim_new()); a_out.start(old_widget)
+    def _apply_rotate(self,new_widget,old_widget):
+        self._resize_image(new_widget)
+        bw,bh=new_widget.width,new_widget.height
+        new_widget.width=bw*1.02; new_widget.height=bh*1.02
+        new_widget.x=(self.width-new_widget.width)/2 + uniform(-self.width*0.02,self.width*0.02)
+        new_widget.y=(self.height-new_widget.height)/2 + uniform(-self.height*0.02,self.height*0.02)
+        new_widget.opacity=0
+        a_out=Animation(opacity=0,d=0.4)
+        def fin(*_):
+            a_new=Animation(opacity=1,width=bw,height=bh,
+                            x=(self.width-bw)/2,y=(self.height-bh)/2,
+                            d=1.0,t='out_quad')
+            a_new.bind(on_complete=lambda *_: self._transition_done()); a_new.start(new_widget)
+        a_out.bind(on_complete=lambda *_: fin()); a_out.start(old_widget)
+    def _transition_done(self):
+        self.active_img.opacity=0
+        self.active_img,self.back_img=self.back_img,self.active_img
+        self.back_img.opacity=0
+        self._apply_current_brightness()
+        self._update_debug_overlay()
+        self._reschedule_for_current()
+
+    def next_image(self, *args):
+        if not self.images: return
+        if any(w>1 for w in self.image_priority_weights.values() if w):
+            self.index=self._weighted_next_index()
+        else:
+            self.index=(self.index+1)%len(self.images)
+        self.show_current_image()
+        self.update_info()
+    def prev_image(self):
+        if not self.images: return
+        self.index=(self.index-1)%len(self.images)
+        self.show_current_image()
+        self.update_info()
+
+    def update_info(self, empty=False):
+        if not SHOW_INFO_LABEL or not self.info_label: return
+        if not self.current_mode:
+            self.info_label.text="Kein Modus"; return
+        img_info=f"{self.index+1}/{len(self.images)}" if self.images else "0/0"
+        auto_flag="Auto" if self.current_mode.auto else "Manuell"
+        ov=" Override" if self.manual_override else ""
+        rnd=" Zufall" if self.current_mode.randomize else ""
+        if empty:
+            self.info_label.text=f"[{self.current_mode.name}] Keine Bilder | {auto_flag}{ov}{rnd}"
+        else:
+            self.info_label.text=f"[{self.current_mode.name}] {img_info} | {auto_flag}{ov}{rnd}"
+
+    def _show_toolbar_immediate(self):
+        if hasattr(self.toolbar,'fade_in'): self.toolbar.fade_in(0)
+        else:
+            self.toolbar.opacity=1; self.toolbar.disabled=False
+        self._schedule_toolbar_hide()
+    def _schedule_toolbar_hide(self):
+        if self._toolbar_timer: Clock.unschedule(self._toolbar_timer)
+        self._toolbar_timer=Clock.schedule_once(lambda dt:self._hide_toolbar(), TOOLBAR_VISIBLE_SECS)
+    def _hide_toolbar(self):
+        if hasattr(self.toolbar,'fade_out'): self.toolbar.fade_out()
+        else: Animation(opacity=0,d=TOOLBAR_FADE_DURATION).start(self.toolbar)
+    def _bring_up_toolbar(self):
+        if hasattr(self.toolbar,'fade_in'): self.toolbar.fade_in()
+        else:
+            if self._toolbar_anim: self._toolbar_anim.stop(self.toolbar)
+            self.toolbar.disabled=False; self.toolbar.opacity=1
+        self._bring_toolbar_to_front()
+        self._schedule_toolbar_hide()
+
+    def _reposition_debug(self):
+        if not self.debug_label: return
+        self.debug_label.pos=(dp(8), self.height - dp(40))
+    def _update_debug_overlay(self):
+        if not SHOW_DEBUG_OVERLAY or not self.debug_label: return
+        orig=self.current_original_path or "-"
+        disp=self.current_display_path or "-"
+        mode_info="Original"
+        if UPSCALE_MODE=="lanczos" and disp!=orig: mode_info="Lanczos"
+        if UPSCALE_MODE=="esrgan":
+            if disp!=orig and ESRGAN_OUTPUT_DIR in Path(disp).parents: mode_info="ESRGAN"
+            elif disp!=orig: mode_info="Lanczos-Fallback"
+        tw,th=(0,0)
+        if self.active_img.texture: tw,th=self.active_img.texture.size
+        aw,ah=self.active_img.size
+        self.debug_label.text=f"{mode_info} | Orig: {Path(orig).name if orig!='-' else '-'} | Tex: {tw}x{th} -> Display: {aw:.0f}x{ah:.0f}"
+
+    def on_touch_down(self,touch):
+        self._bring_up_toolbar()
+        self._start_x=touch.x
+        return super().on_touch_down(touch)
+    def on_touch_up(self,touch):
+        self._bring_up_toolbar()
+        if hasattr(self,'_start_x'):
+            dx=touch.x-self._start_x
+            if abs(dx)>50:
+                if dx<0: self.next_image()
+                else: self.prev_image()
+            del self._start_x
+        return super().on_touch_up(touch)
+    def on_mouse_down(self, window, x, y, button, modifiers):
+        self._bring_up_toolbar()
+
+# ---- App Klassen ----
+if KIVYMD_OK:
+    class KioskMDApp(MDApp):
+        def build(self):
+            self.theme_cls.theme_style="Dark"
+            self.theme_cls.primary_palette="Blue"
+            self.mode_manager=ModeManager(MODES_PATH)
+            self.root_widget=FloatLayout()
+            self.show_login()
+            return self.root_widget
+        def clear_root(self): self.root_widget.clear_widgets()
+        def show_login(self):
+            self.clear_root(); self.root_widget.add_widget(LoginScreen(self.on_login_success,self.show_register))
+        def show_register(self):
+            self.clear_root(); self.root_widget.add_widget(RegisterScreen(self.show_login))
+        def on_login_success(self):
+            self.clear_root()
+            self.slideshow=Slideshow(self.mode_manager)
+            self.root_widget.add_widget(self.slideshow)
+else:
+    class KioskMDApp(App):
+        def build(self):
+            self.mode_manager=ModeManager(MODES_PATH)
+            self.root_widget=FloatLayout()
+            self.show_login()
+            return self.root_widget
+        def clear_root(self): self.root_widget.clear_widgets()
+        def show_login(self):
+            self.clear_root(); self.root_widget.add_widget(LoginScreen(self.on_login_success,self.show_register))
+        def show_register(self):
+            self.clear_root(); self.root_widget.add_widget(RegisterScreen(self.show_login))
+        def on_login_success(self):
+            self.clear_root()
+            self.slideshow=Slideshow(self.mode_manager)
+            self.root_widget.add_widget(self.slideshow)
+
+if __name__ == "__main__":
+    app = KioskMDApp()
+    Window.bind(on_mouse_down=lambda w,x,y,b,m:
+                hasattr(app,'root_widget') and app.root_widget.children and
+                hasattr(app.root_widget.children[-1],'on_mouse_down') and
+                app.root_widget.children[-1].on_mouse_down(w,x,y,b,m))
+    app.run()
