@@ -49,21 +49,6 @@ TOOLBAR_VISIBLE_SECS = 7
 
 IMAGE_SCALE_MODE = "cover"
 
-UPSCALE_MODE = "esrgan"
-UPSCALE_CACHE_DIR = APP_DIR / "cache_upscaled"
-UPSCALE_CACHE_DIR.mkdir(exist_ok=True)
-
-# Empfehlung: Scale=2 für Performance
-ESRGAN_SCALE = 4
-ESRGAN_MODEL = "RealESRGAN_x2plus"
-ESRGAN_OUTPUT_DIR = APP_DIR / "upscaled"
-ESRGAN_OUTPUT_DIR.mkdir(exist_ok=True)
-
-UPSCALE_PREFLIGHT = True
-UPSCALE_PREFLIGHT_FORCE = False
-UPSCALE_PREFLIGHT_PROGRESS_OVERLAY = True
-UPSCALE_PREFLIGHT_SENTINEL = APP_DIR / "preflight_done_esrgan.txt"
-
 EFFECTS_AVAILABLE = [
     ("fade", "Fade"),
     ("slide_left", "Slide Links"),
@@ -90,25 +75,6 @@ try:
 except Exception:
     AppBarClass = None
     KIVYMD_OK = False
-
-if UPSCALE_MODE == "esrgan":
-    import traceback
-    print("[ESRGAN] Versuche Import esrgan_worker + realesrgan-Funktionen...")
-    try:
-        from esrgan_worker import (
-            start_esrgan_worker,
-            enqueue_image,
-            get_upscaled_candidate,
-            expected_upscaled_path,
-            has_upscaled_result
-        )
-        print("[ESRGAN] Import OK – ESRGAN aktiv!")
-    except Exception as e:
-        print("[ESRGAN] Import-Fehler (Fallback auf lanczos):", repr(e))
-        traceback.print_exc()
-        UPSCALE_MODE = "lanczos"
-else:
-    print("[ESRGAN] ESRGAN deaktiviert, aktueller Mode:", UPSCALE_MODE)
 
 # ------------------ Account / Auth ------------------
 def hash_password(pw: str) -> str:
@@ -1223,13 +1189,7 @@ class Slideshow(FloatLayout):
         self.current_original_path=None
         self.current_display_path=None
 
-        if UPSCALE_MODE == "esrgan":
-            try:
-                start_esrgan_worker(ESRGAN_SCALE, ESRGAN_MODEL, ESRGAN_OUTPUT_DIR)
-            except Exception as e:
-                print("[ESRGAN] Startfehler:", e)
-            if UPSCALE_PREFLIGHT and (UPSCALE_PREFLIGHT_FORCE or not UPSCALE_PREFLIGHT_SENTINEL.exists()):
-                Clock.schedule_once(lambda dt: self._run_preflight_upscale(), 0.8)
+
 
         with self.canvas.before:
             Color(0.02,0.02,0.03,1)
@@ -1297,122 +1257,7 @@ class Slideshow(FloatLayout):
         self.current_overlay = widget
         self.add_widget(widget)
 
-    # Preflight (gekürzt)
-    def _run_preflight_upscale(self):
-        print("[Preflight] Starte Prüfung vorhandener Bilder...")
-        all_files=[]
-        if IMAGE_DIR.exists():
-            for p in IMAGE_DIR.iterdir():
-                if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS:
-                    all_files.append(str(p))
-        self._preflight_total=len(all_files)
-        self._preflight_files=all_files
-        self._preflight_done_check=0
-        self._preflight_enqueued=0
-        if UPSCALE_PREFLIGHT_PROGRESS_OVERLAY:
-            self._show_preflight_overlay()
-        for path in all_files:
-            if has_upscaled_result(path, ESRGAN_SCALE, ESRGAN_MODEL, ESRGAN_OUTPUT_DIR):
-                self._preflight_done_check+=1
-            else:
-                enqueue_image(path); self._preflight_enqueued+=1
-        print(f"[Preflight] Insgesamt {self._preflight_total} Bilder. {self._preflight_done_check} vorhanden, {self._preflight_enqueued} enqueued.")
-        if self._preflight_total==0:
-            self._finish_preflight()
-        else:
-            Clock.schedule_interval(lambda dt:self._poll_preflight_progress(),2)
-    def _poll_preflight_progress(self):
-        done=0
-        for p in self._preflight_files:
-            if has_upscaled_result(p, ESRGAN_SCALE, ESRGAN_MODEL, ESRGAN_OUTPUT_DIR):
-                done+=1
-        self._preflight_done_check=done
-        if UPSCALE_PREFLIGHT_PROGRESS_OVERLAY:
-            self._update_preflight_overlay(done,self._preflight_total)
-        if done>=self._preflight_total:
-            self._finish_preflight(); return False
-        return True
-    def _finish_preflight(self):
-        print("[Preflight] Fertig – alle vorhandenen Bilder geprüft.")
-        try: UPSCALE_PREFLIGHT_SENTINEL.write_text("done",encoding="utf-8")
-        except Exception as e: print("[Preflight] Sentinel Fehler:",e)
-        if UPSCALE_PREFLIGHT_PROGRESS_OVERLAY: self._hide_preflight_overlay()
-    def _show_preflight_overlay(self):
-        if hasattr(self,'_preflight_overlay') and self._preflight_overlay: return
-        overlay=FloatLayout(size_hint=(1,1))
-        with overlay.canvas.before:
-            Color(0,0,0,0.48); overlay._bg=Rectangle(pos=self.pos,size=self.size)
-        overlay.bind(pos=lambda *a:setattr(overlay._bg,'pos',overlay.pos),
-                     size=lambda *a:setattr(overlay._bg,'size',overlay.size))
-        box=BoxLayout(orientation='vertical',size_hint=(None,None),
-                      size=(dp(440),dp(240)),
-                      pos_hint={'center_x':0.5,'center_y':0.5},
-                      padding=dp(24),spacing=dp(18))
-        with box.canvas.before:
-            Color(0.25,0.40,0.65,0.98); box._bg=Rectangle(pos=box.pos,size=box.size)
-        box.bind(pos=lambda *a:setattr(box._bg,'pos',box.pos),
-                 size=lambda *a:setattr(box._bg,'size',box.size))
-        title=Label(text="Bilder werden verbessert…",size_hint_y=None,height=dp(48),
-                    font_size=dp(28),color=(1,1,1,1))
-        self._preflight_progress_lbl=Label(text="Scanne…",size_hint_y=None,height=dp(38),
-                                           font_size=dp(22),color=(1,1,0.98,1))
-        info=Label(text="Du kannst das Fenster ignorieren!\nDie Verbesserung läuft im Hintergrund,\ndie Galerie ist nutzbar.",
-                   size_hint_y=None,height=dp(70),font_size=dp(16),
-                   color=(0.9,0.9,1,1),halign='center',valign='middle')
-        info.bind(size=lambda inst,*a:setattr(inst,'text_size',inst.size))
-        btn=Button(text="Schließen",size_hint_y=None,height=dp(52),
-                   background_normal='',background_color=(0.35,0.45,0.60,1),
-                   color=(1,1,1,1),font_size=dp(20))
-        btn.bind(on_release=lambda *_: self._hide_preflight_overlay())
-        box.add_widget(title); box.add_widget(self._preflight_progress_lbl)
-        box.add_widget(info); box.add_widget(btn)
-        overlay.add_widget(box)
-        self.add_widget(overlay)
-        self._preflight_overlay=overlay
-    def _update_preflight_overlay(self,done,total):
-        if hasattr(self,'_preflight_progress_lbl') and self._preflight_progress_lbl:
-            self._preflight_progress_lbl.text=f"{done}/{total} verbessert"
-    def _hide_preflight_overlay(self):
-        if hasattr(self,'_preflight_overlay') and self._preflight_overlay and self._preflight_overlay in self.children:
-            self.remove_widget(self._preflight_overlay)
-        self._preflight_overlay=None
-
     # Upscaling / Resize
-    def _lanczos_upscale_local(self,path):
-        if UPSCALE_MODE!="lanczos": return path
-        try:
-            from PIL import Image as PILImage
-        except Exception: return path
-        try:
-            target_w,target_h=int(self.width),int(self.height)
-            if target_w<=0 or target_h<=0: return path
-            im=PILImage.open(path)
-            if im.width>=target_w and im.height>=target_h: return path
-            if IMAGE_SCALE_MODE=="cover":
-                scale=max(target_w/im.width,target_h/im.height)
-            elif IMAGE_SCALE_MODE=="contain":
-                scale=min(target_w/im.width,target_h/im.height)
-            else:
-                scale=max(target_w/im.width,target_h/im.height)
-            if scale<=1: return path
-            new_size=(int(im.width*scale),int(im.height*scale))
-            h=hashlib.sha1(f"{path}-{new_size}-{IMAGE_SCALE_MODE}".encode()).hexdigest()[:12]
-            cache_file=UPSCALE_CACHE_DIR / f"{Path(path).stem}_{h}.png"
-            if not cache_file.exists():
-                im=im.resize(new_size,PILImage.LANCZOS)
-                im.save(cache_file)
-            return str(cache_file)
-        except Exception:
-            return path
-    def _maybe_upscale(self,path):
-        if UPSCALE_MODE=="esrgan":
-            up=get_upscaled_candidate(path)
-            if up and isinstance(up,str) and Path(up).exists():
-                return up
-            enqueue_image(path); return path
-        if UPSCALE_MODE=="lanczos":
-            return self._lanczos_upscale_local(path)
-        return path
     def _resize_image(self,img_widget):
         if not img_widget.texture: return
         win_w,win_h=self.width,self.height
@@ -1525,8 +1370,6 @@ class Slideshow(FloatLayout):
         cur=self._scan_global()
         if cur!=self.images:
             self.images=cur
-            if UPSCALE_MODE=="esrgan":
-                for nf in cur: enqueue_image(nf)
             self.index=min(self.index,len(self.images)-1) if self.images else 0
             self.show_current_image(initial=True)
             self.update_info()
@@ -1590,11 +1433,8 @@ class Slideshow(FloatLayout):
         self.placeholder.opacity=0
         path=self.images[self.index % len(self.images)]
         self.current_original_path=path
-        path_final=self._maybe_upscale(path)
-        if not isinstance(path_final,str) or not Path(path_final).exists():
-            path_final=path
-        self.current_display_path=path_final
-        self.back_img.source=path_final
+        self.current_display_path=path
+        self.back_img.source=path
         self.back_img.opacity=0
         self.back_img.reload()
         Clock.schedule_once(lambda dt:(self._resize_image(self.back_img), self._update_debug_overlay(), self._apply_current_brightness()))
@@ -1749,16 +1589,10 @@ class Slideshow(FloatLayout):
     def _update_debug_overlay(self):
         if not SHOW_DEBUG_OVERLAY or not self.debug_label: return
         orig=self.current_original_path or "-"
-        disp=self.current_display_path or "-"
-        mode_info="Original"
-        if UPSCALE_MODE=="lanczos" and disp!=orig: mode_info="Lanczos"
-        if UPSCALE_MODE=="esrgan":
-            if disp!=orig and ESRGAN_OUTPUT_DIR in Path(disp).parents: mode_info="ESRGAN"
-            elif disp!=orig: mode_info="Lanczos-Fallback"
         tw,th=(0,0)
         if self.active_img.texture: tw,th=self.active_img.texture.size
         aw,ah=self.active_img.size
-        self.debug_label.text=f"{mode_info} | Orig: {Path(orig).name if orig!='-' else '-'} | Tex: {tw}x{th} -> Display: {aw:.0f}x{ah:.0f}"
+        self.debug_label.text=f"Original | File: {Path(orig).name if orig!='-' else '-'} | Tex: {tw}x{th} -> Display: {aw:.0f}x{ah:.0f}"
 
     def on_touch_down(self,touch):
         self._bring_up_toolbar()
