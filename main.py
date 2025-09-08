@@ -906,6 +906,7 @@ class GalleryEditor(FloatLayout):
         self.manager=slideshow.mode_manager
         self.target_mode=None
         self.filter_selected_only=False
+        self.has_changes=False
         with self.canvas.before:
             Color(0,0,0,0.7)
             self.bg=Rectangle(pos=self.pos,size=self.size)
@@ -925,6 +926,21 @@ class GalleryEditor(FloatLayout):
         self.status_lbl=Label(text="Modus wählen",size_hint_y=None,height=dp(40),
                               font_size=dp(16),color=(1,1,1,0.85))
         left.add_widget(self.status_lbl)
+        
+        # Save button (initially hidden)
+        self.save_btn=Button(text="Speichern",size_hint_y=None,height=dp(60),
+                            font_size=dp(22),background_normal='',
+                            background_color=(0.25,0.55,0.25,1),color=(1,1,1,1),
+                            opacity=0,disabled=True)
+        self.save_btn.bind(on_release=lambda *_: self.save_changes())
+        left.add_widget(self.save_btn)
+        
+        # Feedback label (initially hidden)
+        self.feedback_lbl=Label(text="",size_hint_y=None,height=dp(30),
+                               font_size=dp(16),color=(0.2,0.8,0.2,1),
+                               opacity=0)
+        left.add_widget(self.feedback_lbl)
+        
         close_btn=Button(text="Schließen",size_hint_y=None,height=dp(60),
                          font_size=dp(22),background_normal='',
                          background_color=(0.4,0.4,0.45,1),color=(1,1,1,1))
@@ -960,6 +976,10 @@ class GalleryEditor(FloatLayout):
             self.mode_box.add_widget(btn); h+=btn.height+dp(8)
         self.mode_box.height=h if h>10 else 10
     def select_mode(self,mode):
+        # Reset changes when switching modes
+        self.has_changes=False
+        self._hide_save_button()
+        
         self.target_mode=mode
         self.status_lbl.text=f"Modus: {mode.name}"
         self._populate()
@@ -984,9 +1004,11 @@ class GalleryEditor(FloatLayout):
             self.target_mode.images.remove(path)
         else:
             self.target_mode.images.append(path)
-        self.manager.save()
-        if self.slideshow.current_mode and self.slideshow.current_mode.name==self.target_mode.name:
-            self.slideshow.set_mode(self.target_mode.name, manual=True)
+        
+        # Track changes and show save button
+        self.has_changes=True
+        self._show_save_button()
+        
         for tile in self.gallery_grid.children:
             if isinstance(tile,ImageTile) and tile.path==path: tile.refresh_state()
         self._update_count()
@@ -1003,6 +1025,55 @@ class GalleryEditor(FloatLayout):
     def _update_count(self):
         if self.target_mode:
             self.status_lbl.text=f"Modus: {self.target_mode.name} | {len(self.target_mode.images)} Bild(er)"
+    
+    def _show_save_button(self):
+        """Show the save button with animation"""
+        if self.save_btn.opacity == 0:
+            self.save_btn.disabled=False
+            from kivy.animation import Animation
+            Animation(opacity=1, d=0.3).start(self.save_btn)
+    
+    def _hide_save_button(self):
+        """Hide the save button with animation"""
+        from kivy.animation import Animation
+        def _disable(*_):
+            self.save_btn.disabled=True
+        anim = Animation(opacity=0, d=0.3)
+        anim.bind(on_complete=_disable)
+        anim.start(self.save_btn)
+    
+    def save_changes(self):
+        """Save all changes and refresh the slideshow"""
+        if not self.has_changes or not self.target_mode:
+            return
+        
+        # Save to file
+        self.manager.save()
+        
+        # Update slideshow if current mode matches target mode
+        if self.slideshow.current_mode and self.slideshow.current_mode.name==self.target_mode.name:
+            self.slideshow.set_mode(self.target_mode.name, manual=True)
+        
+        # Reset changes flag and hide save button
+        self.has_changes=False
+        self._hide_save_button()
+        
+        # Show feedback
+        self._show_feedback("Gespeichert!")
+    
+    def _show_feedback(self, message):
+        """Show temporary feedback message"""
+        self.feedback_lbl.text=message
+        from kivy.animation import Animation
+        from kivy.clock import Clock
+        
+        # Show feedback
+        Animation(opacity=1, d=0.3).start(self.feedback_lbl)
+        
+        # Hide after 2 seconds
+        def hide_feedback(dt):
+            Animation(opacity=0, d=0.3).start(self.feedback_lbl)
+        Clock.schedule_once(hide_feedback, 2.0)
     def _populate(self):
         self.gallery_grid.clear_widgets()
         if not self.all_images_cache: self._reload_all_images()
