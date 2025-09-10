@@ -14,10 +14,15 @@ from google.auth.transport.requests import Request as GoogleAuthRequest
 
 # Configuration for different environments
 import os
+import platform
 from pathlib import Path
 
 # Get the current script directory
 SCRIPT_DIR = Path(__file__).parent
+
+# Environment detection
+IS_RASPBERRY_PI = os.path.exists('/etc/rpi-issue') or 'raspberry' in platform.platform().lower()
+IS_HEADLESS = not os.environ.get('DISPLAY') and platform.system() == 'Linux'
 
 # Google Cloud Configuration
 GOOGLE_CREDENTIALS = os.getenv('GOOGLE_CREDENTIALS', str(SCRIPT_DIR / "cloudKey.json"))
@@ -30,6 +35,12 @@ VOICE_SCRIPT = str(SCRIPT_DIR / "voiceToGoogle.py")
 COPY_SCRIPT = str(SCRIPT_DIR / "dateiKopieren.py")
 TRANSKRIPT_PATH = str(SCRIPT_DIR / "transkript.txt")
 BILDER_DIR = str(SCRIPT_DIR / "BilderVertex")
+
+# Print environment info on startup
+if __name__ == "__main__":
+    print(f"Environment: {'Raspberry Pi' if IS_RASPBERRY_PI else 'Desktop'}")
+    print(f"Display: {'Headless' if IS_HEADLESS else 'GUI Available'}")
+    print(f"Script Directory: {SCRIPT_DIR}")
 
 class AsyncWorkflowManager:
     """Manages the asynchronous execution of the recording and processing workflow"""
@@ -79,8 +90,12 @@ class AsyncWorkflowManager:
 
     def start_recording_async(self, script_path):
         """Start Aufnahme.py as asynchronous subprocess"""
-        if not os.path.exists(script_path):
+        if not script_path or not os.path.exists(script_path):
             print(f"Aufnahme-Script nicht gefunden: {script_path}")
+            return False
+            
+        if self.is_recording:
+            print("Warnung: Aufnahme läuft bereits")
             return False
             
         try:
@@ -109,6 +124,7 @@ class AsyncWorkflowManager:
             
         except Exception as e:
             print(f"Fehler beim Starten der Aufnahme: {e}")
+            self.is_recording = False
             return False
 
     def _monitor_output(self):
@@ -196,8 +212,12 @@ class AsyncWorkflowManager:
             self.should_stop = True
 
         # Set up signal handlers
-        original_sigint = signal.signal(signal.SIGINT, signal_handler)
-        original_sigterm = signal.signal(signal.SIGTERM, signal_handler)
+        original_handlers = {}
+        try:
+            original_handlers[signal.SIGINT] = signal.signal(signal.SIGINT, signal_handler)
+            original_handlers[signal.SIGTERM] = signal.signal(signal.SIGTERM, signal_handler)
+        except Exception as e:
+            print(f"Warnung: Konnte Signal-Handler nicht setzen: {e}")
         
         try:
             while self.is_recording and not self.should_stop:
@@ -208,22 +228,31 @@ class AsyncWorkflowManager:
                     break
                 
                 # Check for keyboard input (non-blocking)
-                if sys.stdin in select.select([sys.stdin], [], [], 0.1)[0]:
+                if hasattr(select, 'select') and sys.stdin in select.select([sys.stdin], [], [], 0.1)[0]:
                     input_line = sys.stdin.readline().strip()
                     if input_line == "" or input_line.lower() in ['q', 'quit', 'exit', 'stop']:
                         print("Benutzer-Stop erkannt")
                         self.should_stop = True
                         break
+                elif not hasattr(select, 'select'):
+                    # Fallback for systems without select - just wait a bit
+                    time.sleep(0.1)
                         
                 time.sleep(0.1)
                 
         except KeyboardInterrupt:
             print("\nKeyboard Interrupt empfangen")
             self.should_stop = True
+        except Exception as e:
+            print(f"Fehler beim Warten auf Stop-Signal: {e}")
+            self.should_stop = True
         finally:
             # Restore original signal handlers
-            signal.signal(signal.SIGINT, original_sigint)
-            signal.signal(signal.SIGTERM, original_sigterm)
+            for sig, handler in original_handlers.items():
+                try:
+                    signal.signal(sig, handler)
+                except Exception:
+                    pass  # Ignore errors when restoring handlers
             
         return self.should_stop or not self.is_recording
 
