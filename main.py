@@ -782,14 +782,14 @@ class AufnahmePopup(FloatLayout):
             self.bg = Rectangle(pos=self.pos, size=self.size)
         self.bind(pos=self._update_bg, size=self._update_bg)
         
-        # Main panel
+        # Main panel - make it larger to accommodate output display
         panel = BoxLayout(
             orientation='vertical',
             size_hint=(None, None),
-            size=(dp(400), dp(300)),
+            size=(dp(600), dp(500)),
             pos_hint={'center_x': 0.5, 'center_y': 0.5},
             padding=dp(20),
-            spacing=dp(20)
+            spacing=dp(15)
         )
         
         with panel.canvas.before:
@@ -802,7 +802,7 @@ class AufnahmePopup(FloatLayout):
         title = Label(
             text="Aufnahme",
             size_hint_y=None,
-            height=dp(50),
+            height=dp(40),
             font_size=dp(28),
             color=(1, 1, 1, 1)
         )
@@ -812,7 +812,7 @@ class AufnahmePopup(FloatLayout):
         self.timer_label = Label(
             text="00:00",
             size_hint_y=None,
-            height=dp(60),
+            height=dp(50),
             font_size=dp(32),
             color=(0.8, 0.9, 1, 1)
         )
@@ -822,7 +822,7 @@ class AufnahmePopup(FloatLayout):
         self.button = Button(
             text="Start",
             size_hint_y=None,
-            height=dp(70),
+            height=dp(60),
             background_normal='',
             background_color=(0.25, 0.55, 0.25, 1),
             color=(1, 1, 1, 1),
@@ -830,6 +830,33 @@ class AufnahmePopup(FloatLayout):
         )
         self.button.bind(on_press=self.toggle_recording)
         panel.add_widget(self.button)
+        
+        # Output display area
+        output_label = Label(
+            text="Ausgabe:",
+            size_hint_y=None,
+            height=dp(25),
+            font_size=dp(18),
+            color=(1, 1, 1, 0.8),
+            halign='left'
+        )
+        output_label.bind(size=lambda inst, *args: setattr(inst, 'text_size', inst.size))
+        panel.add_widget(output_label)
+        
+        # Scrollable output text area
+        from kivy.uix.scrollview import ScrollView
+        scroll = ScrollView(size_hint=(1, 0.5))
+        self.output_text = Label(
+            text="Bereit für Aufnahme...",
+            text_size=(None, None),
+            halign='left',
+            valign='top',
+            color=(0.9, 0.9, 0.9, 1),
+            font_size=dp(14),
+            markup=True
+        )
+        scroll.add_widget(self.output_text)
+        panel.add_widget(scroll)
         
         # Close button
         close_button = Button(
@@ -850,6 +877,17 @@ class AufnahmePopup(FloatLayout):
         self.bg.pos = self.pos
         self.bg.size = self.size
     
+    def add_output_text(self, text):
+        """Add text to the output display"""
+        current = self.output_text.text
+        if current == "Bereit für Aufnahme...":
+            self.output_text.text = text
+        else:
+            self.output_text.text = current + "\n" + text
+        
+        # Update text_size for proper wrapping
+        self.output_text.text_size = (dp(550), None)
+    
     def toggle_recording(self, instance):
         """Toggle recording start/stop as requested"""
         if not self.is_running:
@@ -858,17 +896,26 @@ class AufnahmePopup(FloatLayout):
             self.stop_recording()
     
     def start_recording(self):
-        """Start PythonServer.py as subprocess"""
+        """Start Aufnahme.py as subprocess"""
         try:
-            server_path = APP_DIR / "PythonServer.py"
-            if not server_path.exists():
-                print(f"Fehler: PythonServer.py nicht gefunden bei {server_path}")
+            aufnahme_path = APP_DIR / "Aufnahme.py"
+            if not aufnahme_path.exists():
+                error_msg = f"Fehler: Aufnahme.py nicht gefunden bei {aufnahme_path}"
+                print(error_msg)
+                self.add_output_text(f"[color=ff4444]{error_msg}[/color]")
                 return
             
-            # Start the subprocess
+            # Clear previous output
+            self.output_text.text = "Starte Aufnahme..."
+            
+            # Start the subprocess with output capture
             self.process = subprocess.Popen(
-                ["python3", str(server_path)], 
-                cwd=str(APP_DIR)
+                ["python3", str(aufnahme_path)], 
+                cwd=str(APP_DIR),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                bufsize=1  # Line buffered
             )
             
             self.is_running = True
@@ -877,24 +924,87 @@ class AufnahmePopup(FloatLayout):
             self.start_time = time.time()
             self.start_timer()
             
-            print("Aufnahme gestartet")
+            # Schedule output reading
+            Clock.schedule_interval(self.read_process_output, 0.1)
+            
+            success_msg = "Aufnahme gestartet"
+            print(success_msg)
+            self.add_output_text(f"[color=44ff44]{success_msg}[/color]")
             
         except Exception as e:
-            print(f"Fehler beim Starten der Aufnahme: {e}")
+            error_msg = f"Fehler beim Starten der Aufnahme: {e}"
+            print(error_msg)
+            self.add_output_text(f"[color=ff4444]{error_msg}[/color]")
+    
+    def read_process_output(self, dt):
+        """Read output from the recording process"""
+        if not self.process or not self.is_running:
+            return False  # Stop scheduling
+            
+        try:
+            # Check if process is still running
+            if self.process.poll() is not None:
+                # Process ended, read final output
+                final_output = self.process.stdout.read()
+                if final_output:
+                    self.add_output_text(final_output.strip())
+                self.is_running = False
+                self.button.text = "Start"
+                self.button.background_color = (0.25, 0.55, 0.25, 1)
+                self.stop_timer()
+                return False
+            
+            # Read available output without blocking
+            import select
+            import sys
+            if hasattr(select, 'select'):  # Unix-like systems
+                ready, _, _ = select.select([self.process.stdout], [], [], 0)
+                if ready:
+                    line = self.process.stdout.readline()
+                    if line:
+                        self.add_output_text(line.strip())
+            else:
+                # Fallback for systems without select
+                try:
+                    line = self.process.stdout.readline()
+                    if line:
+                        self.add_output_text(line.strip())
+                except:
+                    pass  # No output available
+                    
+        except Exception as e:
+            print(f"Error reading process output: {e}")
+            return False
+        
+        return True  # Continue scheduling
     
     def stop_recording(self):
-        """Stop PythonServer.py subprocess cleanly"""
+        """Stop Aufnahme.py subprocess cleanly using SIGTERM"""
         if self.process and self.is_running:
+            self.add_output_text("[color=ffff44]Stoppe Aufnahme...[/color]")
+            
             try:
-                # Terminate the process gracefully
+                # Send SIGTERM for graceful shutdown as required
                 self.process.terminate()
-                self.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                # Force kill if terminate doesn't work
-                self.process.kill()
-                self.process.wait()
+                
+                # Wait for the process and capture final output
+                try:
+                    stdout, stderr = self.process.communicate(timeout=10)
+                    if stdout:
+                        self.add_output_text(stdout.strip())
+                    if stderr:
+                        self.add_output_text(f"[color=ffaa44]Warnung: {stderr.strip()}[/color]")
+                        
+                except subprocess.TimeoutExpired:
+                    # Force kill if terminate doesn't work within timeout
+                    self.add_output_text("[color=ff4444]Erzwinge Beendigung (Timeout)[/color]")
+                    self.process.kill()
+                    self.process.wait()
+                    
             except Exception as e:
-                print(f"Fehler beim Stoppen: {e}")
+                error_msg = f"Fehler beim Stoppen: {e}"
+                print(error_msg)
+                self.add_output_text(f"[color=ff4444]{error_msg}[/color]")
             finally:
                 self.process = None
         
@@ -903,7 +1013,9 @@ class AufnahmePopup(FloatLayout):
         self.button.background_color = (0.25, 0.55, 0.25, 1)  # Green for start
         self.stop_timer()
         
-        print("Aufnahme gestoppt")
+        stop_msg = "Aufnahme gestoppt"
+        print(stop_msg)
+        self.add_output_text(f"[color=44ff44]{stop_msg}[/color]")
     
     def start_timer(self):
         """Start the timer display"""
