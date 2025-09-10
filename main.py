@@ -57,6 +57,7 @@ EFFECTS_AVAILABLE = [
     ("zoom_in", "Zoom In"),
     ("zoom_pan", "Zoom+Pan"),
     ("rotate", "Rotate"),
+    ("blitz", "Blitz"),
     ("none", "Keine")
 ]
 DEFAULT_EFFECTS = {"fade"}
@@ -203,12 +204,8 @@ class ModeManager:
         if "Nacht" not in names:
             self.modes.append(Mode("Nacht", images=[], interval=7,
                                    windows=[{"start": "21:00", "end": "05:30"}], auto=True)); changed = True
-        if "Blitz" not in names:
-            self.modes.append(Mode("Blitz", images=[], interval=2, windows=[], auto=False, randomize=True)); changed = True
-        if "Zufall" not in names:
-            self.modes.append(Mode("Zufall", images=[], interval=5, windows=[], auto=False, randomize=True)); changed = True
-        if "Ruhe" not in names:
-            self.modes.append(Mode("Ruhe", images=[], interval=15,
+        if "Urlaub" not in names:
+            self.modes.append(Mode("Urlaub", images=[], interval=15,
                                    windows=[{"start": "12:30", "end": "13:30"}], auto=True)); changed = True
         if changed:
             self.save()
@@ -218,8 +215,14 @@ class ModeManager:
                 return m
         return None
     def scheduled_mode(self):
+        # Check if Urlaub mode is active first - it has priority and disables Tag/Nacht
+        urlaub_mode = self.get("Urlaub")
+        if urlaub_mode and urlaub_mode.is_active_now():
+            return urlaub_mode
+        
+        # If Urlaub is not active, check other scheduled modes (excluding Tag/Nacht if Urlaub exists)
         for m in self.modes:
-            if m.name in ("Alle Bilder", "Standard"):
+            if m.name in ("Alle Bilder", "Standard", "Urlaub"):
                 continue
             if m.is_active_now():
                 return m
@@ -942,19 +945,6 @@ class GalleryEditor(FloatLayout):
                                opacity=0)
         left.add_widget(self.feedback_lbl)
         
-        # Aufnahme button (server launch)
-        self.aufnahme_btn=Button(text="Aufnahme",size_hint_y=None,height=dp(60),
-                                font_size=dp(22),background_normal='',
-                                background_color=(0.2,0.4,0.6,1),color=(1,1,1,1))
-        self.aufnahme_btn.bind(on_release=lambda *_: self._start_server())
-        left.add_widget(self.aufnahme_btn)
-        
-        # Server status label (initially hidden)
-        self.server_status_lbl=Label(text="",size_hint_y=None,height=dp(20),
-                                    font_size=dp(14),color=(0.8,0.6,0.2,1),
-                                    opacity=0)
-        left.add_widget(self.server_status_lbl)
-        
         close_btn=Button(text="Schließen",size_hint_y=None,height=dp(60),
                          font_size=dp(22),background_normal='',
                          background_color=(0.4,0.4,0.45,1),color=(1,1,1,1))
@@ -1131,44 +1121,6 @@ class GalleryEditor(FloatLayout):
             self.gallery_grid.add_widget(ImageTile(p,self._toggle,self._is_selected,self._open_settings))
         self._update_count()
     
-    def _start_server(self):
-        """Start the PythonServer.py script using subprocess"""
-        try:
-            server_path = APP_DIR / "PythonServer.py"
-            if not server_path.exists():
-                self._show_server_status("Fehler: PythonServer.py nicht gefunden", error=True)
-                return
-            
-            # Start the server process
-            process = subprocess.Popen([
-                "python3", str(server_path)
-            ], cwd=str(APP_DIR))
-            
-            # Show success status
-            self._show_server_status("Server gestartet")
-            
-        except Exception as e:
-            # Show error status
-            self._show_server_status(f"Fehler: {str(e)}", error=True)
-    
-    def _show_server_status(self, message, error=False):
-        """Show server status message with appropriate color"""
-        self.server_status_lbl.text = message
-        if error:
-            self.server_status_lbl.color = (0.8, 0.2, 0.2, 1)  # Red for errors
-        else:
-            self.server_status_lbl.color = (0.2, 0.8, 0.2, 1)  # Green for success
-        
-        from kivy.animation import Animation
-        from kivy.clock import Clock
-        
-        # Show status
-        Animation(opacity=1, d=0.3).start(self.server_status_lbl)
-        
-        # Hide after 3 seconds
-        def hide_status(dt):
-            Animation(opacity=0, d=0.3).start(self.server_status_lbl)
-        Clock.schedule_once(hide_status, 3.0)
     
     def close(self):
         if self.parent: self.parent.remove_widget(self)
@@ -1327,6 +1279,11 @@ class Slideshow(FloatLayout):
         self.scheduler_event=None
         self.manual_override=False
 
+        # Server management
+        self.server_process = None
+        self.server_running = False
+        self.feedback_popup = None
+
         self.selected_effects = set(DEFAULT_EFFECTS)
         self.randomize_effects = False
         self.effect_state_seed = 0
@@ -1437,6 +1394,7 @@ class Slideshow(FloatLayout):
                             elevation=8,pos_hint={"top":1})
             bar.right_action_items=[
                 ["calendar",lambda x:self.open_schedule_editor()],
+                ["record",lambda x:self.toggle_server()],
                 ["image-multiple",lambda x:self.open_gallery()],
                 ["cog",lambda x:self.open_settings_root()],
                 ["logout",lambda x:self.logout()],
@@ -1456,6 +1414,7 @@ class Slideshow(FloatLayout):
         bar=CustomAppBar(title=("Slideshow" if not HIDE_TOOLBAR_TITLE else ""))
         bar.set_right_actions([
             ("Zeiten", self.open_schedule_editor),
+            ("Aufnahme", self.toggle_server),
             ("Galerie", self.open_gallery),
             ("Einstellungen", self.open_settings_root),
             ("Logout", self.logout),
@@ -1480,6 +1439,95 @@ class Slideshow(FloatLayout):
     def logout(self):
         app=App.get_running_app()
         if hasattr(app,'show_login'): app.show_login()
+
+    # Server management
+    def toggle_server(self):
+        """Toggle server start/stop"""
+        if self.server_running:
+            self._stop_server()
+        else:
+            self._start_server()
+    
+    def _start_server(self):
+        """Start the PythonServer.py script using subprocess"""
+        try:
+            if self.server_process and self.server_process.poll() is None:
+                # Server already running
+                return
+                
+            server_path = APP_DIR / "PythonServer.py"
+            if not server_path.exists():
+                self._show_server_feedback("Fehler: PythonServer.py nicht gefunden", error=True)
+                return
+            
+            # Start the server process
+            self.server_process = subprocess.Popen([
+                "python3", str(server_path)
+            ], cwd=str(APP_DIR))
+            
+            self.server_running = True
+            self._show_server_feedback("Server läuft")
+            self._update_toolbar_server_status()
+            
+        except Exception as e:
+            # Show error status
+            self._show_server_feedback(f"Fehler: {str(e)}", error=True)
+    
+    def _stop_server(self):
+        """Stop the running server"""
+        try:
+            if self.server_process:
+                self.server_process.terminate()
+                self.server_process.wait(timeout=5)  # Wait up to 5 seconds
+                self.server_process = None
+            
+            self.server_running = False
+            self._show_server_feedback("Gestoppt")
+            self._update_toolbar_server_status()
+            
+        except subprocess.TimeoutExpired:
+            # Force kill if terminate doesn't work
+            if self.server_process:
+                self.server_process.kill()
+                self.server_process = None
+            self.server_running = False
+            self._show_server_feedback("Gestoppt (erzwungen)")
+            self._update_toolbar_server_status()
+        except Exception as e:
+            self._show_server_feedback(f"Fehler beim Stoppen: {str(e)}", error=True)
+    
+    def _show_server_feedback(self, message, error=False):
+        """Show temporary server status feedback"""
+        if hasattr(self, 'feedback_popup') and self.feedback_popup:
+            return
+            
+        # Create temporary feedback popup
+        from kivy.uix.popup import Popup
+        from kivy.clock import Clock
+        
+        content = Label(text=message, color=(0.8, 0.2, 0.2, 1) if error else (0.2, 0.8, 0.2, 1))
+        self.feedback_popup = Popup(
+            title="Server Status",
+            content=content,
+            size_hint=(0.4, 0.2),
+            auto_dismiss=False
+        )
+        self.feedback_popup.open()
+        
+        # Auto-close after 2 seconds
+        def close_popup(dt):
+            if self.feedback_popup:
+                self.feedback_popup.dismiss()
+                self.feedback_popup = None
+        Clock.schedule_once(close_popup, 2.0)
+    
+    def _update_toolbar_server_status(self):
+        """Update toolbar title to show server status"""
+        if hasattr(self.toolbar, 'title'):
+            status = "Server läuft" if self.server_running else "Gestoppt"
+            mode_name = self.current_mode.name if self.current_mode else "Slideshow"
+            if not HIDE_TOOLBAR_TITLE:
+                self.toolbar.title = f"{mode_name} | {status}"
 
     # Interval & Brightness
     def _get_interval_for_path(self, path):
@@ -1612,6 +1660,7 @@ class Slideshow(FloatLayout):
             "zoom_in":self._apply_zoom_in,
             "zoom_pan":self._apply_zoom_pan,
             "rotate":self._apply_rotate,
+            "blitz":self._apply_blitz,
             "none":self._apply_none
         }
         mapping.get(effect,self._apply_fade)(self.back_img,self.active_img)
@@ -1687,6 +1736,26 @@ class Slideshow(FloatLayout):
                             d=1.0,t='out_quad')
             a_new.bind(on_complete=lambda *_: self._transition_done()); a_new.start(new_widget)
         a_out.bind(on_complete=lambda *_: fin()); a_out.start(old_widget)
+    
+    def _apply_blitz(self, new_widget, old_widget):
+        # Blitz effect: fast, intense transition with white flash
+        self._resize_image(new_widget)
+        new_widget.opacity=0
+        
+        # First flash old widget to white then fade out
+        old_widget.color = (3, 3, 3, 1)  # Bright white
+        a_flash = Animation(color=(1, 1, 1, 1), opacity=0, d=0.1, t='out_quad')
+        
+        def show_new(*_):
+            # Show new image with brief white flash
+            new_widget.color = (2, 2, 2, 1)  # Brief bright
+            new_widget.opacity = 1
+            a_new = Animation(color=(1, 1, 1, 1), d=0.15, t='out_quad')
+            a_new.bind(on_complete=lambda *_: self._transition_done())
+            a_new.start(new_widget)
+        
+        a_flash.bind(on_complete=show_new)
+        a_flash.start(old_widget)
     def _transition_done(self):
         self.active_img.opacity=0
         self.active_img,self.back_img=self.back_img,self.active_img
