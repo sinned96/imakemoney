@@ -767,53 +767,171 @@ class SettingsRootPopup(FloatLayout):
         if self.parent: self.parent.remove_widget(self)
         if self.slideshow.current_overlay is self:
             self.slideshow.current_overlay=None
-class AufnahmeWidget(BoxLayout):
+class AufnahmePopup(FloatLayout):
+    """Popup window for recording functionality as requested in requirements"""
     def __init__(self, **kwargs):
-        super().__init__(orientation='horizontal', **kwargs)
-        self.timer_label = Label(text="00:00", font_size=22)
-        self.button = Button(text="Aufnahme starten", font_size=22)
-        self.button.bind(on_press=self.toggle_aufnahme)
-        self.add_widget(self.button)
-        self.add_widget(self.timer_label)
+        super().__init__(**kwargs)
         self.process = None
         self.is_running = False
         self.start_time = None
-
-    def toggle_aufnahme(self, instance):
+        self.timer_event = None
+        
+        # Background
+        with self.canvas.before:
+            Color(0, 0, 0, 0.7)
+            self.bg = Rectangle(pos=self.pos, size=self.size)
+        self.bind(pos=self._update_bg, size=self._update_bg)
+        
+        # Main panel
+        panel = BoxLayout(
+            orientation='vertical',
+            size_hint=(None, None),
+            size=(dp(400), dp(300)),
+            pos_hint={'center_x': 0.5, 'center_y': 0.5},
+            padding=dp(20),
+            spacing=dp(20)
+        )
+        
+        with panel.canvas.before:
+            Color(0.16, 0.16, 0.20, 0.95)
+            panel._bg = Rectangle(pos=panel.pos, size=panel.size)
+        panel.bind(pos=lambda *a: setattr(panel._bg, 'pos', panel.pos),
+                  size=lambda *a: setattr(panel._bg, 'size', panel.size))
+        
+        # Title
+        title = Label(
+            text="Aufnahme",
+            size_hint_y=None,
+            height=dp(50),
+            font_size=dp(28),
+            color=(1, 1, 1, 1)
+        )
+        panel.add_widget(title)
+        
+        # Timer display
+        self.timer_label = Label(
+            text="00:00",
+            size_hint_y=None,
+            height=dp(60),
+            font_size=dp(32),
+            color=(0.8, 0.9, 1, 1)
+        )
+        panel.add_widget(self.timer_label)
+        
+        # Start/Stop button
+        self.button = Button(
+            text="Start",
+            size_hint_y=None,
+            height=dp(70),
+            background_normal='',
+            background_color=(0.25, 0.55, 0.25, 1),
+            color=(1, 1, 1, 1),
+            font_size=dp(24)
+        )
+        self.button.bind(on_press=self.toggle_recording)
+        panel.add_widget(self.button)
+        
+        # Close button
+        close_button = Button(
+            text="Schließen",
+            size_hint_y=None,
+            height=dp(50),
+            background_normal='',
+            background_color=(0.4, 0.4, 0.45, 1),
+            color=(1, 1, 1, 1),
+            font_size=dp(20)
+        )
+        close_button.bind(on_press=self.close_popup)
+        panel.add_widget(close_button)
+        
+        self.add_widget(panel)
+    
+    def _update_bg(self, *args):
+        self.bg.pos = self.pos
+        self.bg.size = self.size
+    
+    def toggle_recording(self, instance):
+        """Toggle recording start/stop as requested"""
         if not self.is_running:
-            self.start_aufnahme()
+            self.start_recording()
         else:
-            self.stop_aufnahme()
-
-    def start_aufnahme(self):
-        server_path = APP_DIR / "PythonServer.py"
-        self.process = subprocess.Popen(["python3", str(server_path)], cwd=str(APP_DIR))
-        self.is_running = True
-        self.button.text = "Aufnahme stoppen"
-        self.start_time = time.time()
-        self.update_timer()
-
-    def stop_aufnahme(self):
+            self.stop_recording()
+    
+    def start_recording(self):
+        """Start PythonServer.py as subprocess"""
+        try:
+            server_path = APP_DIR / "PythonServer.py"
+            if not server_path.exists():
+                print(f"Fehler: PythonServer.py nicht gefunden bei {server_path}")
+                return
+            
+            # Start the subprocess
+            self.process = subprocess.Popen(
+                ["python3", str(server_path)], 
+                cwd=str(APP_DIR)
+            )
+            
+            self.is_running = True
+            self.button.text = "Stopp"
+            self.button.background_color = (0.6, 0.25, 0.25, 1)  # Red for stop
+            self.start_time = time.time()
+            self.start_timer()
+            
+            print("Aufnahme gestartet")
+            
+        except Exception as e:
+            print(f"Fehler beim Starten der Aufnahme: {e}")
+    
+    def stop_recording(self):
+        """Stop PythonServer.py subprocess cleanly"""
         if self.process and self.is_running:
             try:
+                # Terminate the process gracefully
                 self.process.terminate()
                 self.process.wait(timeout=5)
             except subprocess.TimeoutExpired:
+                # Force kill if terminate doesn't work
                 self.process.kill()
                 self.process.wait()
-            except Exception:
-                pass  # Process may have already ended
-            self.process = None
+            except Exception as e:
+                print(f"Fehler beim Stoppen: {e}")
+            finally:
+                self.process = None
+        
         self.is_running = False
-        self.button.text = "Aufnahme starten"
+        self.button.text = "Start"
+        self.button.background_color = (0.25, 0.55, 0.25, 1)  # Green for start
+        self.stop_timer()
+        
+        print("Aufnahme gestoppt")
+    
+    def start_timer(self):
+        """Start the timer display"""
+        self.timer_event = Clock.schedule_interval(self.update_timer, 1)
+    
+    def stop_timer(self):
+        """Stop the timer display"""
+        if self.timer_event:
+            Clock.unschedule(self.timer_event)
+            self.timer_event = None
         self.timer_label.text = "00:00"
-
-    def update_timer(self, *args):
-        if self.is_running:
+    
+    def update_timer(self, dt):
+        """Update timer display during recording"""
+        if self.is_running and self.start_time:
             elapsed = int(time.time() - self.start_time)
-            mins, secs = divmod(elapsed, 60)
-            self.timer_label.text = f"{mins:02d}:{secs:02d}"
-            Clock.schedule_once(self.update_timer, 1)
+            minutes, seconds = divmod(elapsed, 60)
+            self.timer_label.text = f"{minutes:02d}:{seconds:02d}"
+    
+    def close_popup(self, instance):
+        """Close the popup window"""
+        # Stop recording if running
+        if self.is_running:
+            self.stop_recording()
+        
+        # Remove from parent
+        if self.parent:
+            self.parent.remove_widget(self)
 class GeneralSettingsPopup(FloatLayout):
     def __init__(self, slideshow, **kw):
         super().__init__(**kw)
@@ -1340,14 +1458,6 @@ class Slideshow(FloatLayout):
         self.scheduler_event=None
         self.manual_override=False
 
-        # Server management
-        self.server_process = None
-        self.server_running = False
-        self.feedback_popup = None
-        self.server_start_time = None
-        self.server_timer_event = None
-        self.server_monitor_event = None
-
         self.selected_effects = set(DEFAULT_EFFECTS)
         self.randomize_effects = False
         self.effect_state_seed = 0
@@ -1408,24 +1518,11 @@ class Slideshow(FloatLayout):
             self.add_widget(self.debug_label)
             self.bind(size=lambda *_: self._reposition_debug())
         
-        # Server timer display
-        self.server_timer_label=Label(text="",color=(1,1,1,0.9),
-                                     size_hint=(None,None),
-                                     font_size=dp(20),
-                                     pos_hint={'center_x':0.5, 'y':0.85})
-        self.add_widget(self.server_timer_label)
-
         if SHOW_FAB_GALLERY: self.add_gallery_fab()
 
         self._new_files_timer=Clock.schedule_interval(lambda dt:self._check_new_files(), INTERVAL_NEW_FILES)
 
-        # Add AufnahmeWidget at the bottom
-        self.aufnahme_widget = AufnahmeWidget(
-            size_hint=(1, None), 
-            height=60,
-            pos_hint={'x': 0, 'y': 0}  # Position at bottom
-        )
-        self.add_widget(self.aufnahme_widget)
+        # Recording functionality moved to popup (no bottom widget)
 
         self.auto_select_initial_mode()
         self.start_slideshow()
@@ -1488,11 +1585,10 @@ class Slideshow(FloatLayout):
         return bar
     
     def _update_md_toolbar_buttons(self, bar):
-        """Update KivyMD toolbar buttons with current server state"""
-        server_icon = "stop" if self.server_running else "record"
+        """Update KivyMD toolbar buttons"""
         bar.right_action_items=[
             ["calendar",lambda x:self.open_schedule_editor()],
-            [server_icon,lambda x:self.toggle_server()],
+            ["record",lambda x:self.open_aufnahme_popup()],
             ["image-multiple",lambda x:self.open_gallery()],
             ["cog",lambda x:self.open_settings_root()],
             ["logout",lambda x:self.logout()],
@@ -1500,11 +1596,10 @@ class Slideshow(FloatLayout):
         ]
     
     def _update_toolbar_buttons(self, bar):
-        """Update toolbar buttons with current server state"""
-        server_text = "Stopp" if self.server_running else "Start"
+        """Update toolbar buttons"""
         bar.set_right_actions([
             ("Zeiten", self.open_schedule_editor),
-            (server_text, self.toggle_server),
+            ("Aufnahme", self.open_aufnahme_popup),
             ("Galerie", self.open_gallery),
             ("Einstellungen", self.open_settings_root),
             ("Logout", self.logout),
@@ -1518,6 +1613,7 @@ class Slideshow(FloatLayout):
     def open_gallery(self): self.open_single(GalleryEditor(self))
     def open_schedule_editor(self): self.open_single(ScheduleEditor(self))
     def open_settings_root(self): self.open_single(SettingsRootPopup(self))
+    def open_aufnahme_popup(self): self.open_single(AufnahmePopup())
 
     def force_reschedule(self):
         scheduled=self.mode_manager.scheduled_mode()
@@ -1525,220 +1621,10 @@ class Slideshow(FloatLayout):
         self.set_mode(target, manual=False)
 
     def exit_app(self): 
-        # Clean up server process and monitoring before exiting
-        if self.server_monitor_event:
-            Clock.unschedule(self.server_monitor_event)
-        if self.server_timer_event:
-            Clock.unschedule(self.server_timer_event)
-        if self.server_process:
-            try:
-                self.server_process.terminate()
-                self.server_process.wait(timeout=2)
-            except:
-                pass
         App.get_running_app().stop()
     def logout(self):
         app=App.get_running_app()
         if hasattr(app,'show_login'): app.show_login()
-
-    # Server management
-    def toggle_server(self):
-        """Toggle server start/stop"""
-        if self.server_running:
-            self._stop_server()
-        else:
-            self._start_server()
-    
-    def _start_server(self):
-        """Start the PythonServer.py script using subprocess"""
-        try:
-            if self.server_process and self.server_process.poll() is None:
-                # Server already running
-                return
-                
-            server_path = APP_DIR / "PythonServer.py"
-            if not server_path.exists():
-                self._show_server_feedback("Fehler: PythonServer.py nicht gefunden", error=True)
-                return
-            
-            # Start the server process
-            self.server_process = subprocess.Popen([
-                "python3", str(server_path)
-            ], cwd=str(APP_DIR))
-            
-            self.server_running = True
-            self.server_start_time = Clock.get_time()
-            self._start_server_timer()
-            self._start_server_monitor()
-            self._disable_ui_inputs()
-            self._show_server_feedback("Server läuft")
-            self._update_toolbar_buttons_and_status()
-            
-        except Exception as e:
-            # Show error status
-            self._show_server_feedback(f"Fehler: {str(e)}", error=True)
-    
-    def _stop_server(self):
-        """Stop the running server"""
-        try:
-            if self.server_process:
-                self.server_process.terminate()
-                self.server_process.wait(timeout=5)  # Wait up to 5 seconds
-                self.server_process = None
-            
-            self.server_running = False
-            self._stop_server_timer()
-            self._stop_server_monitor()
-            self._enable_ui_inputs()
-            self._show_server_feedback("Gestoppt")
-            self._update_toolbar_buttons_and_status()
-            
-        except subprocess.TimeoutExpired:
-            # Force kill if terminate doesn't work
-            if self.server_process:
-                self.server_process.kill()
-                self.server_process = None
-            self.server_running = False
-            self._stop_server_timer()
-            self._stop_server_monitor()
-            self._enable_ui_inputs()
-            self._show_server_feedback("Gestoppt (erzwungen)")
-            self._update_toolbar_buttons_and_status()
-        except Exception as e:
-            self._show_server_feedback(f"Fehler beim Stoppen: {str(e)}", error=True)
-    
-    def _start_server_monitor(self):
-        """Start monitoring the server process"""
-        self.server_monitor_event = Clock.schedule_interval(self._check_server_status, 2.0)
-    
-    def _stop_server_monitor(self):
-        """Stop monitoring the server process"""
-        if self.server_monitor_event:
-            Clock.unschedule(self.server_monitor_event)
-            self.server_monitor_event = None
-    
-    def _check_server_status(self, dt):
-        """Check if server process is still running"""
-        if self.server_process and self.server_process.poll() is not None:
-            # Server process has ended
-            self.server_running = False
-            self.server_process = None
-            self._stop_server_timer()
-            self._stop_server_monitor()
-            self._enable_ui_inputs()
-            self._show_server_feedback("Server beendet")
-            self._update_toolbar_buttons_and_status()
-    
-    def _start_server_timer(self):
-        """Start the server timer display"""
-        self.server_timer_event = Clock.schedule_interval(self._update_server_timer, 1.0)
-        self.server_timer_label.opacity = 1
-    
-    def _stop_server_timer(self):
-        """Stop the server timer display"""
-        if self.server_timer_event:
-            Clock.unschedule(self.server_timer_event)
-            self.server_timer_event = None
-        self.server_timer_label.text = ""
-        self.server_timer_label.opacity = 0
-    
-    def _update_server_timer(self, dt):
-        """Update the server timer display"""
-        if self.server_running and self.server_start_time:
-            elapsed = Clock.get_time() - self.server_start_time
-            minutes = int(elapsed // 60)
-            seconds = int(elapsed % 60)
-            self.server_timer_label.text = f"Server läuft: {minutes:02d}:{seconds:02d}"
-    
-    def _disable_ui_inputs(self):
-        """Disable all UI inputs while server is running"""
-        # Disable toolbar buttons except server toggle
-        if hasattr(self.toolbar, '_buttons_box'):
-            for btn in self.toolbar._buttons_box.children:
-                if hasattr(btn, 'text') and btn.text not in ["Start", "Stopp"]:
-                    btn.disabled = True
-        
-        # Disable slideshow control interactions (but not the slideshow itself)
-        # Store original touch handlers
-        self._original_on_touch_down = self.on_touch_down
-        self._original_on_touch_up = self.on_touch_up
-        
-        # Override touch handlers to only allow server controls
-        def limited_touch_down(touch):
-            # Only allow toolbar interactions
-            if self.toolbar and self.toolbar.collide_point(*touch.pos):
-                return self.toolbar.on_touch_down(touch)
-            return False
-        
-        def limited_touch_up(touch):
-            # Only allow toolbar interactions
-            if self.toolbar and self.toolbar.collide_point(*touch.pos):
-                return self.toolbar.on_touch_up(touch)
-            return False
-        
-        self.on_touch_down = limited_touch_down
-        self.on_touch_up = limited_touch_up
-    
-    def _enable_ui_inputs(self):
-        """Enable all UI inputs when server is stopped"""
-        # Re-enable toolbar buttons
-        if hasattr(self.toolbar, '_buttons_box'):
-            for btn in self.toolbar._buttons_box.children:
-                if hasattr(btn, 'disabled'):
-                    btn.disabled = False
-        
-        # Restore original touch handlers
-        if hasattr(self, '_original_on_touch_down'):
-            self.on_touch_down = self._original_on_touch_down
-            del self._original_on_touch_down
-        
-        if hasattr(self, '_original_on_touch_up'):
-            self.on_touch_up = self._original_on_touch_up
-            del self._original_on_touch_up
-    
-    def _update_toolbar_buttons_and_status(self):
-        """Update toolbar buttons and status display"""
-        # Update toolbar buttons
-        if AppBarClass and hasattr(self.toolbar, 'right_action_items'):
-            self._update_md_toolbar_buttons(self.toolbar)
-        elif hasattr(self.toolbar, 'set_right_actions'):
-            self._update_toolbar_buttons(self.toolbar)
-        
-        # Update status in toolbar title
-        self._update_toolbar_server_status()
-    
-    def _show_server_feedback(self, message, error=False):
-        """Show temporary server status feedback"""
-        if hasattr(self, 'feedback_popup') and self.feedback_popup:
-            return
-            
-        # Create temporary feedback popup
-        from kivy.uix.popup import Popup
-        from kivy.clock import Clock
-        
-        content = Label(text=message, color=(0.8, 0.2, 0.2, 1) if error else (0.2, 0.8, 0.2, 1))
-        self.feedback_popup = Popup(
-            title="Server Status",
-            content=content,
-            size_hint=(0.4, 0.2),
-            auto_dismiss=False
-        )
-        self.feedback_popup.open()
-        
-        # Auto-close after 2 seconds
-        def close_popup(dt):
-            if self.feedback_popup:
-                self.feedback_popup.dismiss()
-                self.feedback_popup = None
-        Clock.schedule_once(close_popup, 2.0)
-    
-    def _update_toolbar_server_status(self):
-        """Update toolbar title to show server status"""
-        if hasattr(self.toolbar, 'title'):
-            status = "Server läuft" if self.server_running else "Gestoppt"
-            mode_name = self.current_mode.name if self.current_mode else "Slideshow"
-            if not HIDE_TOOLBAR_TITLE:
-                self.toolbar.title = f"{mode_name} | {status}"
 
     # Interval & Brightness
     def _get_interval_for_path(self, path):
