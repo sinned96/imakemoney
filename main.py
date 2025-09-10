@@ -1649,16 +1649,6 @@ class Slideshow(FloatLayout):
         self.current_original_path=None
         self.current_display_path=None
 
-        # Workflow service management
-        self.workflow_service_process = None
-        self.workflow_service_running = False
-
-        # Initialize workflow service status
-        Clock.schedule_once(lambda dt: self._initialize_workflow_service_status(), 1.0)
-        
-        # Periodically check service status (every 10 seconds)
-        Clock.schedule_interval(lambda dt: self._periodic_service_check(), 10.0)
-
 
 
         with self.canvas.before:
@@ -1767,11 +1757,9 @@ class Slideshow(FloatLayout):
     
     def _update_md_toolbar_buttons(self, bar):
         """Update KivyMD toolbar buttons"""
-        service_icon = "stop" if self.check_workflow_service_status() else "play"
         bar.right_action_items=[
             ["calendar",lambda x:self.open_schedule_editor()],
             ["record",lambda x:self.open_aufnahme_popup()],
-            [service_icon,lambda x:self.toggle_workflow_service()],
             ["image-multiple",lambda x:self.open_gallery()],
             ["cog",lambda x:self.open_settings_root()],
             ["logout",lambda x:self.logout()],
@@ -1780,11 +1768,9 @@ class Slideshow(FloatLayout):
     
     def _update_toolbar_buttons(self, bar):
         """Update toolbar buttons"""
-        service_text = "Service Stopp" if self.check_workflow_service_status() else "Workflow starten"
         bar.set_right_actions([
             ("Zeiten", self.open_schedule_editor),
             ("Aufnahme", self.open_aufnahme_popup),
-            (service_text, self.toggle_workflow_service),
             ("Galerie", self.open_gallery),
             ("Einstellungen", self.open_settings_root),
             ("Logout", self.logout),
@@ -1800,167 +1786,12 @@ class Slideshow(FloatLayout):
     def open_settings_root(self): self.open_single(SettingsRootPopup(self))
     def open_aufnahme_popup(self): self.open_single(AufnahmePopup())
 
-    # Workflow service management methods
-    def check_workflow_service_status(self):
-        """Check if workflow service is running"""
-        try:
-            if self.workflow_service_process:
-                # Check if process is still alive
-                if self.workflow_service_process.poll() is None:
-                    return True
-                else:
-                    # Process ended, clean up
-                    self.workflow_service_process = None
-                    self.workflow_service_running = False
-            
-            # Also check for existing service by looking for recent log activity
-            status_log = APP_DIR / "workflow_status.log"
-            if status_log.exists():
-                import time
-                stat = status_log.stat()
-                age = time.time() - stat.st_mtime
-                # Consider service running if log was updated within last 30 seconds
-                if age < 30:
-                    self.workflow_service_running = True
-                    return True
-            
-            self.workflow_service_running = False
-            return False
-        except Exception as e:
-            print(f"Error checking workflow service status: {e}")
-            return False
-
-    def start_workflow_service(self):
-        """Start the workflow service as background process"""
-        if self.workflow_service_running:
-            print("Workflow service is already running")
-            return True
-            
-        try:
-            server_script = APP_DIR / "PythonServer.py"
-            if not server_script.exists():
-                print(f"PythonServer.py not found at {server_script}")
-                return False
-            
-            print("Starting workflow service...")
-            
-            # Start the service as subprocess
-            self.workflow_service_process = subprocess.Popen(
-                ["python3", str(server_script), "--service"],
-                cwd=str(APP_DIR),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                universal_newlines=True,
-                preexec_fn=os.setsid  # Create new process group for clean shutdown
-            )
-            
-            # Give it a moment to start
-            import time
-            time.sleep(2)
-            
-            # Check if it started successfully
-            if self.workflow_service_process.poll() is None:
-                self.workflow_service_running = True
-                print(f"✓ Workflow service started (PID: {self.workflow_service_process.pid})")
-                return True
-            else:
-                stdout, stderr = self.workflow_service_process.communicate()
-                print("✗ Workflow service failed to start")
-                if stdout:
-                    print("STDOUT:", stdout)
-                if stderr:
-                    print("STDERR:", stderr)
-                self.workflow_service_process = None
-                return False
-                
-        except Exception as e:
-            print(f"Error starting workflow service: {e}")
-            self.workflow_service_process = None
-            return False
-
-    def stop_workflow_service(self):
-        """Stop the workflow service"""
-        if not self.workflow_service_running and not self.workflow_service_process:
-            print("No workflow service running")
-            return True
-            
-        try:
-            if self.workflow_service_process:
-                print("Stopping workflow service...")
-                
-                # Send SIGTERM to process group for clean shutdown
-                os.killpg(os.getpgid(self.workflow_service_process.pid), signal.SIGTERM)
-                
-                # Wait for graceful shutdown
-                try:
-                    self.workflow_service_process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    # Force kill if it doesn't shut down gracefully
-                    print("Force killing workflow service...")
-                    os.killpg(os.getpgid(self.workflow_service_process.pid), signal.SIGKILL)
-                    self.workflow_service_process.wait()
-                
-                print("✓ Workflow service stopped")
-                self.workflow_service_process = None
-            
-            self.workflow_service_running = False
-            return True
-            
-        except Exception as e:
-            print(f"Error stopping workflow service: {e}")
-            # Try to clean up anyway
-            self.workflow_service_process = None
-            self.workflow_service_running = False
-            return False
-
-    def toggle_workflow_service(self):
-        """Toggle workflow service on/off"""
-        if self.check_workflow_service_status():
-            success = self.stop_workflow_service()
-        else:
-            success = self.start_workflow_service()
-        
-        # Refresh toolbar to update button text/icon
-        if success:
-            self._refresh_toolbar_buttons()
-        
-        return success
-
-    def _refresh_toolbar_buttons(self):
-        """Refresh toolbar buttons to reflect current state"""
-        if AppBarClass and hasattr(self.toolbar, 'right_action_items'):
-            self._update_md_toolbar_buttons(self.toolbar)
-        elif hasattr(self.toolbar, 'set_right_actions'):
-            self._update_toolbar_buttons(self.toolbar)
-        
-        # Bring toolbar to front and make it visible
-        self._bring_toolbar_to_front()
-        self._bring_up_toolbar()
-
-    def _initialize_workflow_service_status(self):
-        """Initialize workflow service status on app start"""
-        self.check_workflow_service_status()
-        self._refresh_toolbar_buttons()
-
-    def _periodic_service_check(self):
-        """Periodically check service status and update UI"""
-        old_status = self.workflow_service_running
-        self.check_workflow_service_status()
-        
-        # If status changed, refresh toolbar
-        if old_status != self.workflow_service_running:
-            self._refresh_toolbar_buttons()
-
     def force_reschedule(self):
         scheduled=self.mode_manager.scheduled_mode()
         target=scheduled.name if scheduled else "Alle Bilder"
         self.set_mode(target, manual=False)
 
     def exit_app(self): 
-        # Clean up workflow service before exiting
-        if self.workflow_service_running:
-            print("Cleaning up workflow service before exit...")
-            self.stop_workflow_service()
         App.get_running_app().stop()
     def logout(self):
         app=App.get_running_app()
