@@ -445,8 +445,12 @@ class WorkflowFileWatcher:
                     except Exception as e:
                         self.log_status(f"Watcher-Fehler: {e}", "ERROR")
                         time.sleep(5.0)  # Wait longer on error
+            except Exception as e:
+                self.log_status(f"Watcher-Thread-Fehler: {e}", "ERROR")
             finally:
-                # Always release lock when thread ends
+                # Always ensure service stops and lock is released
+                self.running = False
+                self.workflow_completed = True
                 self.release_service_lock()
         
         import threading
@@ -684,6 +688,18 @@ def run_background_service():
     
     watcher = WorkflowFileWatcher()
     
+    # Set up signal handlers for clean shutdown
+    import signal
+    def signal_handler(signum, frame):
+        print(f"\nSignal {signum} empfangen, beende Service...")
+        watcher.stop_watching()
+    
+    try:
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+    except Exception as e:
+        print(f"Warning: Could not set signal handlers: {e}")
+    
     if not watcher.start_watching():
         print("Fehler: Konnte Service nicht starten (möglicherweise läuft bereits eine Instanz)")
         return False
@@ -700,6 +716,9 @@ def run_background_service():
         print("\nService wird beendet...")
         watcher.stop_watching()
         return False
+    finally:
+        # Ensure cleanup even if something goes wrong
+        watcher.stop_watching()
 
 if __name__ == "__main__":
     # Check command line arguments
