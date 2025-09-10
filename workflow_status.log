@@ -1,14 +1,12 @@
-[2025-09-10 21:04:09] INFO: Workflow-Manager gestartet
-[2025-09-10 21:04:09] INFO: Überwache Verzeichnis: /home/runner/work/imakemoney/imakemoney
-[2025-09-10 21:04:09] INFO: Trigger-Datei: /home/runner/work/imakemoney/imakemoney/workflow_trigger.txt
-[2025-09-10 21:04:12] INFO: Workflow-Trigger erkannt
-[2025-09-10 21:04:12] INFO: Workflow gestartet
-[2025-09-10 21:04:12] INFO: Schritt 1/3: Spracherkennung...
-[2025-09-10 21:04:12] INFO: Spracherkennung erfolgreich
-[2025-09-10 21:04:12] INFO: Schritt 2/3: Dateioperationen...
-[2025-09-10 21:04:12] WARNING: Dateioperationen fehlgeschlagen
-[2025-09-10 21:04:12] INFO: Schritt 3/3: Bildgenerierung...
-[2025-09-10 21:04:12] INFO: Bildgenerierung erfolgreich
-[2025-09-10 21:04:12] WARNING: WORKFLOW_COMPLETE: 2/3 Schritte erfolgreich
-[2025-09-10 21:04:12] INFO: Workflow-Manager gestoppt
-[2025-09-10 21:04:12] INFO: Workflow-Manager gestoppt
+[2025-09-10 21:27:34] INFO: Workflow-Manager gestartet
+[2025-09-10 21:27:34] INFO: Überwache Verzeichnis: /home/runner/work/imakemoney/imakemoney
+[2025-09-10 21:27:34] INFO: Trigger-Datei: /home/runner/work/imakemoney/imakemoney/workflow_trigger.txt
+[2025-09-10 21:27:36] INFO: Workflow-Trigger erkannt
+[2025-09-10 21:27:36] INFO: Workflow gestartet
+[2025-09-10 21:27:36] INFO: Schritt 1/3: Spracherkennung...
+[2025-09-10 21:27:37] INFO: Spracherkennung erfolgreich
+[2025-09-10 21:27:37] INFO: Schritt 2/3: Dateioperationen...
+[2025-09-10 21:27:37] WARNING: Dateioperationen fehlgeschlagen
+[2025-09-10 21:27:37] INFO: Schritt 3/3: Bildgenerierung...
+[2025-09-10 21:27:37] INFO: Bildgenerierung erfolgreich
+[2025-09-10 21:27:37] WARNING: WORKFLOW_COMPLETE: 2/3 Schritte erfolgreich

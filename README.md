@@ -1,6 +1,25 @@
 # IMA Workflow - Asynchronous Audio Recording & AI Processing
 
-This project implements an asynchronous workflow for audio recording and AI-powered image generation with a **separated architecture (Variante 3)**.
+This project implements an asynchronous workflow for audio recording and AI-powered image generation with a **separated architecture (Variante 3)** and **integrated GUI service management**.
+
+## 🚀 New Feature: GUI Workflow Service Button
+
+The GUI now includes an integrated "Workflow starten" button that starts/stops the background service directly from the interface:
+
+- **One-click service management** - No separate terminal commands needed
+- **Dynamic button states** - "Workflow starten" ↔ "Service Stopp" 
+- **Automatic status detection** - Service status updates every 10 seconds
+- **Clean resource management** - Graceful shutdown with SIGTERM/SIGKILL fallback
+
+### Quick Usage:
+1. Start GUI: `python3 main.py`
+2. Login to the slideshow interface  
+3. Click "Workflow starten" button in toolbar
+4. Use "Aufnahme" for recording as usual
+5. Background service processes everything automatically
+6. Click "Service Stopp" to stop when done
+
+**📖 Detailed documentation: [GUI_WORKFLOW_BUTTON.md](GUI_WORKFLOW_BUTTON.md)**
 
 ## 🚀 Separated Workflow Architecture
 
