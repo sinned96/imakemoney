@@ -12,15 +12,35 @@ import select
 from google.oauth2 import service_account
 from google.auth.transport.requests import Request as GoogleAuthRequest
 
-GOOGLE_CREDENTIALS = "/home/pi/Desktop/v2_Tripple S/cloudKey.json"
-PROJECT_ID = "trippe-s"
+# Configuration for different environments
+import os
+import platform
+from pathlib import Path
+
+# Get the current script directory
+SCRIPT_DIR = Path(__file__).parent
+
+# Environment detection
+IS_RASPBERRY_PI = os.path.exists('/etc/rpi-issue') or 'raspberry' in platform.platform().lower()
+IS_HEADLESS = not os.environ.get('DISPLAY') and platform.system() == 'Linux'
+
+# Google Cloud Configuration
+GOOGLE_CREDENTIALS = os.getenv('GOOGLE_CREDENTIALS', str(SCRIPT_DIR / "cloudKey.json"))
+PROJECT_ID = os.getenv('PROJECT_ID', "trippe-s")
 ENDPOINT = f"https://us-central1-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/us-central1/publishers/google/models/imagen-4.0-generate-001:predict"
 
-AUFNAHME_SCRIPT = "/home/pi/Desktop/v2_Tripple S/Aufnahme.py"
-VOICE_SCRIPT = "/home/pi/Desktop/v2_Tripple S/Aufnahmen/voiceToGoogle.py"
-COPY_SCRIPT = "/home/pi/Desktop/v2_Tripple S/Aufnahmen/dateiKopieren.py"
-TRANSKRIPT_PATH = "transkript.txt"
-BILDER_DIR = "/home/pi/Desktop/v2_Tripple S/BilderVertex"
+# Script paths - use relative paths from current directory
+AUFNAHME_SCRIPT = str(SCRIPT_DIR / "Aufnahme.py")
+VOICE_SCRIPT = str(SCRIPT_DIR / "voiceToGoogle.py")
+COPY_SCRIPT = str(SCRIPT_DIR / "dateiKopieren.py")
+TRANSKRIPT_PATH = str(SCRIPT_DIR / "transkript.txt")
+BILDER_DIR = str(SCRIPT_DIR / "BilderVertex")
+
+# Print environment info on startup
+if __name__ == "__main__":
+    print(f"Environment: {'Raspberry Pi' if IS_RASPBERRY_PI else 'Desktop'}")
+    print(f"Display: {'Headless' if IS_HEADLESS else 'GUI Available'}")
+    print(f"Script Directory: {SCRIPT_DIR}")
 
 class AsyncWorkflowManager:
     """Manages the asynchronous execution of the recording and processing workflow"""
@@ -70,8 +90,12 @@ class AsyncWorkflowManager:
 
     def start_recording_async(self, script_path):
         """Start Aufnahme.py as asynchronous subprocess"""
-        if not os.path.exists(script_path):
+        if not script_path or not os.path.exists(script_path):
             print(f"Aufnahme-Script nicht gefunden: {script_path}")
+            return False
+            
+        if self.is_recording:
+            print("Warnung: Aufnahme läuft bereits")
             return False
             
         try:
@@ -100,6 +124,7 @@ class AsyncWorkflowManager:
             
         except Exception as e:
             print(f"Fehler beim Starten der Aufnahme: {e}")
+            self.is_recording = False
             return False
 
     def _monitor_output(self):
@@ -187,8 +212,12 @@ class AsyncWorkflowManager:
             self.should_stop = True
 
         # Set up signal handlers
-        original_sigint = signal.signal(signal.SIGINT, signal_handler)
-        original_sigterm = signal.signal(signal.SIGTERM, signal_handler)
+        original_handlers = {}
+        try:
+            original_handlers[signal.SIGINT] = signal.signal(signal.SIGINT, signal_handler)
+            original_handlers[signal.SIGTERM] = signal.signal(signal.SIGTERM, signal_handler)
+        except Exception as e:
+            print(f"Warnung: Konnte Signal-Handler nicht setzen: {e}")
         
         try:
             while self.is_recording and not self.should_stop:
@@ -199,22 +228,31 @@ class AsyncWorkflowManager:
                     break
                 
                 # Check for keyboard input (non-blocking)
-                if sys.stdin in select.select([sys.stdin], [], [], 0.1)[0]:
+                if hasattr(select, 'select') and sys.stdin in select.select([sys.stdin], [], [], 0.1)[0]:
                     input_line = sys.stdin.readline().strip()
                     if input_line == "" or input_line.lower() in ['q', 'quit', 'exit', 'stop']:
                         print("Benutzer-Stop erkannt")
                         self.should_stop = True
                         break
+                elif not hasattr(select, 'select'):
+                    # Fallback for systems without select - just wait a bit
+                    time.sleep(0.1)
                         
                 time.sleep(0.1)
                 
         except KeyboardInterrupt:
             print("\nKeyboard Interrupt empfangen")
             self.should_stop = True
+        except Exception as e:
+            print(f"Fehler beim Warten auf Stop-Signal: {e}")
+            self.should_stop = True
         finally:
             # Restore original signal handlers
-            signal.signal(signal.SIGINT, original_sigint)
-            signal.signal(signal.SIGTERM, original_sigterm)
+            for sig, handler in original_handlers.items():
+                try:
+                    signal.signal(sig, handler)
+                except Exception:
+                    pass  # Ignore errors when restoring handlers
             
         return self.should_stop or not self.is_recording
 
@@ -224,19 +262,34 @@ def run_script(script_path, beschreibung):
     return manager.run_script_sync(script_path, beschreibung)
 
 def get_copied_content():
-    if os.path.exists(TRANSKRIPT_PATH):
-        with open(TRANSKRIPT_PATH, "r", encoding="utf-8") as f:
-            text = f.read()
-        if text.strip():
-            print("Text aus Datei gelesen.")
-            return text
+    """Get transcript content from file or clipboard"""
+    # Try reading from transcript file in multiple locations
+    possible_paths = [
+        TRANSKRIPT_PATH,  # Original path
+        "Transkripte/transkript.txt",  # After organization
+        "transkript.txt"  # Current directory fallback
+    ]
+    
+    for transcript_path in possible_paths:
+        if os.path.exists(transcript_path):
+            try:
+                with open(transcript_path, "r", encoding="utf-8") as f:
+                    text = f.read().strip()
+                if text:
+                    print(f"Text aus Datei gelesen ({transcript_path}).")
+                    return text
+            except Exception as e:
+                print(f"Fehler beim Lesen der Transkript-Datei {transcript_path}: {e}")
+    
+    # Fallback to clipboard if file reading failed
     try:
         text = pyperclip.paste()
-        if text.strip():
+        if text and text.strip():
             print("Text aus Zwischenablage gelesen.")
-            return text
+            return text.strip()
     except Exception as e:
         print("Konnte Zwischenablage nicht lesen:", e)
+    
     print("Kein Text gefunden!")
     return ""
 
@@ -254,43 +307,81 @@ def get_next_index(directory, prefix):
     return max(nums) + 1 if nums else 1
 
 def generate_image_imagen4(prompt, image_count=1, bilder_dir=BILDER_DIR, output_prefix="bild"):
+    """Generate images using Google's Imagen 4.0 API"""
+    # Ensure directory exists
     if not os.path.exists(bilder_dir):
         os.makedirs(bilder_dir)
         print(f"Verzeichnis {bilder_dir} wurde erstellt.")
-    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
-    credentials = service_account.Credentials.from_service_account_file(
-        GOOGLE_CREDENTIALS, scopes=scopes
-    )
-    auth_req = GoogleAuthRequest()
-    credentials.refresh(auth_req)
-    token = credentials.token
-
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "instances": [
-            {"prompt": prompt}
-        ],
-        "parameters": {
-            "sampleCount": image_count,
-            "aspectRatio": "16:9",      # <-- Wichtig für breite Bilder!
-            "resolution": "2k"          # <-- Wichtig für Full HD!
-        }
-    }
-    response = requests.post(ENDPOINT, headers=headers, json=payload)
-    if response.status_code != 200:
-        print(f"Fehler beim Bildgenerieren: {response.status_code}\n{response.text}")
+    
+    # For demo purposes without actual Google Cloud credentials
+    if not os.path.exists(GOOGLE_CREDENTIALS):
+        print(f"Google Cloud Credentials nicht gefunden: {GOOGLE_CREDENTIALS}")
+        print("Demo-Modus: Simuliere Bildgenerierung...")
+        
+        # Create a placeholder image file for testing
+        import base64
+        from pathlib import Path
+        
+        start_idx = get_next_index(bilder_dir, output_prefix)
+        for i in range(image_count):
+            fname = f"{bilder_dir}/{output_prefix}_{start_idx + i}.png"
+            # Create a minimal PNG file as placeholder
+            minimal_png = base64.b64decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+            )
+            with open(fname, "wb") as f:
+                f.write(minimal_png)
+            print(f"Demo-Bild erstellt: {fname}")
         return
-    result = response.json()
-    start_idx = get_next_index(bilder_dir, output_prefix)
-    for i, pred in enumerate(result["predictions"]):
-        fname = f"{bilder_dir}/{output_prefix}_{start_idx + i}.png"
-        img_data = base64.b64decode(pred["bytesBase64Encoded"])
+    
+    # Real implementation with Google Cloud
+    try:
+        scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+        credentials = service_account.Credentials.from_service_account_file(
+            GOOGLE_CREDENTIALS, scopes=scopes
+        )
+        auth_req = GoogleAuthRequest()
+        credentials.refresh(auth_req)
+        token = credentials.token
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "instances": [
+                {"prompt": prompt}
+            ],
+            "parameters": {
+                "sampleCount": image_count,
+                "aspectRatio": "16:9",
+                "resolution": "2k"
+            }
+        }
+        response = requests.post(ENDPOINT, headers=headers, json=payload)
+        if response.status_code != 200:
+            print(f"Fehler beim Bildgenerieren: {response.status_code}\n{response.text}")
+            return
+        result = response.json()
+        start_idx = get_next_index(bilder_dir, output_prefix)
+        for i, pred in enumerate(result["predictions"]):
+            fname = f"{bilder_dir}/{output_prefix}_{start_idx + i}.png"
+            img_data = base64.b64decode(pred["bytesBase64Encoded"])
+            with open(fname, "wb") as f:
+                f.write(img_data)
+            print(f"Bild gespeichert: {fname}")
+    except Exception as e:
+        print(f"Fehler bei der Bildgenerierung: {e}")
+        print("Erstelle Demo-Bild als Fallback...")
+        # Create demo image as fallback
+        start_idx = get_next_index(bilder_dir, output_prefix)
+        fname = f"{bilder_dir}/{output_prefix}_{start_idx}.png"
+        minimal_png = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        )
         with open(fname, "wb") as f:
-            f.write(img_data)
-        print(f"Bild gespeichert: {fname}")
+            f.write(minimal_png)
+        print(f"Demo-Bild erstellt: {fname}")
 
 def main():
     """
