@@ -1435,7 +1435,15 @@ class Slideshow(FloatLayout):
         target=scheduled.name if scheduled else "Alle Bilder"
         self.set_mode(target, manual=False)
 
-    def exit_app(self): App.get_running_app().stop()
+    def exit_app(self): 
+        # Clean up server process before exiting
+        if self.server_process:
+            try:
+                self.server_process.terminate()
+                self.server_process.wait(timeout=2)
+            except:
+                pass
+        App.get_running_app().stop()
     def logout(self):
         app=App.get_running_app()
         if hasattr(app,'show_login'): app.show_login()
