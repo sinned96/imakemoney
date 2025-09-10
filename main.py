@@ -982,7 +982,9 @@ class AufnahmePopup(FloatLayout):
     def stop_recording(self):
         """Stop Aufnahme.py subprocess cleanly using SIGTERM"""
         if self.process and self.is_running:
-            self.add_output_text("[color=ffff44]Stoppe Aufnahme...[/color]")
+            stop_msg_starting = "Stoppe Aufnahme..."
+            print(stop_msg_starting)
+            self.add_output_text(f"[color=ffff44]{stop_msg_starting}[/color]")
             
             try:
                 # Send SIGTERM for graceful shutdown as required
@@ -998,7 +1000,9 @@ class AufnahmePopup(FloatLayout):
                         
                 except subprocess.TimeoutExpired:
                     # Force kill if terminate doesn't work within timeout
-                    self.add_output_text("[color=ff4444]Erzwinge Beendigung (Timeout)[/color]")
+                    timeout_msg = "Erzwinge Beendigung (Timeout)"
+                    print(timeout_msg)
+                    self.add_output_text(f"[color=ff4444]{timeout_msg}[/color]")
                     self.process.kill()
                     self.process.wait()
                     
@@ -1070,12 +1074,16 @@ class AufnahmePopup(FloatLayout):
                     lines = content.split('\n')
                     for line in lines[-3:]:  # Show last 3 lines
                         if line.strip():
-                            self.add_output_text(f"[color=aaaaff][Workflow] {line.strip()}[/color]")
+                            workflow_status_msg = f"[Workflow] {line.strip()}"
+                            print(workflow_status_msg)
+                            self.add_output_text(f"[color=aaaaff]{workflow_status_msg}[/color]")
                     
                     # Check if workflow completed
                     if "WORKFLOW_COMPLETE" in content or "WORKFLOW_ERROR" in content:
                         Clock.unschedule(self.check_workflow_status)
-                        self.add_output_text("[color=44ff44]Workflow abgeschlossen[/color]")
+                        workflow_complete_msg = "Workflow abgeschlossen"
+                        print(workflow_complete_msg)
+                        self.add_output_text(f"[color=44ff44]{workflow_complete_msg}[/color]")
                         return False  # Stop scheduling
                         
         except Exception as e:
