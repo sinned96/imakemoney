@@ -15,8 +15,27 @@ from pathlib import Path
 def check_service_running():
     """Check if the workflow service is already running"""
     try:
-        # Simple check - look for existing status log
-        status_log = Path(__file__).parent / "workflow_status.log"
+        script_dir = Path(__file__).parent
+        lock_file = script_dir / "workflow_service.lock"
+        
+        if lock_file.exists():
+            # Check if lock is recent (service might be running)
+            stat = lock_file.stat()
+            age = time.time() - stat.st_mtime
+            if age < 30:
+                print(f"Workflow-Service scheint bereits zu laufen (Lock-Datei: {lock_file})")
+                try:
+                    with open(lock_file, "r") as f:
+                        pid = f.read().strip()
+                    print(f"Service-PID aus Lock-Datei: {pid}")
+                except Exception:
+                    pass
+                return True
+            else:
+                print(f"Veraltete Lock-Datei gefunden ({age:.1f}s alt), ignoriere")
+        
+        # Also check for recent status log
+        status_log = script_dir / "workflow_status.log"
         if status_log.exists():
             # Check if log was recently updated (within last 30 seconds)
             stat = status_log.stat()
@@ -57,17 +76,32 @@ def start_service():
         if process.poll() is None:
             print(f"✓ Workflow-Manager Service gestartet (PID: {process.pid})")
             print("Service läuft im Hintergrund und überwacht Workflow-Trigger")
-            print("\nZum Beenden: Strg+C oder kill -TERM {}".format(process.pid))
+            print("HINWEIS: Service beendet sich automatisch nach einem Workflow-Durchlauf")
+            print(f"\nZum manuellen Beenden: kill {process.pid}")
             
-            # Keep monitoring (optional - could also just exit here)
-            try:
-                process.wait()
-            except KeyboardInterrupt:
-                print("\nBeende Service...")
-                process.terminate()
-                process.wait()
+            # Monitor the service briefly, then detach
+            print("Überwache Service für 10 Sekunden...")
+            for i in range(10):
+                if process.poll() is not None:
+                    print(f"Service beendet (Exit Code: {process.returncode})")
+                    break
+                time.sleep(1)
+                print(".", end="", flush=True)
+            
+            if process.poll() is None:
+                print(f"\n✓ Service läuft stabil (PID: {process.pid})")
+                print("Service wird im Hintergrund weitergeführt...")
                 
-            return True
+                # Don't wait for process - let it run in background and exit after one workflow
+                return True
+            else:
+                stdout, stderr = process.communicate()
+                print(f"Service beendet mit Exit Code: {process.returncode}")
+                if stdout:
+                    print("STDOUT:", stdout)
+                if stderr:
+                    print("STDERR:", stderr)
+                return process.returncode == 0
         else:
             stdout, stderr = process.communicate()
             print("✗ Service konnte nicht gestartet werden")

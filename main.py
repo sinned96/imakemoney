@@ -776,6 +776,8 @@ class AufnahmePopup(FloatLayout):
         self.is_running = False
         self.start_time = None
         self.timer_event = None
+        self.workflow_triggered = False  # NEW: Track if workflow was already triggered
+        self.workflow_status_checker = None  # NEW: Track status checker
         
         # Background
         with self.canvas.before:
@@ -899,6 +901,12 @@ class AufnahmePopup(FloatLayout):
     def start_recording(self):
         """Start Aufnahme.py as subprocess"""
         try:
+            # Reset workflow state for new recording
+            self.workflow_triggered = False
+            if self.workflow_status_checker:
+                Clock.unschedule(self.workflow_status_checker)
+                self.workflow_status_checker = None
+            
             aufnahme_path = APP_DIR / "Aufnahme.py"
             if not aufnahme_path.exists():
                 error_msg = f"Fehler: Aufnahme.py nicht gefunden bei {aufnahme_path}"
@@ -1022,8 +1030,9 @@ class AufnahmePopup(FloatLayout):
         print(stop_msg)
         self.add_output_text(f"[color=44ff44]{stop_msg}[/color]")
         
-        # NEW: Create workflow trigger file after stopping recording
-        self.create_workflow_trigger()
+        # NEW: Create workflow trigger file after stopping recording (only once per recording)
+        if not self.workflow_triggered:
+            self.create_workflow_trigger()
     
     def start_timer(self):
         """Start the timer display"""
@@ -1045,17 +1054,36 @@ class AufnahmePopup(FloatLayout):
     
     def create_workflow_trigger(self):
         """Create workflow trigger file to signal background processing"""
+        if self.workflow_triggered:
+            warning_msg = "Workflow-Trigger bereits erstellt, überspringe"
+            print(warning_msg)
+            self.add_output_text(f"[color=ffaa44]{warning_msg}[/color]")
+            return
+            
         try:
             trigger_file = APP_DIR / "workflow_trigger.txt"
+            
+            # Check if trigger file already exists
+            if trigger_file.exists():
+                warning_msg = "Workflow-Trigger-Datei existiert bereits"
+                print(warning_msg)
+                self.add_output_text(f"[color=ffaa44]{warning_msg}[/color]")
+                return
+            
             with open(trigger_file, "w", encoding="utf-8") as f:
                 f.write("run")
+            
+            self.workflow_triggered = True  # Mark as triggered
             
             trigger_msg = "Workflow-Trigger erstellt"
             print(trigger_msg)
             self.add_output_text(f"[color=44ff44]{trigger_msg}[/color]")
             
-            # Start checking for workflow status
-            Clock.schedule_interval(self.check_workflow_status, 1.0)
+            # Start checking for workflow status (but stop any existing checker first)
+            if self.workflow_status_checker:
+                Clock.unschedule(self.workflow_status_checker)
+            
+            self.workflow_status_checker = Clock.schedule_interval(self.check_workflow_status, 1.0)
             
         except Exception as e:
             error_msg = f"Fehler beim Erstellen des Workflow-Triggers: {e}"
@@ -1081,6 +1109,7 @@ class AufnahmePopup(FloatLayout):
                     # Check if workflow completed
                     if "WORKFLOW_COMPLETE" in content or "WORKFLOW_ERROR" in content:
                         Clock.unschedule(self.check_workflow_status)
+                        self.workflow_status_checker = None  # Clear reference
                         workflow_complete_msg = "Workflow abgeschlossen"
                         print(workflow_complete_msg)
                         self.add_output_text(f"[color=44ff44]{workflow_complete_msg}[/color]")
@@ -1098,7 +1127,9 @@ class AufnahmePopup(FloatLayout):
             self.stop_recording()
         
         # Stop status checking
-        Clock.unschedule(self.check_workflow_status)
+        if self.workflow_status_checker:
+            Clock.unschedule(self.workflow_status_checker)
+            self.workflow_status_checker = None
         
         # Remove from parent
         if self.parent:
