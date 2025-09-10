@@ -1,6 +1,7 @@
 import os
 import json
 import hashlib
+import subprocess
 from datetime import datetime, time
 from pathlib import Path
 from random import shuffle, choice, uniform, random
@@ -941,6 +942,19 @@ class GalleryEditor(FloatLayout):
                                opacity=0)
         left.add_widget(self.feedback_lbl)
         
+        # Aufnahme button (server launch)
+        self.aufnahme_btn=Button(text="Aufnahme",size_hint_y=None,height=dp(60),
+                                font_size=dp(22),background_normal='',
+                                background_color=(0.2,0.4,0.6,1),color=(1,1,1,1))
+        self.aufnahme_btn.bind(on_release=lambda *_: self._start_server())
+        left.add_widget(self.aufnahme_btn)
+        
+        # Server status label (initially hidden)
+        self.server_status_lbl=Label(text="",size_hint_y=None,height=dp(20),
+                                    font_size=dp(14),color=(0.8,0.6,0.2,1),
+                                    opacity=0)
+        left.add_widget(self.server_status_lbl)
+        
         close_btn=Button(text="Schließen",size_hint_y=None,height=dp(60),
                          font_size=dp(22),background_normal='',
                          background_color=(0.4,0.4,0.45,1),color=(1,1,1,1))
@@ -995,6 +1009,36 @@ class GalleryEditor(FloatLayout):
         else: files=[]
         if len(files)>MAX_IMAGES_DISPLAY: files=files[:MAX_IMAGES_DISPLAY]
         self.all_images_cache=files
+        
+    def _sync_image_lists_with_folder(self):
+        """Remove non-existing images from all modes and provide feedback"""
+        if not IMAGE_DIR.exists():
+            return
+        
+        existing_files = set(self.all_images_cache)
+        total_removed = 0
+        
+        # Check and clean all modes
+        for mode in self.manager.modes:
+            if not mode.images:
+                continue
+            
+            removed_from_mode = []
+            for img_path in mode.images[:]:  # Copy list to iterate safely
+                if img_path not in existing_files:
+                    mode.images.remove(img_path)
+                    removed_from_mode.append(img_path)
+            
+            total_removed += len(removed_from_mode)
+        
+        # Save changes if any images were removed
+        if total_removed > 0:
+            self.manager.save()
+            # Show feedback about removed images
+            feedback_msg = f"{total_removed} nicht existierende Bilder entfernt"
+            self._show_feedback(feedback_msg)
+        
+        return total_removed
     def _is_selected(self,path):
         return self.target_mode and path in self.target_mode.images
     def _toggle(self,path):
@@ -1050,6 +1094,9 @@ class GalleryEditor(FloatLayout):
         # Save to file
         self.manager.save()
         
+        # Sync image lists after save to remove any non-existing files
+        self._sync_image_lists_with_folder()
+        
         # Update slideshow if current mode matches target mode
         if self.slideshow.current_mode and self.slideshow.current_mode.name==self.target_mode.name:
             self.slideshow.set_mode(self.target_mode.name, manual=True)
@@ -1083,6 +1130,46 @@ class GalleryEditor(FloatLayout):
         for p in imgs:
             self.gallery_grid.add_widget(ImageTile(p,self._toggle,self._is_selected,self._open_settings))
         self._update_count()
+    
+    def _start_server(self):
+        """Start the PythonServer.py script using subprocess"""
+        try:
+            server_path = APP_DIR / "PythonServer.py"
+            if not server_path.exists():
+                self._show_server_status("Fehler: PythonServer.py nicht gefunden", error=True)
+                return
+            
+            # Start the server process
+            process = subprocess.Popen([
+                "python3", str(server_path)
+            ], cwd=str(APP_DIR))
+            
+            # Show success status
+            self._show_server_status("Server gestartet")
+            
+        except Exception as e:
+            # Show error status
+            self._show_server_status(f"Fehler: {str(e)}", error=True)
+    
+    def _show_server_status(self, message, error=False):
+        """Show server status message with appropriate color"""
+        self.server_status_lbl.text = message
+        if error:
+            self.server_status_lbl.color = (0.8, 0.2, 0.2, 1)  # Red for errors
+        else:
+            self.server_status_lbl.color = (0.2, 0.8, 0.2, 1)  # Green for success
+        
+        from kivy.animation import Animation
+        from kivy.clock import Clock
+        
+        # Show status
+        Animation(opacity=1, d=0.3).start(self.server_status_lbl)
+        
+        # Hide after 3 seconds
+        def hide_status(dt):
+            Animation(opacity=0, d=0.3).start(self.server_status_lbl)
+        Clock.schedule_once(hide_status, 3.0)
+    
     def close(self):
         if self.parent: self.parent.remove_widget(self)
         if self.slideshow.current_overlay is self:
