@@ -6,6 +6,14 @@ from datetime import datetime, time
 from pathlib import Path
 from random import shuffle, choice, uniform, random
 import types
+import threading
+import time
+from tkinter import Tk, Button, Label
+
+from kivy.app import App
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.button import Button
+from kivy.uix.label import Label
 
 from kivy.animation import Animation
 from kivy.clock import Clock
@@ -386,6 +394,8 @@ class LoginScreen(FloatLayout):
         else:
             self.status.text="Falscher Benutzername oder Passwort"
 
+
+
 class RegisterScreen(FloatLayout):
     def __init__(self, on_done, **kw):
         super().__init__(**kw)
@@ -725,6 +735,7 @@ class SettingsRootPopup(FloatLayout):
                         size=(dp(500),dp(480)),
                         pos_hint={'center_x':0.5,'center_y':0.5},
                         padding=dp(24),spacing=dp(18))
+        
         with panel.canvas.before:
             Color(0.16,0.16,0.2,0.97); panel._bg=Rectangle(pos=panel.pos,size=panel.size)
         panel.bind(pos=lambda *a:setattr(panel._bg,'pos',panel.pos),
@@ -752,7 +763,45 @@ class SettingsRootPopup(FloatLayout):
         if self.parent: self.parent.remove_widget(self)
         if self.slideshow.current_overlay is self:
             self.slideshow.current_overlay=None
+class AufnahmeWidget(BoxLayout):
+    def __init__(self, **kwargs):
+        super().__init__(orientation='horizontal', **kwargs)
+        self.timer_label = Label(text="00:00", font_size=22)
+        self.button = Button(text="Aufnahme starten", font_size=22)
+        self.button.bind(on_press=self.toggle_aufnahme)
+        self.add_widget(self.button)
+        self.add_widget(self.timer_label)
+        self.process = None
+        self.is_running = False
+        self.start_time = None
 
+    def toggle_aufnahme(self, instance):
+        if not self.is_running:
+            self.start_aufnahme()
+        else:
+            self.stop_aufnahme()
+
+    def start_aufnahme(self):
+        self.process = subprocess.Popen(["python3", "PythonServer.py"])
+        self.is_running = True
+        self.button.text = "Aufnahme stoppen"
+        self.start_time = time.time()
+        self.update_timer()
+
+    def stop_aufnahme(self):
+        if self.process and self.is_running:
+            self.process.terminate()
+            self.process.wait()
+        self.is_running = False
+        self.button.text = "Aufnahme starten"
+        self.timer_label.text = "00:00"
+
+    def update_timer(self, *args):
+        if self.is_running:
+            elapsed = int(time.time() - self.start_time)
+            mins, secs = divmod(elapsed, 60)
+            self.timer_label.text = f"{mins:02d}:{secs:02d}"
+            Clock.schedule_once(self.update_timer, 1)
 class GeneralSettingsPopup(FloatLayout):
     def __init__(self, slideshow, **kw):
         super().__init__(**kw)
