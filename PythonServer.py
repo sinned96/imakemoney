@@ -293,7 +293,15 @@ def generate_image_imagen4(prompt, image_count=1, bilder_dir=BILDER_DIR, output_
         print(f"Bild gespeichert: {fname}")
 
 def main():
-    """Main workflow with asynchronous recording"""
+    """
+    Main workflow with asynchronous recording
+    
+    This function implements the new non-blocking workflow:
+    1. Start Aufnahme.py asynchronously using subprocess.Popen
+    2. Wait for external event to stop recording (Enter, SIGTERM, etc.)
+    3. Continue with synchronous processing steps
+    4. Collect and display all subprocess output
+    """
     print("=== Audio Recording & AI Image Generation Workflow ===")
     print("Dieses Programm führt folgende Schritte aus:")
     print("1. Aufnahme (asynchron, manuell stoppbar)")  
