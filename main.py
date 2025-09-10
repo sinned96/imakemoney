@@ -8,7 +8,11 @@ from random import shuffle, choice, uniform, random
 import types
 import threading
 import time
-from tkinter import Tk, Button, Label
+try:
+    from tkinter import Tk, Button, Label
+    TKINTER_AVAILABLE = True
+except ImportError:
+    TKINTER_AVAILABLE = False
 
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
@@ -782,7 +786,8 @@ class AufnahmeWidget(BoxLayout):
             self.stop_aufnahme()
 
     def start_aufnahme(self):
-        self.process = subprocess.Popen(["python3", "PythonServer.py"])
+        server_path = APP_DIR / "PythonServer.py"
+        self.process = subprocess.Popen(["python3", str(server_path)], cwd=str(APP_DIR))
         self.is_running = True
         self.button.text = "Aufnahme stoppen"
         self.start_time = time.time()
@@ -790,8 +795,15 @@ class AufnahmeWidget(BoxLayout):
 
     def stop_aufnahme(self):
         if self.process and self.is_running:
-            self.process.terminate()
-            self.process.wait()
+            try:
+                self.process.terminate()
+                self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait()
+            except Exception:
+                pass  # Process may have already ended
+            self.process = None
         self.is_running = False
         self.button.text = "Aufnahme starten"
         self.timer_label.text = "00:00"
@@ -1406,6 +1418,14 @@ class Slideshow(FloatLayout):
         if SHOW_FAB_GALLERY: self.add_gallery_fab()
 
         self._new_files_timer=Clock.schedule_interval(lambda dt:self._check_new_files(), INTERVAL_NEW_FILES)
+
+        # Add AufnahmeWidget at the bottom
+        self.aufnahme_widget = AufnahmeWidget(
+            size_hint=(1, None), 
+            height=60,
+            pos_hint={'x': 0, 'y': 0}  # Position at bottom
+        )
+        self.add_widget(self.aufnahme_widget)
 
         self.auto_select_initial_mode()
         self.start_slideshow()
