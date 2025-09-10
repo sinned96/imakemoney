@@ -357,6 +357,10 @@ class WorkflowFileWatcher:
                     self.log_status("Trigger-Datei gelöscht")
             except Exception as e:
                 self.log_status(f"Fehler beim Löschen der Trigger-Datei: {e}", "WARNING")
+            
+            # Stop the service after workflow completion to prevent endless loop
+            self.log_status("Service beendet sich nach erfolgreichem Workflow-Durchlauf")
+            self.running = False
     
     def check_trigger(self):
         """Check for workflow trigger file"""
