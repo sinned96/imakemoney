@@ -1016,6 +1016,9 @@ class AufnahmePopup(FloatLayout):
         stop_msg = "Aufnahme gestoppt"
         print(stop_msg)
         self.add_output_text(f"[color=44ff44]{stop_msg}[/color]")
+        
+        # NEW: Create workflow trigger file after stopping recording
+        self.create_workflow_trigger()
     
     def start_timer(self):
         """Start the timer display"""
@@ -1035,11 +1038,58 @@ class AufnahmePopup(FloatLayout):
             minutes, seconds = divmod(elapsed, 60)
             self.timer_label.text = f"{minutes:02d}:{seconds:02d}"
     
+    def create_workflow_trigger(self):
+        """Create workflow trigger file to signal background processing"""
+        try:
+            trigger_file = APP_DIR / "workflow_trigger.txt"
+            with open(trigger_file, "w", encoding="utf-8") as f:
+                f.write("run")
+            
+            trigger_msg = "Workflow-Trigger erstellt"
+            print(trigger_msg)
+            self.add_output_text(f"[color=44ff44]{trigger_msg}[/color]")
+            
+            # Start checking for workflow status
+            Clock.schedule_interval(self.check_workflow_status, 1.0)
+            
+        except Exception as e:
+            error_msg = f"Fehler beim Erstellen des Workflow-Triggers: {e}"
+            print(error_msg)
+            self.add_output_text(f"[color=ff4444]{error_msg}[/color]")
+    
+    def check_workflow_status(self, dt):
+        """Check workflow status from log file"""
+        try:
+            status_file = APP_DIR / "workflow_status.log"
+            if status_file.exists():
+                with open(status_file, "r", encoding="utf-8") as f:
+                    content = f.read().strip()
+                if content:
+                    # Show last few lines of status
+                    lines = content.split('\n')
+                    for line in lines[-3:]:  # Show last 3 lines
+                        if line.strip():
+                            self.add_output_text(f"[color=aaaaff][Workflow] {line.strip()}[/color]")
+                    
+                    # Check if workflow completed
+                    if "WORKFLOW_COMPLETE" in content or "WORKFLOW_ERROR" in content:
+                        Clock.unschedule(self.check_workflow_status)
+                        self.add_output_text("[color=44ff44]Workflow abgeschlossen[/color]")
+                        return False  # Stop scheduling
+                        
+        except Exception as e:
+            print(f"Fehler beim Lesen der Workflow-Status: {e}")
+            
+        return True  # Continue scheduling
+    
     def close_popup(self, instance):
         """Close the popup window"""
         # Stop recording if running
         if self.is_running:
             self.stop_recording()
+        
+        # Stop status checking
+        Clock.unschedule(self.check_workflow_status)
         
         # Remove from parent
         if self.parent:
