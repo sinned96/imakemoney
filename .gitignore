@@ -63,3 +63,11 @@ Thumbs.db
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Recording output files (exclude test recordings)
+**/Aufnahmen/
+*.wav
+*.mp3
+*.m4a
+aufnahme_*.wav
+test_aufnahme.py
