@@ -71,3 +71,10 @@ Thumbs.db
 *.m4a
 aufnahme_*.wav
 test_aufnahme.py
+
+# Workflow output files (generated during testing/runtime)
+workflow_trigger.txt
+workflow_status.log
+transkript.txt
+BilderVertex/
+Transkripte/
