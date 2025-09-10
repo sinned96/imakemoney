@@ -9,8 +9,15 @@ import sys
 import time
 import threading
 import select
-from google.oauth2 import service_account
-from google.auth.transport.requests import Request as GoogleAuthRequest
+
+# Optional Google Cloud dependencies
+try:
+    from google.oauth2 import service_account
+    from google.auth.transport.requests import Request as GoogleAuthRequest
+    GOOGLE_CLOUD_AVAILABLE = True
+except ImportError:
+    GOOGLE_CLOUD_AVAILABLE = False
+    print("Google Cloud libraries not available - using demo mode for image generation")
 
 # Configuration for different environments
 import os
@@ -261,6 +268,150 @@ def run_script(script_path, beschreibung):
     manager = AsyncWorkflowManager()
     return manager.run_script_sync(script_path, beschreibung)
 
+class WorkflowFileWatcher:
+    """Background service that watches for workflow trigger files and executes tasks"""
+    
+    def __init__(self, work_dir=None):
+        self.work_dir = Path(work_dir) if work_dir else Path(__file__).parent
+        self.trigger_file = self.work_dir / "workflow_trigger.txt"
+        self.status_log = self.work_dir / "workflow_status.log"
+        self.running = False
+        self.check_interval = 1.0  # Check every second
+        
+    def log_status(self, message, level="INFO"):
+        """Log status message to log file"""
+        try:
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            log_line = f"[{timestamp}] {level}: {message}\n"
+            
+            with open(self.status_log, "a", encoding="utf-8") as f:
+                f.write(log_line)
+                
+            print(f"[{level}] {message}")
+            
+        except Exception as e:
+            print(f"Logging error: {e}")
+    
+    def clear_status_log(self):
+        """Clear the status log file"""
+        try:
+            if self.status_log.exists():
+                self.status_log.unlink()
+        except Exception as e:
+            print(f"Error clearing log: {e}")
+    
+    def execute_workflow(self):
+        """Execute the complete workflow after recording"""
+        self.log_status("Workflow gestartet")
+        
+        success_count = 0
+        total_steps = 3
+        
+        try:
+            # Step 1: Voice recognition
+            self.log_status("Schritt 1/3: Spracherkennung...")
+            manager = AsyncWorkflowManager()
+            if manager.run_script_sync(str(self.work_dir / "voiceToGoogle.py"), "Spracherkennung"):
+                success_count += 1
+                self.log_status("Spracherkennung erfolgreich")
+            else:
+                self.log_status("Spracherkennung fehlgeschlagen", "WARNING")
+            
+            # Step 2: File operations
+            self.log_status("Schritt 2/3: Dateioperationen...")
+            if manager.run_script_sync(str(self.work_dir / "dateiKopieren.py"), "Dateioperationen"):
+                success_count += 1
+                self.log_status("Dateioperationen erfolgreich")
+            else:
+                self.log_status("Dateioperationen fehlgeschlagen", "WARNING")
+            
+            # Step 3: Image generation
+            self.log_status("Schritt 3/3: Bildgenerierung...")
+            prompt_text = get_copied_content()
+            if prompt_text.strip():
+                try:
+                    generate_image_imagen4(prompt_text, image_count=1, 
+                                         bilder_dir=str(self.work_dir / "BilderVertex"), 
+                                         output_prefix="bild")
+                    success_count += 1
+                    self.log_status("Bildgenerierung erfolgreich")
+                except Exception as e:
+                    self.log_status(f"Bildgenerierung fehlgeschlagen: {e}", "ERROR")
+            else:
+                self.log_status("Kein Text für Bildgenerierung gefunden", "WARNING")
+            
+            # Final status
+            if success_count == total_steps:
+                self.log_status("WORKFLOW_COMPLETE: Alle Schritte erfolgreich")
+            else:
+                self.log_status(f"WORKFLOW_COMPLETE: {success_count}/{total_steps} Schritte erfolgreich", "WARNING")
+                
+        except Exception as e:
+            self.log_status(f"WORKFLOW_ERROR: {e}", "ERROR")
+        
+        finally:
+            # Clean up trigger file
+            try:
+                if self.trigger_file.exists():
+                    self.trigger_file.unlink()
+                    self.log_status("Trigger-Datei gelöscht")
+            except Exception as e:
+                self.log_status(f"Fehler beim Löschen der Trigger-Datei: {e}", "WARNING")
+    
+    def check_trigger(self):
+        """Check for workflow trigger file"""
+        if self.trigger_file.exists():
+            try:
+                with open(self.trigger_file, "r", encoding="utf-8") as f:
+                    content = f.read().strip()
+                
+                if content == "run":
+                    self.log_status("Workflow-Trigger erkannt")
+                    self.execute_workflow()
+                    return True
+                    
+            except Exception as e:
+                self.log_status(f"Fehler beim Lesen der Trigger-Datei: {e}", "ERROR")
+        
+        return False
+    
+    def start_watching(self):
+        """Start watching for trigger files in background thread"""
+        if self.running:
+            print("Watcher bereits aktiv")
+            return
+        
+        self.running = True
+        self.clear_status_log()
+        self.log_status("Workflow-Manager gestartet")
+        self.log_status(f"Überwache Verzeichnis: {self.work_dir}")
+        self.log_status(f"Trigger-Datei: {self.trigger_file}")
+        
+        def watcher_thread():
+            while self.running:
+                try:
+                    if self.check_trigger():
+                        # Workflow was executed, wait a bit before next check
+                        time.sleep(2.0)
+                    else:
+                        time.sleep(self.check_interval)
+                except Exception as e:
+                    self.log_status(f"Watcher-Fehler: {e}", "ERROR")
+                    time.sleep(5.0)  # Wait longer on error
+        
+        import threading
+        self.watcher_thread = threading.Thread(target=watcher_thread, daemon=True)
+        self.watcher_thread.start()
+        
+        print(f"Workflow-Manager läuft im Hintergrund (PID: {os.getpid()})")
+        print("Drücke Ctrl+C zum Beenden")
+    
+    def stop_watching(self):
+        """Stop the background watcher"""
+        self.running = False
+        self.log_status("Workflow-Manager gestoppt")
+        print("Workflow-Manager gestoppt")
+
 def get_copied_content():
     """Get transcript content from file or clipboard"""
     # Try reading from transcript file in multiple locations
@@ -314,8 +465,11 @@ def generate_image_imagen4(prompt, image_count=1, bilder_dir=BILDER_DIR, output_
         print(f"Verzeichnis {bilder_dir} wurde erstellt.")
     
     # For demo purposes without actual Google Cloud credentials
-    if not os.path.exists(GOOGLE_CREDENTIALS):
-        print(f"Google Cloud Credentials nicht gefunden: {GOOGLE_CREDENTIALS}")
+    if not GOOGLE_CLOUD_AVAILABLE or not os.path.exists(GOOGLE_CREDENTIALS):
+        if not GOOGLE_CLOUD_AVAILABLE:
+            print("Google Cloud libraries not available")
+        else:
+            print(f"Google Cloud Credentials nicht gefunden: {GOOGLE_CREDENTIALS}")
         print("Demo-Modus: Simuliere Bildgenerierung...")
         
         # Create a placeholder image file for testing
@@ -470,9 +624,38 @@ def run_original_workflow():
 
     print("Workflow abgeschlossen!")
 
+def run_background_service():
+    """Run as background workflow manager service"""
+    print("=== Workflow Manager Service ===")
+    print("Startet als Hintergrunddienst für die Überwachung von Workflow-Triggern")
+    
+    watcher = WorkflowFileWatcher()
+    watcher.start_watching()
+    
+    try:
+        # Keep the service running
+        while watcher.running:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nService wird beendet...")
+        watcher.stop_watching()
+    
+    return True
+
 if __name__ == "__main__":
     # Check command line arguments
-    if len(sys.argv) > 1 and sys.argv[1] == "--original":
-        run_original_workflow()
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "--original":
+            run_original_workflow()
+        elif sys.argv[1] == "--service":
+            run_background_service()
+        elif sys.argv[1] == "--help":
+            print("Usage:")
+            print("  python3 PythonServer.py           # Run interactive async workflow")
+            print("  python3 PythonServer.py --service # Run as background service")
+            print("  python3 PythonServer.py --original# Run original synchronous workflow")
+        else:
+            print(f"Unknown option: {sys.argv[1]}")
+            print("Use --help for usage information")
     else:
         main()
