@@ -1283,6 +1283,9 @@ class Slideshow(FloatLayout):
         self.server_process = None
         self.server_running = False
         self.feedback_popup = None
+        self.server_start_time = None
+        self.server_timer_event = None
+        self.server_monitor_event = None
 
         self.selected_effects = set(DEFAULT_EFFECTS)
         self.randomize_effects = False
@@ -1343,6 +1346,13 @@ class Slideshow(FloatLayout):
                                    pos=(dp(8), self.height - dp(40)))
             self.add_widget(self.debug_label)
             self.bind(size=lambda *_: self._reposition_debug())
+        
+        # Server timer display
+        self.server_timer_label=Label(text="",color=(1,1,1,0.9),
+                                     size_hint=(None,None),
+                                     font_size=dp(20),
+                                     pos_hint={'center_x':0.5, 'y':0.85})
+        self.add_widget(self.server_timer_label)
 
         if SHOW_FAB_GALLERY: self.add_gallery_fab()
 
@@ -1392,14 +1402,7 @@ class Slideshow(FloatLayout):
         if AppBarClass:
             bar=AppBarClass(title=("" if HIDE_TOOLBAR_TITLE else "Slideshow"),
                             elevation=8,pos_hint={"top":1})
-            bar.right_action_items=[
-                ["calendar",lambda x:self.open_schedule_editor()],
-                ["record",lambda x:self.toggle_server()],
-                ["image-multiple",lambda x:self.open_gallery()],
-                ["cog",lambda x:self.open_settings_root()],
-                ["logout",lambda x:self.logout()],
-                ["power",lambda x:self.exit_app()],
-            ]
+            self._update_md_toolbar_buttons(bar)
             def md_fade_in(self_,duration=TOOLBAR_FADE_DURATION):
                 self_.disabled=False
                 Animation.cancel_all(self_,'opacity')
@@ -1412,15 +1415,32 @@ class Slideshow(FloatLayout):
             bar.fade_out=types.MethodType(md_fade_out,bar)
             return bar
         bar=CustomAppBar(title=("Slideshow" if not HIDE_TOOLBAR_TITLE else ""))
+        self._update_toolbar_buttons(bar)
+        return bar
+    
+    def _update_md_toolbar_buttons(self, bar):
+        """Update KivyMD toolbar buttons with current server state"""
+        server_icon = "stop" if self.server_running else "record"
+        bar.right_action_items=[
+            ["calendar",lambda x:self.open_schedule_editor()],
+            [server_icon,lambda x:self.toggle_server()],
+            ["image-multiple",lambda x:self.open_gallery()],
+            ["cog",lambda x:self.open_settings_root()],
+            ["logout",lambda x:self.logout()],
+            ["power",lambda x:self.exit_app()],
+        ]
+    
+    def _update_toolbar_buttons(self, bar):
+        """Update toolbar buttons with current server state"""
+        server_text = "Stopp" if self.server_running else "Start"
         bar.set_right_actions([
             ("Zeiten", self.open_schedule_editor),
-            ("Aufnahme", self.toggle_server),
+            (server_text, self.toggle_server),
             ("Galerie", self.open_gallery),
             ("Einstellungen", self.open_settings_root),
             ("Logout", self.logout),
             ("Exit", self.exit_app),
         ])
-        return bar
 
     def _bring_toolbar_to_front(self):
         if self.toolbar in self.children:
@@ -1436,7 +1456,11 @@ class Slideshow(FloatLayout):
         self.set_mode(target, manual=False)
 
     def exit_app(self): 
-        # Clean up server process before exiting
+        # Clean up server process and monitoring before exiting
+        if self.server_monitor_event:
+            Clock.unschedule(self.server_monitor_event)
+        if self.server_timer_event:
+            Clock.unschedule(self.server_timer_event)
         if self.server_process:
             try:
                 self.server_process.terminate()
@@ -1474,8 +1498,12 @@ class Slideshow(FloatLayout):
             ], cwd=str(APP_DIR))
             
             self.server_running = True
+            self.server_start_time = Clock.get_time()
+            self._start_server_timer()
+            self._start_server_monitor()
+            self._disable_ui_inputs()
             self._show_server_feedback("Server läuft")
-            self._update_toolbar_server_status()
+            self._update_toolbar_buttons_and_status()
             
         except Exception as e:
             # Show error status
@@ -1490,8 +1518,11 @@ class Slideshow(FloatLayout):
                 self.server_process = None
             
             self.server_running = False
+            self._stop_server_timer()
+            self._stop_server_monitor()
+            self._enable_ui_inputs()
             self._show_server_feedback("Gestoppt")
-            self._update_toolbar_server_status()
+            self._update_toolbar_buttons_and_status()
             
         except subprocess.TimeoutExpired:
             # Force kill if terminate doesn't work
@@ -1499,10 +1530,113 @@ class Slideshow(FloatLayout):
                 self.server_process.kill()
                 self.server_process = None
             self.server_running = False
+            self._stop_server_timer()
+            self._stop_server_monitor()
+            self._enable_ui_inputs()
             self._show_server_feedback("Gestoppt (erzwungen)")
-            self._update_toolbar_server_status()
+            self._update_toolbar_buttons_and_status()
         except Exception as e:
             self._show_server_feedback(f"Fehler beim Stoppen: {str(e)}", error=True)
+    
+    def _start_server_monitor(self):
+        """Start monitoring the server process"""
+        self.server_monitor_event = Clock.schedule_interval(self._check_server_status, 2.0)
+    
+    def _stop_server_monitor(self):
+        """Stop monitoring the server process"""
+        if self.server_monitor_event:
+            Clock.unschedule(self.server_monitor_event)
+            self.server_monitor_event = None
+    
+    def _check_server_status(self, dt):
+        """Check if server process is still running"""
+        if self.server_process and self.server_process.poll() is not None:
+            # Server process has ended
+            self.server_running = False
+            self.server_process = None
+            self._stop_server_timer()
+            self._stop_server_monitor()
+            self._enable_ui_inputs()
+            self._show_server_feedback("Server beendet")
+            self._update_toolbar_buttons_and_status()
+    
+    def _start_server_timer(self):
+        """Start the server timer display"""
+        self.server_timer_event = Clock.schedule_interval(self._update_server_timer, 1.0)
+        self.server_timer_label.opacity = 1
+    
+    def _stop_server_timer(self):
+        """Stop the server timer display"""
+        if self.server_timer_event:
+            Clock.unschedule(self.server_timer_event)
+            self.server_timer_event = None
+        self.server_timer_label.text = ""
+        self.server_timer_label.opacity = 0
+    
+    def _update_server_timer(self, dt):
+        """Update the server timer display"""
+        if self.server_running and self.server_start_time:
+            elapsed = Clock.get_time() - self.server_start_time
+            minutes = int(elapsed // 60)
+            seconds = int(elapsed % 60)
+            self.server_timer_label.text = f"Server läuft: {minutes:02d}:{seconds:02d}"
+    
+    def _disable_ui_inputs(self):
+        """Disable all UI inputs while server is running"""
+        # Disable toolbar buttons except server toggle
+        if hasattr(self.toolbar, '_buttons_box'):
+            for btn in self.toolbar._buttons_box.children:
+                if hasattr(btn, 'text') and btn.text not in ["Start", "Stopp"]:
+                    btn.disabled = True
+        
+        # Disable slideshow control interactions (but not the slideshow itself)
+        # Store original touch handlers
+        self._original_on_touch_down = self.on_touch_down
+        self._original_on_touch_up = self.on_touch_up
+        
+        # Override touch handlers to only allow server controls
+        def limited_touch_down(touch):
+            # Only allow toolbar interactions
+            if self.toolbar and self.toolbar.collide_point(*touch.pos):
+                return self.toolbar.on_touch_down(touch)
+            return False
+        
+        def limited_touch_up(touch):
+            # Only allow toolbar interactions
+            if self.toolbar and self.toolbar.collide_point(*touch.pos):
+                return self.toolbar.on_touch_up(touch)
+            return False
+        
+        self.on_touch_down = limited_touch_down
+        self.on_touch_up = limited_touch_up
+    
+    def _enable_ui_inputs(self):
+        """Enable all UI inputs when server is stopped"""
+        # Re-enable toolbar buttons
+        if hasattr(self.toolbar, '_buttons_box'):
+            for btn in self.toolbar._buttons_box.children:
+                if hasattr(btn, 'disabled'):
+                    btn.disabled = False
+        
+        # Restore original touch handlers
+        if hasattr(self, '_original_on_touch_down'):
+            self.on_touch_down = self._original_on_touch_down
+            del self._original_on_touch_down
+        
+        if hasattr(self, '_original_on_touch_up'):
+            self.on_touch_up = self._original_on_touch_up
+            del self._original_on_touch_up
+    
+    def _update_toolbar_buttons_and_status(self):
+        """Update toolbar buttons and status display"""
+        # Update toolbar buttons
+        if AppBarClass and hasattr(self.toolbar, 'right_action_items'):
+            self._update_md_toolbar_buttons(self.toolbar)
+        elif hasattr(self.toolbar, 'set_right_actions'):
+            self._update_toolbar_buttons(self.toolbar)
+        
+        # Update status in toolbar title
+        self._update_toolbar_server_status()
     
     def _show_server_feedback(self, message, error=False):
         """Show temporary server status feedback"""
