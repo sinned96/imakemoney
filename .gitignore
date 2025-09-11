@@ -77,6 +77,8 @@ workflow_trigger.txt
 workflow_status.log
 workflow_service.lock
 recording_debug.log
+speech_recognition.log
 transkript.txt
+transkript.json
 BilderVertex/
 Transkripte/

@@ -84,3 +84,23 @@
 [2025-09-11 10:10:18,066] INFO: Transcript metadata saved to: transkript.json
 [2025-09-11 10:10:18,066] INFO: ✓ Dummy transcript created successfully
 [2025-09-11 10:10:18,066] INFO: Speech recognition workflow completed successfully
+[2025-09-11 10:11:46,778] WARNING: Google Cloud Speech-to-Text library not available: No module named 'google'
+[2025-09-11 10:11:46,778] WARNING: Will use simulation mode instead
+[2025-09-11 10:11:46,779] INFO: === Voice to Google Speech Recognition ===
+[2025-09-11 10:11:46,779] INFO: Starting speech-to-text processing...
+[2025-09-11 10:11:46,779] INFO: Found audio file at: aufnahme.wav
+[2025-09-11 10:11:46,779] INFO: Processing audio file: aufnahme.wav
+[2025-09-11 10:11:46,779] INFO: Falling back to simulation mode...
+[2025-09-11 10:11:46,779] INFO: Using simulation mode for speech recognition
+[2025-09-11 10:11:46,779] INFO: Processing audio file: aufnahme.wav
+[2025-09-11 10:11:46,779] INFO: Audio file size: 36 bytes
+[2025-09-11 10:11:46,779] INFO: Analyzing audio content... (estimated 1.0s)
+[2025-09-11 10:11:46,779] INFO:   Processing... 1/1
+[2025-09-11 10:11:47,779] INFO: --- Recognition Result ---
+[2025-09-11 10:11:47,779] INFO: "Kurze Aufnahme erkannt"
+[2025-09-11 10:11:47,780] INFO: --- End Result ---
+[2025-09-11 10:11:47,780] INFO: Transcript saved to: transkript.txt
+[2025-09-11 10:11:47,780] INFO: Transcript content: 'Kurze Aufnahme erkannt'
+[2025-09-11 10:11:47,780] INFO: Transcript metadata saved to: transkript.json
+[2025-09-11 10:11:47,780] INFO: ✓ Speech recognition completed successfully
+[2025-09-11 10:11:47,780] INFO: Speech recognition workflow completed successfully
