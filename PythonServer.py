@@ -33,6 +33,8 @@ IS_HEADLESS = not os.environ.get('DISPLAY') and platform.system() == 'Linux'
 
 # Google Cloud Configuration
 GOOGLE_CREDENTIALS = os.getenv('GOOGLE_CREDENTIALS', str(SCRIPT_DIR / "cloudKey.json"))
+# For Google Speech-to-Text, use the specific credentials path as required
+GOOGLE_SPEECH_CREDENTIALS = os.getenv('GOOGLE_APPLICATION_CREDENTIALS', '/home/pi/meinprojekt-venv/cloudKey.json')
 PROJECT_ID = os.getenv('PROJECT_ID', "trippe-s")
 ENDPOINT = f"https://us-central1-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/us-central1/publishers/google/models/imagen-4.0-generate-001:predict"
 
@@ -63,11 +65,27 @@ class AsyncWorkflowManager:
         if os.path.exists(script_path):
             print(f"Starte {beschreibung}: {script_path}")
             try:
+                # Setup environment variables for the script
+                env = os.environ.copy()
+                
+                # Set GOOGLE_APPLICATION_CREDENTIALS for speech-to-text
+                if "voiceToGoogle.py" in script_path:
+                    env['GOOGLE_APPLICATION_CREDENTIALS'] = GOOGLE_SPEECH_CREDENTIALS
+                    print(f"Setting GOOGLE_APPLICATION_CREDENTIALS to: {GOOGLE_SPEECH_CREDENTIALS}")
+                    
+                    # Log credential file status
+                    if os.path.exists(GOOGLE_SPEECH_CREDENTIALS):
+                        print(f"✓ Google credentials file found: {GOOGLE_SPEECH_CREDENTIALS}")
+                    else:
+                        print(f"⚠ Google credentials file not found: {GOOGLE_SPEECH_CREDENTIALS}")
+                        print("Speech recognition will use simulation mode")
+                
                 result = subprocess.run(
                     ["python3", script_path], 
                     capture_output=True, 
                     text=True,
-                    timeout=300  # 5 minute timeout
+                    timeout=300,  # 5 minute timeout
+                    env=env  # Pass environment variables
                 )
                 
                 if result.stdout:
@@ -346,12 +364,31 @@ class WorkflowFileWatcher:
         try:
             # Step 1: Voice recognition
             self.log_status("Schritt 1/3: Spracherkennung...")
+            self.log_status(f"Setting GOOGLE_APPLICATION_CREDENTIALS to: {GOOGLE_SPEECH_CREDENTIALS}")
+            
             manager = AsyncWorkflowManager()
             if manager.run_script_sync(str(self.work_dir / "voiceToGoogle.py"), "Spracherkennung"):
                 success_count += 1
                 self.log_status("Spracherkennung erfolgreich")
+                
+                # Check if transcript was created
+                transcript_file = self.work_dir / "transkript.txt"
+                if transcript_file.exists():
+                    try:
+                        with open(transcript_file, 'r', encoding='utf-8') as f:
+                            transcript_content = f.read()
+                        self.log_status(f"Transcript erstellt: '{transcript_content[:100]}{'...' if len(transcript_content) > 100 else ''}'")
+                    except Exception as e:
+                        self.log_status(f"Transcript-Datei konnte nicht gelesen werden: {e}", "WARNING")
+                else:
+                    self.log_status("Transcript-Datei wurde nicht erstellt", "WARNING")
             else:
                 self.log_status("Spracherkennung fehlgeschlagen", "WARNING")
+                self.log_status("Mögliche Ursachen:", "INFO")
+                self.log_status("- GOOGLE_APPLICATION_CREDENTIALS nicht gesetzt oder Datei nicht gefunden", "INFO")
+                self.log_status("- google-cloud-speech Bibliothek nicht installiert", "INFO") 
+                self.log_status("- Netzwerkfehler oder Google Cloud API Problem", "INFO")
+                self.log_status("- Ungültige Audio-Datei oder Audio-Datei nicht gefunden", "INFO")
             
             # Step 2: File operations
             self.log_status("Schritt 2/3: Dateioperationen...")
