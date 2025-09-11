@@ -62,7 +62,7 @@ ENDPOINT = f"https://us-central1-aiplatform.googleapis.com/v1/projects/{PROJECT_
 # Script paths - consistent with repository structure
 AUFNAHME_SCRIPT = str(SCRIPT_DIR / "Aufnahme.py")
 VOICE_SCRIPT = str(SCRIPT_DIR / "voiceToGoogle.py")
-COPY_SCRIPT = str(SCRIPT_DIR / "dateiKopieren.py")
+# REMOVED: COPY_SCRIPT (dateiKopieren.py) - no longer part of streamlined workflow
 
 # Standardized file paths in working directory
 AUDIO_FILE = str(BASE_DIR / "aufnahme.wav")
@@ -399,11 +399,11 @@ class WorkflowFileWatcher:
         self.log_status("Streamlined workflow: Recording → Transcription → File Operations → Vertex AI Image Generation")
         
         success_count = 0
-        total_steps = 3  # Streamlined to 3 essential steps
+        total_steps = 2  # Streamlined to 2 essential steps: Speech Recognition → Vertex AI
         
         try:
             # Step 1: Voice recognition (Transcription)
-            self.log_status("Schritt 1/3: Spracherkennung (voiceToGoogle.py)...")
+            self.log_status("Schritt 1/2: Spracherkennung (voiceToGoogle.py)...")
             self.log_status(f"Setting GOOGLE_APPLICATION_CREDENTIALS to: {GOOGLE_SPEECH_CREDENTIALS}")
             
             manager = AsyncWorkflowManager()
@@ -435,16 +435,10 @@ class WorkflowFileWatcher:
                 self.log_status("- Network error or Google Cloud API problem", "INFO")
                 self.log_status(f"- Audio file not found: {AUDIO_FILE}", "INFO")
             
-            # Step 2: File operations (Local Management)
-            self.log_status("Schritt 2/3: Dateioperationen (dateiKopieren.py)...")
-            if manager.run_script_sync(str(self.work_dir / "dateiKopieren.py"), "Dateioperationen"):
-                success_count += 1
-                self.log_status("✓ Dateioperationen erfolgreich")
-            else:
-                self.log_status("✗ Dateioperationen fehlgeschlagen", "WARNING")
+            # REMOVED STEP 2: File operations (dateiKopieren.py) - not needed for core workflow
             
-            # Step 3: Image generation (Vertex AI Integration)
-            self.log_status("Schritt 3/3: Bildgenerierung mit Vertex AI...")
+            # Step 2 (was 3): Image generation (Vertex AI Integration)  
+            self.log_status("Schritt 2/2: Bildgenerierung mit Vertex AI...")
             self.log_status("Sending transcript to Vertex AI for image generation")
             
             # Get transcript text - prioritize JSON format for better metadata
@@ -491,7 +485,7 @@ class WorkflowFileWatcher:
             # Final status
             if success_count == total_steps:
                 self.log_status("WORKFLOW_COMPLETE: Alle Schritte erfolgreich abgeschlossen")
-                self.log_status(f"✓ Transcription → Upload → Processing workflow completed")
+                self.log_status(f"✓ Streamlined workflow: Speech Recognition → Vertex AI → BilderVertex completed")
             else:
                 self.log_status(f"WORKFLOW_COMPLETE: {success_count}/{total_steps} Schritte erfolgreich", "WARNING")
                 self.log_status("Workflow partially completed - check individual step logs")
@@ -649,26 +643,10 @@ class WorkflowFileWatcher:
         return ""
 
 def get_copied_content():
-    """Get transcript content from file or clipboard"""
-    # Try reading from transcript file in multiple locations
-    possible_paths = [
-        TRANSKRIPT_PATH,  # Original path
-        "Transkripte/transkript.txt",  # After organization
-        "transkript.txt"  # Current directory fallback
-    ]
+    """Get transcript content from clipboard - legacy function for backwards compatibility"""
+    # Note: This is a legacy function. New workflow uses _get_transcript_for_ai() instead
     
-    for transcript_path in possible_paths:
-        if os.path.exists(transcript_path):
-            try:
-                with open(transcript_path, "r", encoding="utf-8") as f:
-                    text = f.read().strip()
-                if text:
-                    print(f"Text aus Datei gelesen ({transcript_path}).")
-                    return text
-            except Exception as e:
-                print(f"Fehler beim Lesen der Transkript-Datei {transcript_path}: {e}")
-    
-    # Fallback to clipboard if file reading failed
+    # Try clipboard only (no more file reading fallbacks)
     if CLIPBOARD_AVAILABLE:
         try:
             text = pyperclip.paste()

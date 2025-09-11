@@ -78,7 +78,11 @@ workflow_status.log
 workflow_service.lock
 recording_debug.log
 speech_recognition.log
+upload.log
 transkript.txt
 transkript.json
 BilderVertex/
 Transkripte/
+
+# Legacy files (no longer used)
+Aufnahmen_Backup/
