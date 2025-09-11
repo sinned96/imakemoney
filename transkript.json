@@ -1,7 +1,10 @@
 {
-  "transcript": "Kurze Aufnahme erkannt",
-  "timestamp": 1757585507.7804732,
-  "iso_timestamp": "2025-09-11 10:11:47",
-  "file_size": 22,
-  "processing_method": "simulation"
+  "transcript": "Hallo, dies ist eine längere Audioaufnahme die von der Spracherkennung verarbeitet wird. Bitte erstelle ein Bild basierend auf diesem Text.",
+  "timestamp": 1757589728.0372453,
+  "iso_timestamp": "2025-09-11 11:22:08",
+  "file_size": 139,
+  "processing_method": "simulation",
+  "audio_source": null,
+  "workflow_step": "transcription_complete",
+  "real_recognition": false
 }

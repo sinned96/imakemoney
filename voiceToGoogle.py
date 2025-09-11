@@ -29,14 +29,21 @@ import sys
 import json
 import time
 import logging
+import wave
+import subprocess
 from pathlib import Path
 
 # Setup logging for speech-to-text processing
 def setup_speech_logging():
     """Setup logging for speech recognition with both file and console output"""
-    # Use standardized base directory
-    log_dir = Path("/home/pi/Desktop/v2_Tripple S")
-    log_dir.mkdir(parents=True, exist_ok=True)
+    # Use standardized base directory, but fall back to current directory if not accessible
+    try:
+        log_dir = Path("/home/pi/Desktop/v2_Tripple S")
+        log_dir.mkdir(parents=True, exist_ok=True)
+    except (PermissionError, OSError):
+        # Fallback to current working directory for testing/development
+        log_dir = Path.cwd()
+        
     log_file = log_dir / "speech_recognition.log"
     
     # Configure logging
@@ -147,6 +154,111 @@ def check_google_credentials():
     speech_logger.info(f"Found Google credentials at: {credentials_path}")
     return True
 
+def check_audio_format(audio_file_path):
+    """Check if audio file is in mono format suitable for Google Speech-to-Text API"""
+    try:
+        with wave.open(audio_file_path, 'rb') as wav_file:
+            channels = wav_file.getnchannels()
+            sample_rate = wav_file.getframerate()
+            sample_width = wav_file.getsampwidth()
+            
+            speech_logger.info(f"Audio format analysis:")
+            speech_logger.info(f"  Channels: {channels} ({'mono' if channels == 1 else 'stereo' if channels == 2 else f'{channels}-channel'})")
+            speech_logger.info(f"  Sample rate: {sample_rate} Hz")
+            speech_logger.info(f"  Sample width: {sample_width * 8} bits")
+            
+            return {
+                'channels': channels,
+                'sample_rate': sample_rate,
+                'sample_width': sample_width,
+                'is_mono': channels == 1,
+                'is_suitable': channels <= 2 and sample_rate in [16000, 44100, 48000]
+            }
+            
+    except Exception as e:
+        speech_logger.error(f"Error analyzing audio format: {e}")
+        return None
+
+def convert_to_mono(input_path, output_path=None):
+    """Convert stereo audio to mono using ffmpeg for Google Speech-to-Text compatibility"""
+    if output_path is None:
+        # Create mono version with _mono suffix
+        path_obj = Path(input_path)
+        output_path = path_obj.parent / f"{path_obj.stem}_mono{path_obj.suffix}"
+    
+    speech_logger.info(f"Converting stereo audio to mono...")
+    speech_logger.info(f"  Input: {input_path}")
+    speech_logger.info(f"  Output: {output_path}")
+    
+    try:
+        # Use ffmpeg to convert stereo to mono (mix both channels)
+        cmd = [
+            'ffmpeg', '-y',  # -y to overwrite output file
+            '-i', str(input_path),
+            '-ac', '1',  # Audio channels = 1 (mono)
+            '-ar', '44100',  # Sample rate = 44100 Hz
+            '-acodec', 'pcm_s16le',  # 16-bit PCM encoding
+            str(output_path)
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        
+        if result.returncode == 0:
+            speech_logger.info("✓ Audio successfully converted to mono format")
+            
+            # Verify the conversion worked
+            format_info = check_audio_format(str(output_path))
+            if format_info and format_info['is_mono']:
+                speech_logger.info("✓ Mono conversion verified successfully")
+                return str(output_path)
+            else:
+                speech_logger.error("✗ Mono conversion verification failed")
+                return None
+        else:
+            speech_logger.error("✗ ffmpeg conversion failed")
+            speech_logger.error(f"Error output: {result.stderr}")
+            return None
+            
+    except subprocess.TimeoutExpired:
+        speech_logger.error("✗ Audio conversion timed out (>60s)")
+        return None
+    except FileNotFoundError:
+        speech_logger.error("✗ ffmpeg not found - please install ffmpeg")
+        return None
+    except Exception as e:
+        speech_logger.error(f"✗ Audio conversion error: {e}")
+        return None
+
+def ensure_mono_audio(audio_file_path):
+    """Ensure audio file is in mono format, convert if necessary"""
+    speech_logger.info("=== Audio Format Validation ===")
+    
+    # Check current format
+    format_info = check_audio_format(audio_file_path)
+    if not format_info:
+        speech_logger.error("Could not analyze audio format")
+        return None
+    
+    if format_info['is_mono']:
+        speech_logger.info("✓ Audio is already in mono format - no conversion needed")
+        return audio_file_path
+    
+    if format_info['channels'] == 2:
+        speech_logger.warning("⚠ Audio is in stereo format - Google Speech-to-Text requires mono")
+        speech_logger.info("Converting to mono format automatically...")
+        
+        mono_path = convert_to_mono(audio_file_path)
+        if mono_path:
+            return mono_path
+        else:
+            speech_logger.error("Failed to convert audio to mono - cannot proceed with Google API")
+            return None
+    
+    else:
+        speech_logger.error(f"Unsupported audio format: {format_info['channels']} channels")
+        speech_logger.error("Google Speech-to-Text API supports only mono (1 channel) or stereo (2 channel) audio")
+        return None
+
 def validate_audio_file(audio_file_path):
     """Validate that the audio file is suitable for Google Speech-to-Text"""
     try:
@@ -181,7 +293,13 @@ def real_google_speech_recognition(audio_file_path):
         speech_logger.error("Google credentials not properly configured")
         return None
     
-    if not validate_audio_file(audio_file_path):
+    # Ensure audio is in mono format before processing
+    mono_audio_path = ensure_mono_audio(audio_file_path)
+    if not mono_audio_path:
+        speech_logger.error("Audio format validation/conversion failed")
+        return None
+    
+    if not validate_audio_file(mono_audio_path):
         speech_logger.error("Audio file validation failed")
         return None
     
@@ -189,22 +307,24 @@ def real_google_speech_recognition(audio_file_path):
         speech_logger.info("Initializing Google Speech-to-Text client...")
         client = speech.SpeechClient()
         
-        speech_logger.info("Reading audio file...")
-        with open(audio_file_path, "rb") as audio_file:
+        speech_logger.info("Reading mono audio file...")
+        with open(mono_audio_path, "rb") as audio_file:
             content = audio_file.read()
         
-        # Configure audio and recognition settings
+        # Configure audio and recognition settings for MONO audio
         audio = speech.RecognitionAudio(content=content)
         config = speech.RecognitionConfig(
             encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
             sample_rate_hertz=44100,  # Standard CD quality
-            language_code="de-DE",  # German language
+            audio_channel_count=1,    # IMPORTANT: Explicitly set to 1 for mono
+            language_code="de-DE",    # German language
             alternative_language_codes=["en-US"],  # Fallback to English
             enable_automatic_punctuation=True,
             enable_word_confidence=True,
         )
         
-        speech_logger.info("Sending audio to Google Speech-to-Text API...")
+        speech_logger.info("Sending mono audio to Google Speech-to-Text API...")
+        speech_logger.info("Using configuration: MONO (1 channel), 44.1kHz, 16-bit PCM, German language")
         
         # Perform the transcription
         response = client.recognize(config=config, audio=audio)
@@ -232,15 +352,24 @@ def real_google_speech_recognition(audio_file_path):
         speech_logger.info(f"Average confidence: {avg_confidence:.2f}")
         speech_logger.info(f"Full transcript: '{transcript}'")
         
+        # Clean up temporary mono file if it was created
+        if mono_audio_path != audio_file_path and os.path.exists(mono_audio_path):
+            try:
+                os.remove(mono_audio_path)
+                speech_logger.info(f"Cleaned up temporary mono file: {mono_audio_path}")
+            except Exception as e:
+                speech_logger.warning(f"Could not clean up temporary file: {e}")
+        
         return transcript
         
     except Exception as e:
         speech_logger.error(f"Google Speech-to-Text API error: {e}")
         speech_logger.error(f"Error type: {type(e).__name__}")
         
-        # Log specific error types
+        # Log specific error types for mono audio issues
         if "INVALID_ARGUMENT" in str(e):
-            speech_logger.error("Invalid argument - check audio format and configuration")
+            speech_logger.error("Invalid argument - this may be related to audio format")
+            speech_logger.error("Ensure audio is mono (1 channel), 16-bit PCM, WAV format")
         elif "UNAUTHENTICATED" in str(e):
             speech_logger.error("Authentication failed - check GOOGLE_APPLICATION_CREDENTIALS")
         elif "PERMISSION_DENIED" in str(e):
@@ -252,13 +381,22 @@ def real_google_speech_recognition(audio_file_path):
         
         return None
 
-def save_transcript(text, output_file=None):
+def save_transcript(text, output_file=None, processing_method=None):
     """Save the recognized text to files in the standardized directory with proper logging"""
     if output_file is None:
-        # Use standardized base directory
-        base_dir = Path("/home/pi/Desktop/v2_Tripple S")
-        base_dir.mkdir(parents=True, exist_ok=True)
+        # Use standardized base directory, but fall back to current directory if not accessible
+        try:
+            base_dir = Path("/home/pi/Desktop/v2_Tripple S")
+            base_dir.mkdir(parents=True, exist_ok=True)
+        except (PermissionError, OSError):
+            # Fallback to current working directory for testing/development
+            base_dir = Path.cwd()
+            
         output_file = str(base_dir / "transkript.txt")
+    
+    # Determine processing method if not provided
+    if processing_method is None:
+        processing_method = "google_speech_api" if GOOGLE_SPEECH_AVAILABLE else "simulation"
     
     try:
         # Save the transcript as text file
@@ -267,6 +405,7 @@ def save_transcript(text, output_file=None):
         
         speech_logger.info(f"Transcript saved to: {output_file}")
         speech_logger.info(f"Transcript content: '{text}'")
+        speech_logger.info(f"Processing method: {processing_method}")
         
         # Also save as JSON with metadata in the same directory
         json_file = output_file.replace('.txt', '.json')
@@ -275,16 +414,23 @@ def save_transcript(text, output_file=None):
             "timestamp": time.time(),
             "iso_timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             "file_size": len(text),
-            "processing_method": "google_speech_api" if GOOGLE_SPEECH_AVAILABLE else "simulation",
+            "processing_method": processing_method,
             "audio_source": find_audio_recording(),  # Include source audio path
-            "workflow_step": "transcription_complete"  # Mark workflow step for integration
+            "workflow_step": "transcription_complete",  # Mark workflow step for integration
+            "real_recognition": processing_method == "google_speech_api"  # Flag for real vs simulation
         }
         
         with open(json_file, 'w', encoding='utf-8') as f:
             json.dump(transcript_data, f, ensure_ascii=False, indent=2)
         
         speech_logger.info(f"Transcript metadata saved to: {json_file}")
-        speech_logger.info("--- Transcript ready for AI integration (Vertex AI compatible) ---")
+        
+        if processing_method == "google_speech_api":
+            speech_logger.info("✓ Real Google Speech Recognition - transcript contains actual speech content")
+            speech_logger.info("--- Transcript ready for AI integration (Vertex AI compatible) ---")
+        else:
+            speech_logger.warning("⚠ Simulation mode - transcript contains placeholder text, not real speech")
+            
         return True
         
     except Exception as e:
@@ -330,17 +476,32 @@ def main():
     
     speech_logger.info(f"Processing audio file: {os.path.basename(audio_file)}")
     
-    # Perform speech recognition
+    # Perform speech recognition - PRIORITIZE REAL GOOGLE API
     try:
-        # Try real Google Speech-to-Text first, then fallback to simulation
         recognized_text = None
+        processing_method = None
         
-        if GOOGLE_SPEECH_AVAILABLE and check_google_credentials():
+        # Always try real Google Speech-to-Text first if available
+        if GOOGLE_SPEECH_AVAILABLE:
             speech_logger.info("Attempting real Google Speech-to-Text recognition...")
             recognized_text = real_google_speech_recognition(audio_file)
+            
+            if recognized_text:
+                processing_method = "google_speech_api"
+                speech_logger.info("✓ Real Google Speech-to-Text succeeded!")
+            else:
+                speech_logger.warning("Real Google Speech-to-Text failed - check credentials and audio format")
+        else:
+            speech_logger.warning("Google Cloud Speech library not available")
         
+        # Only fall back to simulation if Google API is not available or explicitly failed
         if not recognized_text:
-            speech_logger.info("Falling back to simulation mode...")
+            processing_method = "simulation"
+            speech_logger.warning("Falling back to simulation mode (THIS IS NOT REAL SPEECH RECOGNITION)")
+            speech_logger.warning("For real speech recognition, ensure:")
+            speech_logger.warning("1. Google Cloud Speech library is installed: pip install google-cloud-speech")
+            speech_logger.warning("2. Credentials are configured: GOOGLE_APPLICATION_CREDENTIALS environment variable")
+            speech_logger.warning("3. Audio is in mono format (automatic conversion attempted)")
             recognized_text = simulate_speech_recognition(audio_file)
         
         if recognized_text:
@@ -348,8 +509,8 @@ def main():
             speech_logger.info(f'"{recognized_text}"')
             speech_logger.info("--- End Result ---")
             
-            # Save transcript
-            if save_transcript(recognized_text):
+            # Save transcript with processing method info
+            if save_transcript(recognized_text, processing_method=processing_method):
                 speech_logger.info("✓ Speech recognition completed successfully")
                 return True
             else:
