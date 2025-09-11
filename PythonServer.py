@@ -1,8 +1,6 @@
 import os
 import base64
 import subprocess
-import pyperclip
-import requests
 import glob
 import signal
 import sys
@@ -11,13 +9,32 @@ import threading
 import select
 import traceback  # Added for better error reporting
 
+# Handle clipboard functionality (optional in headless environments)
+try:
+    import pyperclip
+    CLIPBOARD_AVAILABLE = True
+except ImportError:
+    CLIPBOARD_AVAILABLE = False
+    print("Warning: pyperclip not available, clipboard operations disabled")
+
+# Handle requests for API calls
+try:
+    import requests
+    REQUESTS_AVAILABLE = True
+except ImportError:
+    REQUESTS_AVAILABLE = False
+    print("Warning: requests library not available, API calls disabled")
+
 # Optional Google Cloud dependencies
 try:
     from google.oauth2 import service_account
     from google.auth.transport.requests import Request as GoogleAuthRequest
     GOOGLE_CLOUD_AVAILABLE = True
+    service_account = service_account  # Make sure it's available in the module scope
 except ImportError:
     GOOGLE_CLOUD_AVAILABLE = False
+    service_account = None
+    GoogleAuthRequest = None
     print("Google Cloud libraries not available - using demo mode for image generation")
 
 # Configuration for different environments
@@ -445,35 +462,50 @@ class WorkflowFileWatcher:
             else:
                 self.log_status("✗ Dateioperationen fehlgeschlagen", "WARNING")
             
-            # Step 4: Image generation (Optional AI Processing)
-            self.log_status("Schritt 4/4: Bildgenerierung...")
-            self.log_status("Note: Using transcript for AI-powered image generation (Vertex AI integration)")
+            # Step 4: Image generation (Vertex AI Integration)
+            self.log_status("Schritt 4/4: Bildgenerierung mit Vertex AI...")
+            self.log_status("Sending transcript to Vertex AI for image generation")
             
-            prompt_text = get_copied_content()
-            if not prompt_text.strip() and os.path.exists(TRANSKRIPT_PATH):
-                # Fallback to transcript file if clipboard is empty
-                try:
-                    with open(TRANSKRIPT_PATH, 'r', encoding='utf-8') as f:
-                        prompt_text = f.read().strip()
-                    self.log_status(f"Using transcript as prompt: '{prompt_text[:50]}...'")
-                except Exception as e:
-                    self.log_status(f"Could not read transcript for image generation: {e}", "WARNING")
-                    
-            if prompt_text.strip():
+            # Get transcript text - prioritize JSON format for better metadata
+            prompt_text = self._get_transcript_for_ai()
+            
+            if prompt_text and prompt_text.strip():
+                self.log_status(f"Transcript found for AI processing: '{prompt_text[:100]}{'...' if len(prompt_text) > 100 else ''}'")
+                
                 try:
                     # Ensure BilderVertex directory exists in standardized location
                     bilder_dir_path = Path(BILDER_DIR)
                     bilder_dir_path.mkdir(parents=True, exist_ok=True)
+                    self.log_status(f"Target directory ensured: {bilder_dir_path}")
                     
-                    generate_image_imagen4(prompt_text, image_count=1, 
-                                         bilder_dir=str(bilder_dir_path), 
-                                         output_prefix="bild")
-                    success_count += 1
-                    self.log_status("✓ Bildgenerierung erfolgreich")
+                    # Generate image using Vertex AI
+                    self.log_status("Sending prompt to Vertex AI Imagen API...")
+                    image_paths = generate_image_imagen4(
+                        prompt_text, 
+                        image_count=1, 
+                        bilder_dir=str(bilder_dir_path), 
+                        output_prefix="bild",
+                        logger=self.log_status
+                    )
+                    
+                    if image_paths:
+                        success_count += 1
+                        self.log_status("✓ Vertex AI Bildgenerierung erfolgreich abgeschlossen")
+                        for img_path in image_paths:
+                            self.log_status(f"✓ Bild gespeichert: {img_path}")
+                    else:
+                        self.log_status("✗ Vertex AI Bildgenerierung: Keine Bilder erhalten", "WARNING")
+                        
                 except Exception as e:
-                    self.log_status(f"✗ Bildgenerierung fehlgeschlagen: {e}", "ERROR")
+                    self.log_status(f"✗ Vertex AI Bildgenerierung fehlgeschlagen: {e}", "ERROR")
+                    import traceback
+                    self.log_status(f"Error details: {traceback.format_exc()}", "ERROR")
             else:
-                self.log_status("Kein Text für Bildgenerierung gefunden", "WARNING")
+                self.log_status("✗ Kein Transcript für Vertex AI Bildgenerierung gefunden", "WARNING")
+                self.log_status("Mögliche Ursachen:", "INFO")
+                self.log_status(f"- Transcript-Datei fehlt: {TRANSKRIPT_PATH}", "INFO")
+                self.log_status(f"- JSON-Transcript fehlt: {TRANSKRIPT_JSON_PATH}", "INFO")
+                self.log_status("- Spracherkennung war nicht erfolgreich", "INFO")
             
             # Final status
             if success_count == total_steps:
@@ -570,6 +602,70 @@ class WorkflowFileWatcher:
         self.release_service_lock()
         self.log_status("Workflow-Manager gestoppt")
         print("Workflow-Manager gestoppt")
+    
+    def _get_transcript_for_ai(self):
+        """
+        Get transcript text for AI processing, prioritizing JSON format with fallbacks
+        
+        Priority order:
+        1. JSON transcript (transkript.json) - contains metadata and flags
+        2. Text transcript (transkript.txt) - plain text fallback
+        3. Clipboard content - legacy fallback
+        
+        Returns:
+            str: The transcript text to send to Vertex AI, or empty string if not found
+        """
+        # Priority 1: Try JSON transcript first (preferred for AI integration)
+        if os.path.exists(TRANSKRIPT_JSON_PATH):
+            try:
+                import json
+                with open(TRANSKRIPT_JSON_PATH, 'r', encoding='utf-8') as f:
+                    transcript_data = json.load(f)
+                
+                transcript_text = transcript_data.get('transcript', '').strip()
+                if transcript_text:
+                    processing_method = transcript_data.get('processing_method', 'unknown')
+                    is_real = transcript_data.get('real_recognition', False)
+                    
+                    self.log_status(f"Using JSON transcript (method: {processing_method}, real: {is_real})")
+                    
+                    # Warn if this is simulation data
+                    if not is_real:
+                        self.log_status("⚠ Warning: Using simulated transcript data (not real speech)", "WARNING")
+                        self.log_status("For real AI image generation, ensure Google Speech-to-Text is working", "WARNING")
+                    
+                    return transcript_text
+                else:
+                    self.log_status("JSON transcript file exists but contains no text", "WARNING")
+                    
+            except Exception as e:
+                self.log_status(f"Error reading JSON transcript: {e}", "WARNING")
+        
+        # Priority 2: Try text transcript file
+        if os.path.exists(TRANSKRIPT_PATH):
+            try:
+                with open(TRANSKRIPT_PATH, 'r', encoding='utf-8') as f:
+                    transcript_text = f.read().strip()
+                if transcript_text:
+                    self.log_status("Using text transcript file")
+                    return transcript_text
+                else:
+                    self.log_status("Text transcript file exists but is empty", "WARNING")
+            except Exception as e:
+                self.log_status(f"Error reading text transcript: {e}", "WARNING")
+        
+        # Priority 3: Legacy fallback to clipboard (for backwards compatibility)
+        try:
+            prompt_text = get_copied_content()
+            if prompt_text and prompt_text.strip():
+                self.log_status("Using clipboard content as fallback")
+                return prompt_text.strip()
+        except Exception as e:
+            self.log_status(f"Error reading clipboard: {e}", "WARNING")
+        
+        # No transcript found
+        self.log_status("No transcript found in any location", "ERROR")
+        return ""
 
 def get_copied_content():
     """Get transcript content from file or clipboard"""
@@ -592,13 +688,16 @@ def get_copied_content():
                 print(f"Fehler beim Lesen der Transkript-Datei {transcript_path}: {e}")
     
     # Fallback to clipboard if file reading failed
-    try:
-        text = pyperclip.paste()
-        if text and text.strip():
-            print("Text aus Zwischenablage gelesen.")
-            return text.strip()
-    except Exception as e:
-        print("Konnte Zwischenablage nicht lesen:", e)
+    if CLIPBOARD_AVAILABLE:
+        try:
+            text = pyperclip.paste()
+            if text and text.strip():
+                print("Text aus Zwischenablage gelesen.")
+                return text.strip()
+        except Exception as e:
+            print("Konnte Zwischenablage nicht lesen:", e)
+    else:
+        print("Zwischenablage nicht verfügbar (pyperclip fehlt)")
     
     print("Kein Text gefunden!")
     return ""
@@ -616,39 +715,66 @@ def get_next_index(directory, prefix):
             continue
     return max(nums) + 1 if nums else 1
 
-def generate_image_imagen4(prompt, image_count=1, bilder_dir=BILDER_DIR, output_prefix="bild"):
-    """Generate images using Google's Imagen 4.0 API"""
-    # Ensure directory exists
-    if not os.path.exists(bilder_dir):
-        os.makedirs(bilder_dir)
-        print(f"Verzeichnis {bilder_dir} wurde erstellt.")
+def generate_image_imagen4(prompt, image_count=1, bilder_dir=BILDER_DIR, output_prefix="bild", logger=None):
+    """
+    Generate images using Google's Vertex AI Imagen 4.0 API
     
-    # For demo purposes without actual Google Cloud credentials
-    if not GOOGLE_CLOUD_AVAILABLE or not os.path.exists(GOOGLE_CREDENTIALS):
-        if not GOOGLE_CLOUD_AVAILABLE:
-            print("Google Cloud libraries not available")
+    Args:
+        prompt (str): Text prompt for image generation
+        image_count (int): Number of images to generate
+        bilder_dir (str): Directory to save generated images
+        output_prefix (str): Prefix for generated image filenames
+        logger (callable): Optional logging function for status updates
+    
+    Returns:
+        list: List of generated image file paths, empty list if failed
+    """
+    def log(message, level="INFO"):
+        if logger:
+            logger(message, level)
         else:
-            print(f"Google Cloud Credentials nicht gefunden: {GOOGLE_CREDENTIALS}")
-        print("Demo-Modus: Simuliere Bildgenerierung...")
-        
-        # Create a placeholder image file for testing
-        import base64
-        from pathlib import Path
-        
-        start_idx = get_next_index(bilder_dir, output_prefix)
-        for i in range(image_count):
-            fname = f"{bilder_dir}/{output_prefix}_{start_idx + i}.png"
-            # Create a minimal PNG file as placeholder
-            minimal_png = base64.b64decode(
-                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-            )
-            with open(fname, "wb") as f:
-                f.write(minimal_png)
-            print(f"Demo-Bild erstellt: {fname}")
-        return
+            print(f"[{level}] {message}")
     
-    # Real implementation with Google Cloud
+    log(f"=== Vertex AI Image Generation ===")
+    log(f"Prompt: '{prompt[:100]}{'...' if len(prompt) > 100 else ''}'")
+    log(f"Target directory: {bilder_dir}")
+    
+    # Ensure directory exists
     try:
+        if not os.path.exists(bilder_dir):
+            os.makedirs(bilder_dir, exist_ok=True)
+            log(f"Created directory: {bilder_dir}")
+    except Exception as e:
+        log(f"Failed to create directory {bilder_dir}: {e}", "ERROR")
+        return []
+    
+        # Check for Google Cloud libraries and credentials
+        if not GOOGLE_CLOUD_AVAILABLE:
+            log("Google Cloud libraries not available", "WARNING")
+            log("Required: pip install google-cloud-aiplatform google-auth", "INFO")
+            return _create_demo_images(bilder_dir, output_prefix, image_count, logger)
+        
+        if not REQUESTS_AVAILABLE:
+            log("Requests library not available", "WARNING")
+            log("Required: pip install requests", "INFO")
+            return _create_demo_images(bilder_dir, output_prefix, image_count, logger)
+    
+        if not os.path.exists(GOOGLE_CREDENTIALS):
+            log(f"Google Cloud credentials not found: {GOOGLE_CREDENTIALS}", "WARNING")
+            log("Required: Set up service account and download JSON key file", "INFO")
+            log("See: https://cloud.google.com/docs/authentication/getting-started", "INFO")
+            return _create_demo_images(bilder_dir, output_prefix, image_count, logger)
+    
+    log(f"Using Google Cloud credentials: {GOOGLE_CREDENTIALS}")
+    
+    # Real implementation with Google Cloud Vertex AI
+    try:
+        log("Authenticating with Google Cloud...")
+        
+        # Double-check that we have the required modules
+        if not GOOGLE_CLOUD_AVAILABLE or service_account is None:
+            raise ImportError("Google Cloud libraries not available")
+            
         scopes = ["https://www.googleapis.com/auth/cloud-platform"]
         credentials = service_account.Credentials.from_service_account_file(
             GOOGLE_CREDENTIALS, scopes=scopes
@@ -656,11 +782,14 @@ def generate_image_imagen4(prompt, image_count=1, bilder_dir=BILDER_DIR, output_
         auth_req = GoogleAuthRequest()
         credentials.refresh(auth_req)
         token = credentials.token
+        log("✓ Authentication successful")
 
+        # Prepare API request
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
         }
+        
         payload = {
             "instances": [
                 {"prompt": prompt}
@@ -671,30 +800,119 @@ def generate_image_imagen4(prompt, image_count=1, bilder_dir=BILDER_DIR, output_
                 "resolution": "2k"
             }
         }
-        response = requests.post(ENDPOINT, headers=headers, json=payload)
+        
+        log(f"Sending request to Vertex AI Imagen API...")
+        log(f"Endpoint: {ENDPOINT}")
+        log(f"Parameters: {image_count} images, 16:9 aspect ratio, 2k resolution")
+        
+        response = requests.post(ENDPOINT, headers=headers, json=payload, timeout=120)
+        
         if response.status_code != 200:
-            print(f"Fehler beim Bildgenerieren: {response.status_code}\n{response.text}")
-            return
+            log(f"Vertex AI API error: HTTP {response.status_code}", "ERROR")
+            log(f"Response: {response.text}", "ERROR")
+            
+            # Common error handling
+            if response.status_code == 401:
+                log("Authentication failed - check service account permissions", "ERROR")
+            elif response.status_code == 403:
+                log("Permission denied - ensure Vertex AI API is enabled and billing is set up", "ERROR")
+            elif response.status_code == 429:
+                log("Rate limit exceeded - try again later", "ERROR")
+            elif response.status_code >= 500:
+                log("Server error - Google Cloud service may be temporarily unavailable", "ERROR")
+            
+            return _create_demo_images(bilder_dir, output_prefix, image_count, logger)
+        
+        log("✓ Received response from Vertex AI API")
         result = response.json()
+        
+        if "predictions" not in result or not result["predictions"]:
+            log("No images returned by Vertex AI API", "ERROR")
+            return _create_demo_images(bilder_dir, output_prefix, image_count, logger)
+        
+        # Save generated images
+        log(f"Processing {len(result['predictions'])} generated images...")
+        generated_files = []
         start_idx = get_next_index(bilder_dir, output_prefix)
+        
         for i, pred in enumerate(result["predictions"]):
-            fname = f"{bilder_dir}/{output_prefix}_{start_idx + i}.png"
-            img_data = base64.b64decode(pred["bytesBase64Encoded"])
-            with open(fname, "wb") as f:
-                f.write(img_data)
-            print(f"Bild gespeichert: {fname}")
+            if "bytesBase64Encoded" not in pred:
+                log(f"Image {i+1}: No image data in response", "WARNING")
+                continue
+                
+            try:
+                fname = f"{bilder_dir}/{output_prefix}_{start_idx + i}.png"
+                img_data = base64.b64decode(pred["bytesBase64Encoded"])
+                
+                with open(fname, "wb") as f:
+                    f.write(img_data)
+                
+                file_size = len(img_data)
+                log(f"✓ Image {i+1} saved: {fname} ({file_size:,} bytes)")
+                generated_files.append(fname)
+                
+            except Exception as e:
+                log(f"Failed to save image {i+1}: {e}", "ERROR")
+        
+        if generated_files:
+            log(f"✓ Vertex AI image generation completed: {len(generated_files)} images saved")
+            return generated_files
+        else:
+            log("No images could be saved", "ERROR")
+            return []
+            
     except Exception as e:
-        print(f"Fehler bei der Bildgenerierung: {e}")
-        print("Erstelle Demo-Bild als Fallback...")
-        # Create demo image as fallback
+        log(f"Vertex AI API error: {e}", "ERROR")
+        import traceback
+        log(f"Traceback: {traceback.format_exc()}", "ERROR")
+        
+        # Specific error handling
+        if "403" in str(e):
+            log("Permission error - check Vertex AI API access and billing", "ERROR")
+        elif "auth" in str(e).lower():
+            log("Authentication error - check service account key", "ERROR")
+        elif "network" in str(e).lower() or "connection" in str(e).lower():
+            log("Network error - check internet connection", "ERROR")
+        
+        return _create_demo_images(bilder_dir, output_prefix, image_count, logger)
+
+def _create_demo_images(bilder_dir, output_prefix, image_count, logger=None):
+    """
+    Create demo/placeholder images when Vertex AI is not available
+    
+    Returns:
+        list: List of created demo image paths
+    """
+    def log(message, level="INFO"):
+        if logger:
+            logger(message, level)
+        else:
+            print(f"[{level}] {message}")
+    
+    log("Creating demo images as fallback...")
+    
+    try:
+        generated_files = []
         start_idx = get_next_index(bilder_dir, output_prefix)
-        fname = f"{bilder_dir}/{output_prefix}_{start_idx}.png"
+        
+        # Create a minimal PNG file as placeholder
         minimal_png = base64.b64decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
         )
-        with open(fname, "wb") as f:
-            f.write(minimal_png)
-        print(f"Demo-Bild erstellt: {fname}")
+        
+        for i in range(image_count):
+            fname = f"{bilder_dir}/{output_prefix}_{start_idx + i}.png"
+            with open(fname, "wb") as f:
+                f.write(minimal_png)
+            
+            log(f"✓ Demo image created: {fname}")
+            generated_files.append(fname)
+        
+        return generated_files
+        
+    except Exception as e:
+        log(f"Failed to create demo images: {e}", "ERROR")
+        return []
 
 def main():
     """
