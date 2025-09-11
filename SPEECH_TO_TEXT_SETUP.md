@@ -1,10 +1,10 @@
 # Google Speech-to-Text Setup and Workflow Documentation
 
-## Complete Workflow Overview
+## Complete Clean Workflow Overview
 
-This document describes the overhaul of the speech recording and Google Speech-to-Text integration workflow, with consistent path management and proper sequencing.
+This document describes the streamlined speech recording and Google Speech-to-Text integration workflow, with consistent path management and proper sequencing.
 
-### Workflow Path Logic
+### Clean Workflow Path Logic
 
 **Base Directory**: All relevant files are now standardized to `/home/pi/Desktop/v2_Tripple S/`
 
@@ -15,14 +15,13 @@ This document describes the overhaul of the speech recording and Google Speech-t
 ├── transkript.txt        # Text transcript output
 ├── transkript.json       # JSON transcript with metadata (AI-ready)
 ├── cloudKey.json         # Google service account credentials
-├── upload.log            # Upload operation logs
 ├── speech_recognition.log # Speech processing logs
-└── BilderVertex/         # Generated images directory
+└── BilderVertex/         # Generated images directory (Vertex AI output)
 ```
 
-### Workflow Sequence
+### Clean Workflow Sequence
 
-The integration follows this exact sequence:
+The streamlined integration follows this exact sequence:
 
 1. **Recording Phase** (`Aufnahme.py`)
    - Records audio to `/home/pi/Desktop/v2_Tripple S/aufnahme.wav`
@@ -33,18 +32,16 @@ The integration follows this exact sequence:
    - Processes `/home/pi/Desktop/v2_Tripple S/aufnahme.wav`
    - Uses Google Speech-to-Text API with credentials from `cloudKey.json`
    - Creates `transkript.txt` and `transkript.json` in same directory
-   - Falls back to simulation mode if Google API unavailable
+   - Falls back to local processing if Google API unavailable
 
-3. **Upload Phase** (`programmSendFile.py`)
-   - Uploads `aufnahme.wav` to target server at `/home/server/XYZ/aufnahme.wav`  
-   - Supports multiple transfer methods (SCP, rsync, SFTP)
-   - Includes upload verification and comprehensive logging
-   - Runs AFTER transcription is complete
+3. **File Operations Phase** (`dateiKopieren.py`)
+   - Handles local file management and organization
+   - Manages clipboard operations for transcript content
 
-4. **Processing Phase** (Optional)
-   - File operations via `dateiKopieren.py`
-   - AI image generation using transcript data
-   - Additional processing workflows
+4. **AI Image Generation Phase** (Vertex AI Integration)
+   - Uses transcript data for AI image generation
+   - Saves generated images to `BilderVertex/` directory
+   - Works in demo mode without Google Cloud setup
 
 ## Requirements
 
@@ -65,13 +62,6 @@ The system automatically uses the standardized path for credentials:
 export GOOGLE_APPLICATION_CREDENTIALS="/home/pi/Desktop/v2_Tripple S/cloudKey.json"
 ```
 
-**Server Upload Configuration**:
-```bash
-export UPLOAD_SERVER_HOST="your-server.example.com"
-export UPLOAD_SERVER_USER="pi" 
-export SSH_KEY_PATH="~/.ssh/id_rsa"
-```
-
 ### Dependencies
 
 Install required packages:
@@ -79,24 +69,24 @@ Install required packages:
 pip install google-cloud-speech
 ```
 
-## Script Integration
+## Clean Script Integration
 
 ### Main Integration Script (`PythonServer.py`)
 
-The workflow manager ensures proper sequencing:
+The streamlined workflow manager ensures proper sequencing:
 
 1. **Transcription First**: `voiceToGoogle.py` processes audio and creates transcript
-2. **Upload Second**: `programmSendFile.py` transfers file to server
-3. **Processing Last**: Additional operations and AI processing
+2. **File Operations**: `dateiKopieren.py` handles local file management
+3. **AI Image Generation**: Automatic Vertex AI integration from transcript
 
 ### Error Handling
 
 Each phase includes comprehensive error handling:
 
-- **Missing Credentials**: Clear setup instructions
+- **Missing Credentials**: Clear setup instructions with fallback to demo mode
 - **Network Issues**: Detailed connectivity diagnostics  
-- **Invalid Audio**: File validation and format checking
-- **Upload Failures**: Multiple transfer methods with fallback
+- **Invalid Audio**: File validation and automatic format conversion
+- **AI Integration**: Graceful fallback to demo images when Vertex AI unavailable
 
 ## AI Integration Notes
 

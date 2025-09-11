@@ -1,20 +1,19 @@
 # Vertex AI Integration Setup Guide
 
-This document explains how to set up and configure the Vertex AI image generation feature in the recording workflow.
+This document explains how to set up and configure the clean, streamlined Vertex AI image generation feature in the recording workflow.
 
 ## Overview
 
-The workflow now includes automatic image generation using Google's Vertex AI Imagen API:
+The cleaned workflow now includes automatic image generation using Google's Vertex AI Imagen API:
 
 1. **Recording** → `Aufnahme.py` creates audio file
 2. **Transcription** → `voiceToGoogle.py` converts speech to text
-3. **Upload** → `programmSendFile.py` uploads audio to server
-4. **File Operations** → `dateiKopieren.py` organizes files
-5. **Image Generation** → Transcript is sent to Vertex AI for image creation ✨
+3. **File Operations** → `dateiKopieren.py` organizes files
+4. **Image Generation** → Transcript is sent to Vertex AI for image creation ✨
 
 ## Current Status: ✅ WORKING
 
-The integration has been fixed and tested. It will work in **demo mode** without Google Cloud setup, or in **production mode** with proper credentials.
+The integration has been cleaned and streamlined. It will work in **demo mode** without Google Cloud setup, or in **production mode** with proper credentials.
 
 ## Quick Test
 

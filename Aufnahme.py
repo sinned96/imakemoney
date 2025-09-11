@@ -7,7 +7,7 @@ Path Logic and Workflow Integration:
 - Output file: /home/pi/Desktop/v2_Tripple S/aufnahme.wav (fixed filename, always overwrite)
 - This script starts the workflow by creating the audio recording
 - After recording completes, voiceToGoogle.py processes the audio
-- Finally, programmSendFile.py uploads the file to the server
+- Finally, the processed files are available for AI integration
 - Workflow sequence: Recording (this script) → Transcription → Upload
 
 This script starts recording immediately when launched and stops cleanly

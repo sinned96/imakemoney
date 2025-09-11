@@ -9,7 +9,7 @@ Path Logic and Workflow Integration:
 - Output files: /home/pi/Desktop/v2_Tripple S/transkript.txt and transkript.json
 - Google credentials: /home/pi/Desktop/v2_Tripple S/cloudKey.json
 - This script runs AFTER Aufnahme.py completes recording
-- This script runs BEFORE programmSendFile.py uploads the audio
+- This script runs BEFORE the local file operations
 - Workflow sequence: Recording → Transcription (this script) → Upload
 
 REQUIREMENTS:
