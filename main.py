@@ -925,19 +925,7 @@ class AufnahmePopup(FloatLayout):
             self.stop_recording()
     
     def start_recording(self):
-        """Start Aufnahme.py as subprocess
-        
-        This starts the audio recording process that saves to aufnahme.wav.
-        After recording stops, the workflow automatically processes the audio with:
-        1. Google Speech-to-Text (voiceToGoogle.py) - requires GOOGLE_APPLICATION_CREDENTIALS
-        2. File operations (dateiKopieren.py) 
-        3. Image generation
-        
-        Requirements for Speech-to-Text:
-        - GOOGLE_APPLICATION_CREDENTIALS environment variable must be set
-        - voiceToGoogle.py script must be present
-        - google-cloud-speech library should be installed for real processing
-        """
+        """Start Aufnahme.py as subprocess"""
         debug_logger.info("start_recording called")
         
         if self.is_running:

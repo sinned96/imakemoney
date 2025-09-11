@@ -1,0 +1,973 @@
+[2025-09-11 10:24:32,518] INFO: Kivy: v2.3.1
+[2025-09-11 10:24:32,519] INFO: Logger: Record log in /home/pi/.kivy/logs/kivy_25-09-11_1.txt
+[2025-09-11 10:24:32,519] INFO: Kivy: Installed at "/home/pi/.local/lib/python3.11/site-packages/kivy/__init__.py"
+[2025-09-11 10:24:32,519] INFO: Python: v3.11.2 (main, Apr 28 2025, 14:11:48) [GCC 12.2.0]
+[2025-09-11 10:24:32,519] INFO: Python: Interpreter at "/usr/bin/python3"
+[2025-09-11 10:24:32,519] INFO: Logger: Purge log fired. Processing...
+[2025-09-11 10:24:32,520] INFO: Logger: Purge finished!
+[2025-09-11 10:24:32,548] INFO: Factory: 195 symbols loaded
+[2025-09-11 10:24:32,710] INFO: Image: Providers: img_tex, img_dds, img_sdl2, img_pil (img_ffpyplayer ignored)
+[2025-09-11 10:24:32,720] INFO: Text: Provider: sdl2
+[2025-09-11 10:24:32,735] INFO: Window: Provider: sdl2
+[2025-09-11 10:24:33,040] INFO: GL: Using the "OpenGL" graphics system
+[2025-09-11 10:24:33,041] INFO: GL: Backend used <sdl2>
+[2025-09-11 10:24:33,042] INFO: GL: OpenGL version <b'3.1 Mesa 24.2.8-1~bpo12+rpt3'>
+[2025-09-11 10:24:33,042] INFO: GL: OpenGL vendor <b'Broadcom'>
+[2025-09-11 10:24:33,042] INFO: GL: OpenGL renderer <b'V3D 7.1.10.2'>
+[2025-09-11 10:24:33,042] INFO: GL: OpenGL parsed version: 3, 1
+[2025-09-11 10:24:33,042] INFO: GL: Shading version <b'1.40'>
+[2025-09-11 10:24:33,042] INFO: GL: Texture max size <4096>
+[2025-09-11 10:24:33,042] INFO: GL: Texture max units <24>
+[2025-09-11 10:24:33,072] INFO: Window: auto add sdl2 input provider
+[2025-09-11 10:24:33,073] INFO: Window: virtual keyboard not allowed, single mode, not docked
+[2025-09-11 10:24:33,075] INFO: KivyMD: 1.2.0, git-Unknown, 2024-01-21 (installed at "/usr/local/lib/python3.11/dist-packages/kivymd/__init__.py")
+[2025-09-11 10:24:33,076] WARNING: KivyMD: Version 1.2.0 is deprecated and is no longer supported. Use KivyMD version 2.0.0 from the master branch (pip install https://github.com/kivymd/KivyMD/archive/master.zip)
+[2025-09-11 10:24:33,088] INFO: Clipboard: Provider: xclip
+[2025-09-11 10:24:33,088] INFO: CutBuffer: cut buffer support enabled
+[2025-09-11 10:24:33,801] INFO: Base: Start application main loop
+[2025-09-11 10:24:33,802] INFO: GL: NPOT texture support is available
+[2025-09-11 10:24:37,452] WARNING: Deprecated property "<BooleanProperty name=allow_stretch>" of object "<kivy.uix.image.Image object at 0x7fff298a26d0>" has been set, it will be removed in a future version
+[2025-09-11 10:24:37,453] WARNING: Deprecated property "<BooleanProperty name=keep_ratio>" of object "<kivy.uix.image.Image object at 0x7fff298a26d0>" was accessed, it will be removed in a future version
+[2025-09-11 10:24:48,684] INFO: toggle_recording called - current state: is_running=False, process=False
+[2025-09-11 10:24:48,684] INFO: start_recording called
+[2025-09-11 10:24:48,684] INFO: Reset workflow state for new recording
+[2025-09-11 10:24:48,684] INFO: Starting recording process with script: /home/pi/Desktop/v2_Tripple S/Aufnahme.py
+[2025-09-11 10:24:48,685] INFO: Aufnahme gestartet (PID: 27779)
+[2025-09-11 10:24:58,583] INFO: toggle_recording called - current state: is_running=True, process=True
+[2025-09-11 10:24:58,583] INFO: stop_recording called - is_running: True, process: True
+[2025-09-11 10:24:58,583] INFO: Stoppe Aufnahme (PID: 27779)...
+[2025-09-11 10:24:58,583] INFO: Sending SIGTERM to process 27779
+[2025-09-11 10:24:58,642] DEBUG: Recording stdout: Aufnahme.py - Audio Recording Script
+Press Ctrl+C or send SIGTERM to stop recording
+Audio recorder starting...
+Starting recording to: /home/pi/Desktop/v2_Tripple S/Aufnahmen/aufnahme_20250911_102448.w...
+[2025-09-11 10:24:58,643] INFO: Aufnahme gestoppt
+[2025-09-11 10:24:58,643] INFO: Creating workflow trigger after recording stop
+[2025-09-11 10:24:58,643] INFO: Attempting to create trigger file: /home/pi/Desktop/v2_Tripple S/workflow_trigger.txt
+[2025-09-11 10:24:58,650] INFO: Trigger file created atomically with lock
+[2025-09-11 10:24:58,650] INFO: Workflow-Trigger erstellt
+[2025-09-11 10:24:58,650] INFO: Starting workflow service via start_workflow_service.py
+[2025-09-11 10:25:03,652] INFO: Workflow-Service gestartet (läuft im Hintergrund)
+[2025-09-11 10:25:03,660] INFO: Started workflow status checking
+[2025-09-11 10:25:17,183] INFO: close_popup called
+[2025-09-11 10:25:17,183] INFO: Stopped workflow status checking
+[2025-09-11 10:25:17,183] INFO: Removed popup from parent widget
+[2025-09-11 10:25:23,566] INFO: Base: Leaving application in progress...
+[2025-09-11 10:25:23,567] WARNING: stderr: Traceback (most recent call last):
+[2025-09-11 10:25:23,567] WARNING: stderr:   File "/home/pi/Desktop/v2_Tripple S/main.py", line 2360, in <module>
+[2025-09-11 10:25:23,567] WARNING: stderr:     app.run()
+[2025-09-11 10:25:23,568] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/app.py", line 956, in run
+[2025-09-11 10:25:23,568] WARNING: stderr:     runTouchApp()
+[2025-09-11 10:25:23,568] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 574, in runTouchApp
+[2025-09-11 10:25:23,568] WARNING: stderr:     EventLoop.mainloop()
+[2025-09-11 10:25:23,568] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 339, in mainloop
+[2025-09-11 10:25:23,569] WARNING: stderr:     self.idle()
+[2025-09-11 10:25:23,569] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 379, in idle
+[2025-09-11 10:25:23,569] WARNING: stderr:     Clock.tick()
+[2025-09-11 10:25:23,569] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 733, in tick
+[2025-09-11 10:25:23,569] WARNING: stderr:     self.post_idle(ts, self.idle())
+[2025-09-11 10:25:23,570] WARNING: stderr:                        ^^^^^^^^^^^
+[2025-09-11 10:25:23,570] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 689, in idle
+[2025-09-11 10:25:23,570] WARNING: stderr:     usleep(1000000 * sleeptime)
+[2025-09-11 10:25:23,570] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 965, in usleep
+[2025-09-11 10:25:23,570] WARNING: stderr:     _usleep(microseconds, self._sleep_obj)
+[2025-09-11 10:25:23,571] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 556, in _usleep
+[2025-09-11 10:25:23,571] WARNING: stderr:     _libc_usleep(int(microseconds))
+[2025-09-11 10:25:23,571] WARNING: stderr: KeyboardInterrupt
+[2025-09-11 10:27:43,510] INFO: Kivy: v2.3.1
+[2025-09-11 10:27:43,510] INFO: Logger: Record log in /home/pi/.kivy/logs/kivy_25-09-11_2.txt
+[2025-09-11 10:27:43,510] INFO: Kivy: Installed at "/home/pi/.local/lib/python3.11/site-packages/kivy/__init__.py"
+[2025-09-11 10:27:43,511] INFO: Python: v3.11.2 (main, Apr 28 2025, 14:11:48) [GCC 12.2.0]
+[2025-09-11 10:27:43,511] INFO: Python: Interpreter at "/usr/bin/python3"
+[2025-09-11 10:27:43,511] INFO: Logger: Purge log fired. Processing...
+[2025-09-11 10:27:43,512] INFO: Logger: Purge finished!
+[2025-09-11 10:27:43,546] INFO: Factory: 195 symbols loaded
+[2025-09-11 10:27:43,709] INFO: Image: Providers: img_tex, img_dds, img_sdl2, img_pil (img_ffpyplayer ignored)
+[2025-09-11 10:27:43,717] INFO: Text: Provider: sdl2
+[2025-09-11 10:27:43,733] INFO: Window: Provider: sdl2
+[2025-09-11 10:27:44,050] INFO: GL: Using the "OpenGL" graphics system
+[2025-09-11 10:27:44,051] INFO: GL: Backend used <sdl2>
+[2025-09-11 10:27:44,051] INFO: GL: OpenGL version <b'3.1 Mesa 24.2.8-1~bpo12+rpt3'>
+[2025-09-11 10:27:44,051] INFO: GL: OpenGL vendor <b'Broadcom'>
+[2025-09-11 10:27:44,051] INFO: GL: OpenGL renderer <b'V3D 7.1.10.2'>
+[2025-09-11 10:27:44,051] INFO: GL: OpenGL parsed version: 3, 1
+[2025-09-11 10:27:44,051] INFO: GL: Shading version <b'1.40'>
+[2025-09-11 10:27:44,052] INFO: GL: Texture max size <4096>
+[2025-09-11 10:27:44,052] INFO: GL: Texture max units <24>
+[2025-09-11 10:27:44,081] INFO: Window: auto add sdl2 input provider
+[2025-09-11 10:27:44,081] INFO: Window: virtual keyboard not allowed, single mode, not docked
+[2025-09-11 10:27:44,084] INFO: KivyMD: 1.2.0, git-Unknown, 2024-01-21 (installed at "/usr/local/lib/python3.11/dist-packages/kivymd/__init__.py")
+[2025-09-11 10:27:44,084] WARNING: KivyMD: Version 1.2.0 is deprecated and is no longer supported. Use KivyMD version 2.0.0 from the master branch (pip install https://github.com/kivymd/KivyMD/archive/master.zip)
+[2025-09-11 10:27:44,096] INFO: Clipboard: Provider: xclip
+[2025-09-11 10:27:44,096] INFO: CutBuffer: cut buffer support enabled
+[2025-09-11 10:27:44,894] INFO: Base: Start application main loop
+[2025-09-11 10:27:44,895] INFO: GL: NPOT texture support is available
+[2025-09-11 10:27:47,437] WARNING: Deprecated property "<BooleanProperty name=allow_stretch>" of object "<kivy.uix.image.Image object at 0x7ffecd3c2510>" has been set, it will be removed in a future version
+[2025-09-11 10:27:47,437] WARNING: Deprecated property "<BooleanProperty name=keep_ratio>" of object "<kivy.uix.image.Image object at 0x7ffecd3c2510>" was accessed, it will be removed in a future version
+[2025-09-11 10:27:49,349] INFO: toggle_recording called - current state: is_running=False, process=False
+[2025-09-11 10:27:49,350] INFO: start_recording called
+[2025-09-11 10:27:49,350] INFO: Reset workflow state for new recording
+[2025-09-11 10:27:49,350] INFO: Starting recording process with script: /home/pi/Desktop/v2_Tripple S/Aufnahme.py
+[2025-09-11 10:27:49,352] INFO: Aufnahme gestartet (PID: 27919)
+[2025-09-11 10:27:55,907] INFO: toggle_recording called - current state: is_running=True, process=True
+[2025-09-11 10:27:55,907] INFO: stop_recording called - is_running: True, process: True
+[2025-09-11 10:27:55,908] INFO: Stoppe Aufnahme (PID: 27919)...
+[2025-09-11 10:27:55,908] INFO: Sending SIGTERM to process 27919
+[2025-09-11 10:27:55,928] DEBUG: Recording stdout: Aufnahme.py - Audio Recording Script
+Press Ctrl+C or send SIGTERM to stop recording
+Audio recorder starting...
+Starting recording to: /home/pi/Desktop/v2_Tripple S/Aufnahmen/aufnahme_20250911_102749.w...
+[2025-09-11 10:27:55,928] INFO: Aufnahme gestoppt
+[2025-09-11 10:27:55,928] INFO: Creating workflow trigger after recording stop
+[2025-09-11 10:27:55,929] INFO: Attempting to create trigger file: /home/pi/Desktop/v2_Tripple S/workflow_trigger.txt
+[2025-09-11 10:27:55,934] INFO: Trigger file created atomically with lock
+[2025-09-11 10:27:55,934] INFO: Workflow-Trigger erstellt
+[2025-09-11 10:27:55,934] INFO: Starting workflow service via start_workflow_service.py
+[2025-09-11 10:28:00,936] INFO: Workflow-Service gestartet (läuft im Hintergrund)
+[2025-09-11 10:28:00,936] INFO: Started workflow status checking
+[2025-09-11 10:28:19,826] INFO: Base: Leaving application in progress...
+[2025-09-11 10:28:19,827] WARNING: stderr: Traceback (most recent call last):
+[2025-09-11 10:28:19,827] WARNING: stderr:   File "/home/pi/Desktop/v2_Tripple S/main.py", line 2360, in <module>
+[2025-09-11 10:28:19,828] WARNING: stderr:     app.run()
+[2025-09-11 10:28:19,828] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/app.py", line 956, in run
+[2025-09-11 10:28:19,828] WARNING: stderr:     runTouchApp()
+[2025-09-11 10:28:19,829] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 574, in runTouchApp
+[2025-09-11 10:28:19,829] WARNING: stderr:     EventLoop.mainloop()
+[2025-09-11 10:28:19,829] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 339, in mainloop
+[2025-09-11 10:28:19,829] WARNING: stderr:     self.idle()
+[2025-09-11 10:28:19,829] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 379, in idle
+[2025-09-11 10:28:19,829] WARNING: stderr:     Clock.tick()
+[2025-09-11 10:28:19,829] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 733, in tick
+[2025-09-11 10:28:19,830] WARNING: stderr:     self.post_idle(ts, self.idle())
+[2025-09-11 10:28:19,830] WARNING: stderr:                        ^^^^^^^^^^^
+[2025-09-11 10:28:19,830] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 689, in idle
+[2025-09-11 10:28:19,830] WARNING: stderr:     usleep(1000000 * sleeptime)
+[2025-09-11 10:28:19,831] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 965, in usleep
+[2025-09-11 10:28:19,831] WARNING: stderr:     _usleep(microseconds, self._sleep_obj)
+[2025-09-11 10:28:19,831] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 556, in _usleep
+[2025-09-11 10:28:19,832] WARNING: stderr:     _libc_usleep(int(microseconds))
+[2025-09-11 10:28:19,832] WARNING: stderr: KeyboardInterrupt
+[2025-09-11 10:49:04,504] INFO: Kivy: v2.3.1
+[2025-09-11 10:49:04,504] INFO: Logger: Record log in /home/pi/.kivy/logs/kivy_25-09-11_3.txt
+[2025-09-11 10:49:04,505] INFO: Kivy: Installed at "/home/pi/.local/lib/python3.11/site-packages/kivy/__init__.py"
+[2025-09-11 10:49:04,505] INFO: Python: v3.11.2 (main, Apr 28 2025, 14:11:48) [GCC 12.2.0]
+[2025-09-11 10:49:04,505] INFO: Python: Interpreter at "/usr/bin/python3"
+[2025-09-11 10:49:04,505] INFO: Logger: Purge log fired. Processing...
+[2025-09-11 10:49:04,506] INFO: Logger: Purge finished!
+[2025-09-11 10:49:04,538] INFO: Factory: 195 symbols loaded
+[2025-09-11 10:49:04,703] INFO: Image: Providers: img_tex, img_dds, img_sdl2, img_pil (img_ffpyplayer ignored)
+[2025-09-11 10:49:04,712] INFO: Text: Provider: sdl2
+[2025-09-11 10:49:04,728] INFO: Window: Provider: sdl2
+[2025-09-11 10:49:05,034] INFO: GL: Using the "OpenGL" graphics system
+[2025-09-11 10:49:05,036] INFO: GL: Backend used <sdl2>
+[2025-09-11 10:49:05,036] INFO: GL: OpenGL version <b'3.1 Mesa 24.2.8-1~bpo12+rpt3'>
+[2025-09-11 10:49:05,036] INFO: GL: OpenGL vendor <b'Broadcom'>
+[2025-09-11 10:49:05,036] INFO: GL: OpenGL renderer <b'V3D 7.1.10.2'>
+[2025-09-11 10:49:05,036] INFO: GL: OpenGL parsed version: 3, 1
+[2025-09-11 10:49:05,037] INFO: GL: Shading version <b'1.40'>
+[2025-09-11 10:49:05,037] INFO: GL: Texture max size <4096>
+[2025-09-11 10:49:05,037] INFO: GL: Texture max units <24>
+[2025-09-11 10:49:05,067] INFO: Window: auto add sdl2 input provider
+[2025-09-11 10:49:05,067] INFO: Window: virtual keyboard not allowed, single mode, not docked
+[2025-09-11 10:49:05,070] INFO: KivyMD: 1.2.0, git-Unknown, 2024-01-21 (installed at "/usr/local/lib/python3.11/dist-packages/kivymd/__init__.py")
+[2025-09-11 10:49:05,070] WARNING: KivyMD: Version 1.2.0 is deprecated and is no longer supported. Use KivyMD version 2.0.0 from the master branch (pip install https://github.com/kivymd/KivyMD/archive/master.zip)
+[2025-09-11 10:49:05,082] INFO: Clipboard: Provider: xclip
+[2025-09-11 10:49:05,082] INFO: CutBuffer: cut buffer support enabled
+[2025-09-11 10:49:05,853] INFO: Base: Start application main loop
+[2025-09-11 10:49:05,854] INFO: GL: NPOT texture support is available
+[2025-09-11 10:49:10,462] WARNING: Deprecated property "<BooleanProperty name=allow_stretch>" of object "<kivy.uix.image.Image object at 0x7fff5bcf6510>" has been set, it will be removed in a future version
+[2025-09-11 10:49:10,462] WARNING: Deprecated property "<BooleanProperty name=keep_ratio>" of object "<kivy.uix.image.Image object at 0x7fff5bcf6510>" was accessed, it will be removed in a future version
+[2025-09-11 10:49:12,610] INFO: toggle_recording called - current state: is_running=False, process=False
+[2025-09-11 10:49:12,611] INFO: start_recording called
+[2025-09-11 10:49:12,611] INFO: Reset workflow state for new recording
+[2025-09-11 10:49:12,611] INFO: Starting recording process with script: /home/pi/Desktop/v2_Tripple S/Aufnahme.py
+[2025-09-11 10:49:12,612] INFO: Aufnahme gestartet (PID: 28653)
+[2025-09-11 10:49:20,631] INFO: toggle_recording called - current state: is_running=True, process=True
+[2025-09-11 10:49:20,631] INFO: stop_recording called - is_running: True, process: True
+[2025-09-11 10:49:20,632] INFO: Stoppe Aufnahme (PID: 28653)...
+[2025-09-11 10:49:20,632] INFO: Sending SIGTERM to process 28653
+[2025-09-11 10:49:20,667] DEBUG: Recording stdout: Aufnahme.py - Audio Recording Script
+Press Ctrl+C or send SIGTERM to stop recording
+Audio recorder starting...
+Starting recording to: /home/pi/Desktop/v2_Tripple S/Aufnahmen/aufnahme.wav
+Recording sta...
+[2025-09-11 10:49:20,668] INFO: Aufnahme gestoppt
+[2025-09-11 10:49:20,668] INFO: Creating workflow trigger after recording stop
+[2025-09-11 10:49:20,668] INFO: Attempting to create trigger file: /home/pi/Desktop/v2_Tripple S/workflow_trigger.txt
+[2025-09-11 10:49:21,032] INFO: Trigger file created atomically with lock
+[2025-09-11 10:49:21,033] INFO: Workflow-Trigger erstellt
+[2025-09-11 10:49:21,033] INFO: Starting workflow service via start_workflow_service.py
+[2025-09-11 10:49:26,035] INFO: Workflow-Service gestartet (läuft im Hintergrund)
+[2025-09-11 10:49:26,036] INFO: Started workflow status checking
+[2025-09-11 10:49:47,255] INFO: close_popup called
+[2025-09-11 10:49:47,255] INFO: Stopped workflow status checking
+[2025-09-11 10:49:47,255] INFO: Removed popup from parent widget
+[2025-09-11 10:54:31,070] INFO: Base: Leaving application in progress...
+[2025-09-11 10:54:31,101] WARNING: stderr: Traceback (most recent call last):
+[2025-09-11 10:54:31,101] WARNING: stderr:   File "/home/pi/Desktop/v2_Tripple S/main.py", line 2360, in <module>
+[2025-09-11 10:54:31,104] WARNING: stderr:     app.run()
+[2025-09-11 10:54:31,105] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/app.py", line 956, in run
+[2025-09-11 10:54:31,106] WARNING: stderr:     runTouchApp()
+[2025-09-11 10:54:31,107] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 574, in runTouchApp
+[2025-09-11 10:54:31,107] WARNING: stderr:     EventLoop.mainloop()
+[2025-09-11 10:54:31,107] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 339, in mainloop
+[2025-09-11 10:54:31,107] WARNING: stderr:     self.idle()
+[2025-09-11 10:54:31,107] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 379, in idle
+[2025-09-11 10:54:31,108] WARNING: stderr:     Clock.tick()
+[2025-09-11 10:54:31,108] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 733, in tick
+[2025-09-11 10:54:31,108] WARNING: stderr:     self.post_idle(ts, self.idle())
+[2025-09-11 10:54:31,108] WARNING: stderr:                        ^^^^^^^^^^^
+[2025-09-11 10:54:31,109] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 689, in idle
+[2025-09-11 10:54:31,109] WARNING: stderr:     usleep(1000000 * sleeptime)
+[2025-09-11 10:54:31,109] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 965, in usleep
+[2025-09-11 10:54:31,110] WARNING: stderr:     _usleep(microseconds, self._sleep_obj)
+[2025-09-11 10:54:31,110] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 556, in _usleep
+[2025-09-11 10:54:31,111] WARNING: stderr:     _libc_usleep(int(microseconds))
+[2025-09-11 10:54:31,111] WARNING: stderr: KeyboardInterrupt
+[2025-09-11 11:51:43,522] INFO: Kivy: v2.3.1
+[2025-09-11 11:51:43,523] INFO: Logger: Record log in /home/pi/.kivy/logs/kivy_25-09-11_4.txt
+[2025-09-11 11:51:43,523] INFO: Kivy: Installed at "/home/pi/.local/lib/python3.11/site-packages/kivy/__init__.py"
+[2025-09-11 11:51:43,523] INFO: Python: v3.11.2 (main, Apr 28 2025, 14:11:48) [GCC 12.2.0]
+[2025-09-11 11:51:43,523] INFO: Python: Interpreter at "/usr/bin/python3"
+[2025-09-11 11:51:43,523] INFO: Logger: Purge log fired. Processing...
+[2025-09-11 11:51:43,527] INFO: Logger: Purge finished!
+[2025-09-11 11:51:43,600] INFO: Factory: 195 symbols loaded
+[2025-09-11 11:51:43,922] INFO: Image: Providers: img_tex, img_dds, img_sdl2, img_pil (img_ffpyplayer ignored)
+[2025-09-11 11:51:43,955] INFO: Text: Provider: sdl2
+[2025-09-11 11:51:43,995] INFO: Window: Provider: sdl2
+[2025-09-11 11:51:44,617] INFO: GL: Using the "OpenGL" graphics system
+[2025-09-11 11:51:44,618] INFO: GL: Backend used <sdl2>
+[2025-09-11 11:51:44,619] INFO: GL: OpenGL version <b'3.1 Mesa 24.2.8-1~bpo12+rpt3'>
+[2025-09-11 11:51:44,619] INFO: GL: OpenGL vendor <b'Broadcom'>
+[2025-09-11 11:51:44,620] INFO: GL: OpenGL renderer <b'V3D 7.1.10.2'>
+[2025-09-11 11:51:44,620] INFO: GL: OpenGL parsed version: 3, 1
+[2025-09-11 11:51:44,620] INFO: GL: Shading version <b'1.40'>
+[2025-09-11 11:51:44,620] INFO: GL: Texture max size <4096>
+[2025-09-11 11:51:44,620] INFO: GL: Texture max units <24>
+[2025-09-11 11:51:44,660] INFO: Window: auto add sdl2 input provider
+[2025-09-11 11:51:44,660] INFO: Window: virtual keyboard not allowed, single mode, not docked
+[2025-09-11 11:51:44,666] INFO: KivyMD: 1.2.0, git-Unknown, 2024-01-21 (installed at "/usr/local/lib/python3.11/dist-packages/kivymd/__init__.py")
+[2025-09-11 11:51:44,666] WARNING: KivyMD: Version 1.2.0 is deprecated and is no longer supported. Use KivyMD version 2.0.0 from the master branch (pip install https://github.com/kivymd/KivyMD/archive/master.zip)
+[2025-09-11 11:51:44,701] INFO: Clipboard: Provider: xclip
+[2025-09-11 11:51:44,701] INFO: CutBuffer: cut buffer support enabled
+[2025-09-11 11:51:45,517] INFO: Base: Start application main loop
+[2025-09-11 11:51:45,526] INFO: GL: NPOT texture support is available
+[2025-09-11 11:51:58,918] WARNING: Deprecated property "<BooleanProperty name=allow_stretch>" of object "<kivy.uix.image.Image object at 0x7fff1c182510>" has been set, it will be removed in a future version
+[2025-09-11 11:51:58,918] WARNING: Deprecated property "<BooleanProperty name=keep_ratio>" of object "<kivy.uix.image.Image object at 0x7fff1c182510>" was accessed, it will be removed in a future version
+[2025-09-11 11:52:04,187] INFO: toggle_recording called - current state: is_running=False, process=False
+[2025-09-11 11:52:04,187] INFO: start_recording called
+[2025-09-11 11:52:04,187] INFO: Reset workflow state for new recording
+[2025-09-11 11:52:04,187] INFO: Starting recording process with script: /home/pi/Desktop/v2_Tripple S/Aufnahme.py
+[2025-09-11 11:52:04,188] INFO: Aufnahme gestartet (PID: 31059)
+[2025-09-11 11:52:11,372] INFO: toggle_recording called - current state: is_running=True, process=True
+[2025-09-11 11:52:11,373] INFO: stop_recording called - is_running: True, process: True
+[2025-09-11 11:52:11,373] INFO: Stoppe Aufnahme (PID: 31059)...
+[2025-09-11 11:52:11,373] INFO: Sending SIGTERM to process 31059
+[2025-09-11 11:52:11,446] DEBUG: Recording stdout: Aufnahme.py - Audio Recording Script
+Press Ctrl+C or send SIGTERM to stop recording
+Audio recorder starting...
+Starting recording to: /home/pi/Desktop/v2_Tripple S/aufnahme.wav
+Using standardized path...
+[2025-09-11 11:52:11,447] INFO: Aufnahme gestoppt
+[2025-09-11 11:52:11,447] INFO: Creating workflow trigger after recording stop
+[2025-09-11 11:52:11,447] INFO: Attempting to create trigger file: /home/pi/Desktop/v2_Tripple S/workflow_trigger.txt
+[2025-09-11 11:52:11,452] INFO: Trigger file created atomically with lock
+[2025-09-11 11:52:11,452] INFO: Workflow-Trigger erstellt
+[2025-09-11 11:52:11,452] INFO: Starting workflow service via start_workflow_service.py
+[2025-09-11 11:52:16,454] INFO: Workflow-Service gestartet (läuft im Hintergrund)
+[2025-09-11 11:52:16,455] INFO: Started workflow status checking
+[2025-09-11 11:52:28,216] INFO: Base: Leaving application in progress...
+[2025-09-11 11:52:28,217] WARNING: stderr: Traceback (most recent call last):
+[2025-09-11 11:52:28,217] WARNING: stderr:   File "/home/pi/Desktop/v2_Tripple S/main.py", line 2360, in <module>
+[2025-09-11 11:52:28,218] WARNING: stderr:     app.run()
+[2025-09-11 11:52:28,218] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/app.py", line 956, in run
+[2025-09-11 11:52:28,220] WARNING: stderr:     runTouchApp()
+[2025-09-11 11:52:28,220] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 574, in runTouchApp
+[2025-09-11 11:52:28,221] WARNING: stderr:     EventLoop.mainloop()
+[2025-09-11 11:52:28,221] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 339, in mainloop
+[2025-09-11 11:52:28,221] WARNING: stderr:     self.idle()
+[2025-09-11 11:52:28,221] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 379, in idle
+[2025-09-11 11:52:28,222] WARNING: stderr:     Clock.tick()
+[2025-09-11 11:52:28,222] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 733, in tick
+[2025-09-11 11:52:28,222] WARNING: stderr:     self.post_idle(ts, self.idle())
+[2025-09-11 11:52:28,223] WARNING: stderr:                        ^^^^^^^^^^^
+[2025-09-11 11:52:28,223] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 689, in idle
+[2025-09-11 11:52:28,223] WARNING: stderr:     usleep(1000000 * sleeptime)
+[2025-09-11 11:52:28,223] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 965, in usleep
+[2025-09-11 11:52:28,225] WARNING: stderr:     _usleep(microseconds, self._sleep_obj)
+[2025-09-11 11:52:28,225] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 556, in _usleep
+[2025-09-11 11:52:28,225] WARNING: stderr:     _libc_usleep(int(microseconds))
+[2025-09-11 11:52:28,225] WARNING: stderr: KeyboardInterrupt
+[2025-09-11 11:57:29,890] INFO: Kivy: v2.3.1
+[2025-09-11 11:57:29,890] INFO: Logger: Record log in /home/pi/.kivy/logs/kivy_25-09-11_5.txt
+[2025-09-11 11:57:29,890] INFO: Kivy: Installed at "/home/pi/.local/lib/python3.11/site-packages/kivy/__init__.py"
+[2025-09-11 11:57:29,891] INFO: Python: v3.11.2 (main, Apr 28 2025, 14:11:48) [GCC 12.2.0]
+[2025-09-11 11:57:29,891] INFO: Python: Interpreter at "/usr/bin/python3"
+[2025-09-11 11:57:29,891] INFO: Logger: Purge log fired. Processing...
+[2025-09-11 11:57:29,892] INFO: Logger: Purge finished!
+[2025-09-11 11:57:29,926] INFO: Factory: 195 symbols loaded
+[2025-09-11 11:57:30,087] INFO: Image: Providers: img_tex, img_dds, img_sdl2, img_pil (img_ffpyplayer ignored)
+[2025-09-11 11:57:30,096] INFO: Text: Provider: sdl2
+[2025-09-11 11:57:30,111] INFO: Window: Provider: sdl2
+[2025-09-11 11:57:30,395] INFO: GL: Using the "OpenGL" graphics system
+[2025-09-11 11:57:30,395] INFO: GL: Backend used <sdl2>
+[2025-09-11 11:57:30,395] INFO: GL: OpenGL version <b'3.1 Mesa 24.2.8-1~bpo12+rpt3'>
+[2025-09-11 11:57:30,395] INFO: GL: OpenGL vendor <b'Broadcom'>
+[2025-09-11 11:57:30,396] INFO: GL: OpenGL renderer <b'V3D 7.1.10.2'>
+[2025-09-11 11:57:30,396] INFO: GL: OpenGL parsed version: 3, 1
+[2025-09-11 11:57:30,396] INFO: GL: Shading version <b'1.40'>
+[2025-09-11 11:57:30,396] INFO: GL: Texture max size <4096>
+[2025-09-11 11:57:30,396] INFO: GL: Texture max units <24>
+[2025-09-11 11:57:30,424] INFO: Window: auto add sdl2 input provider
+[2025-09-11 11:57:30,424] INFO: Window: virtual keyboard not allowed, single mode, not docked
+[2025-09-11 11:57:30,427] INFO: KivyMD: 2.0.1.dev0, git-Unknown, 2025-09-11 (installed at "/home/pi/.local/lib/python3.11/site-packages/kivymd/__init__.py")
+[2025-09-11 11:57:30,442] INFO: Clipboard: Provider: xclip
+[2025-09-11 11:57:30,442] INFO: CutBuffer: cut buffer support enabled
+[2025-09-11 11:57:31,291] INFO: Base: Start application main loop
+[2025-09-11 11:57:31,292] INFO: GL: NPOT texture support is available
+[2025-09-11 11:57:33,584] WARNING: Deprecated property "<BooleanProperty name=allow_stretch>" of object "<kivy.uix.image.Image object at 0x7fff2eb5e970>" has been set, it will be removed in a future version
+[2025-09-11 11:57:33,584] WARNING: Deprecated property "<BooleanProperty name=keep_ratio>" of object "<kivy.uix.image.Image object at 0x7fff2eb5e970>" was accessed, it will be removed in a future version
+[2025-09-11 11:57:35,721] INFO: toggle_recording called - current state: is_running=False, process=False
+[2025-09-11 11:57:35,722] INFO: start_recording called
+[2025-09-11 11:57:35,722] INFO: Reset workflow state for new recording
+[2025-09-11 11:57:35,723] INFO: Starting recording process with script: /home/pi/Desktop/v2_Tripple S/Aufnahme.py
+[2025-09-11 11:57:35,724] INFO: Aufnahme gestartet (PID: 31407)
+[2025-09-11 11:57:45,117] INFO: toggle_recording called - current state: is_running=True, process=True
+[2025-09-11 11:57:45,117] INFO: stop_recording called - is_running: True, process: True
+[2025-09-11 11:57:45,118] INFO: Stoppe Aufnahme (PID: 31407)...
+[2025-09-11 11:57:45,118] INFO: Sending SIGTERM to process 31407
+[2025-09-11 11:57:45,201] DEBUG: Recording stdout: Aufnahme.py - Audio Recording Script
+Press Ctrl+C or send SIGTERM to stop recording
+Audio recorder starting...
+Starting recording to: /home/pi/Desktop/v2_Tripple S/aufnahme.wav
+Using standardized path...
+[2025-09-11 11:57:45,203] INFO: Aufnahme gestoppt
+[2025-09-11 11:57:45,204] INFO: Creating workflow trigger after recording stop
+[2025-09-11 11:57:45,204] INFO: Attempting to create trigger file: /home/pi/Desktop/v2_Tripple S/workflow_trigger.txt
+[2025-09-11 11:57:45,212] INFO: Trigger file created atomically with lock
+[2025-09-11 11:57:45,213] INFO: Workflow-Trigger erstellt
+[2025-09-11 11:57:45,213] INFO: Starting workflow service via start_workflow_service.py
+[2025-09-11 11:57:50,215] INFO: Workflow-Service gestartet (läuft im Hintergrund)
+[2025-09-11 11:57:50,221] INFO: Started workflow status checking
+[2025-09-11 12:01:41,611] INFO: Base: Leaving application in progress...
+[2025-09-11 12:01:41,612] WARNING: stderr: Traceback (most recent call last):
+[2025-09-11 12:01:41,613] WARNING: stderr:   File "/home/pi/Desktop/v2_Tripple S/main.py", line 2360, in <module>
+[2025-09-11 12:01:41,614] WARNING: stderr:     app.run()
+[2025-09-11 12:01:41,614] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/app.py", line 956, in run
+[2025-09-11 12:01:41,615] WARNING: stderr:     runTouchApp()
+[2025-09-11 12:01:41,615] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 574, in runTouchApp
+[2025-09-11 12:01:41,615] WARNING: stderr:     EventLoop.mainloop()
+[2025-09-11 12:01:41,615] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 339, in mainloop
+[2025-09-11 12:01:41,616] WARNING: stderr:     self.idle()
+[2025-09-11 12:01:41,616] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 379, in idle
+[2025-09-11 12:01:41,616] WARNING: stderr:     Clock.tick()
+[2025-09-11 12:01:41,616] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 733, in tick
+[2025-09-11 12:01:41,617] WARNING: stderr:     self.post_idle(ts, self.idle())
+[2025-09-11 12:01:41,617] WARNING: stderr:                        ^^^^^^^^^^^
+[2025-09-11 12:01:41,618] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 689, in idle
+[2025-09-11 12:01:41,618] WARNING: stderr:     usleep(1000000 * sleeptime)
+[2025-09-11 12:01:41,619] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 965, in usleep
+[2025-09-11 12:01:41,619] WARNING: stderr:     _usleep(microseconds, self._sleep_obj)
+[2025-09-11 12:01:41,620] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 556, in _usleep
+[2025-09-11 12:01:41,620] WARNING: stderr:     _libc_usleep(int(microseconds))
+[2025-09-11 12:01:41,621] WARNING: stderr: KeyboardInterrupt
+[2025-09-11 12:01:42,559] INFO: Kivy: v2.3.1
+[2025-09-11 12:01:42,559] INFO: Logger: Record log in /home/pi/.kivy/logs/kivy_25-09-11_6.txt
+[2025-09-11 12:01:42,560] INFO: Kivy: Installed at "/home/pi/.local/lib/python3.11/site-packages/kivy/__init__.py"
+[2025-09-11 12:01:42,560] INFO: Python: v3.11.2 (main, Apr 28 2025, 14:11:48) [GCC 12.2.0]
+[2025-09-11 12:01:42,560] INFO: Python: Interpreter at "/usr/bin/python3"
+[2025-09-11 12:01:42,560] INFO: Logger: Purge log fired. Processing...
+[2025-09-11 12:01:42,561] INFO: Logger: Purge finished!
+[2025-09-11 12:01:42,592] INFO: Factory: 195 symbols loaded
+[2025-09-11 12:01:42,753] INFO: Image: Providers: img_tex, img_dds, img_sdl2, img_pil (img_ffpyplayer ignored)
+[2025-09-11 12:01:42,761] INFO: Text: Provider: sdl2
+[2025-09-11 12:01:42,776] INFO: Window: Provider: sdl2
+[2025-09-11 12:01:43,068] INFO: GL: Using the "OpenGL" graphics system
+[2025-09-11 12:01:43,069] INFO: GL: Backend used <sdl2>
+[2025-09-11 12:01:43,069] INFO: GL: OpenGL version <b'3.1 Mesa 24.2.8-1~bpo12+rpt3'>
+[2025-09-11 12:01:43,069] INFO: GL: OpenGL vendor <b'Broadcom'>
+[2025-09-11 12:01:43,069] INFO: GL: OpenGL renderer <b'V3D 7.1.10.2'>
+[2025-09-11 12:01:43,070] INFO: GL: OpenGL parsed version: 3, 1
+[2025-09-11 12:01:43,070] INFO: GL: Shading version <b'1.40'>
+[2025-09-11 12:01:43,070] INFO: GL: Texture max size <4096>
+[2025-09-11 12:01:43,070] INFO: GL: Texture max units <24>
+[2025-09-11 12:01:43,100] INFO: Window: auto add sdl2 input provider
+[2025-09-11 12:01:43,100] INFO: Window: virtual keyboard not allowed, single mode, not docked
+[2025-09-11 12:01:43,103] INFO: KivyMD: 2.0.1.dev0, git-Unknown, 2025-09-11 (installed at "/home/pi/.local/lib/python3.11/site-packages/kivymd/__init__.py")
+[2025-09-11 12:01:43,118] INFO: Clipboard: Provider: xclip
+[2025-09-11 12:01:43,118] INFO: CutBuffer: cut buffer support enabled
+[2025-09-11 12:01:43,893] INFO: Base: Start application main loop
+[2025-09-11 12:01:43,895] INFO: GL: NPOT texture support is available
+[2025-09-11 12:01:46,744] WARNING: Deprecated property "<BooleanProperty name=allow_stretch>" of object "<kivy.uix.image.Image object at 0x7ffeedc8e970>" has been set, it will be removed in a future version
+[2025-09-11 12:01:46,744] WARNING: Deprecated property "<BooleanProperty name=keep_ratio>" of object "<kivy.uix.image.Image object at 0x7ffeedc8e970>" was accessed, it will be removed in a future version
+[2025-09-11 12:01:52,496] INFO: toggle_recording called - current state: is_running=False, process=False
+[2025-09-11 12:01:52,497] INFO: start_recording called
+[2025-09-11 12:01:52,497] INFO: Reset workflow state for new recording
+[2025-09-11 12:01:52,497] INFO: Starting recording process with script: /home/pi/Desktop/v2_Tripple S/Aufnahme.py
+[2025-09-11 12:01:52,498] INFO: Aufnahme gestartet (PID: 31659)
+[2025-09-11 12:02:00,790] INFO: toggle_recording called - current state: is_running=True, process=True
+[2025-09-11 12:02:00,790] INFO: stop_recording called - is_running: True, process: True
+[2025-09-11 12:02:00,790] INFO: Stoppe Aufnahme (PID: 31659)...
+[2025-09-11 12:02:00,790] INFO: Sending SIGTERM to process 31659
+[2025-09-11 12:02:00,875] DEBUG: Recording stdout: Aufnahme.py - Audio Recording Script
+Press Ctrl+C or send SIGTERM to stop recording
+Audio recorder starting...
+Starting recording to: /home/pi/Desktop/v2_Tripple S/aufnahme.wav
+Using standardized path...
+[2025-09-11 12:02:00,875] INFO: Aufnahme gestoppt
+[2025-09-11 12:02:00,876] INFO: Creating workflow trigger after recording stop
+[2025-09-11 12:02:00,876] INFO: Attempting to create trigger file: /home/pi/Desktop/v2_Tripple S/workflow_trigger.txt
+[2025-09-11 12:02:00,881] INFO: Trigger file created atomically with lock
+[2025-09-11 12:02:00,881] INFO: Workflow-Trigger erstellt
+[2025-09-11 12:02:00,882] INFO: Starting workflow service via start_workflow_service.py
+[2025-09-11 12:02:05,884] INFO: Workflow-Service gestartet (läuft im Hintergrund)
+[2025-09-11 12:02:05,884] INFO: Started workflow status checking
+[2025-09-11 12:02:19,509] INFO: Base: Leaving application in progress...
+[2025-09-11 12:02:19,513] WARNING: stderr: Traceback (most recent call last):
+[2025-09-11 12:02:19,514] WARNING: stderr:   File "/home/pi/Desktop/v2_Tripple S/main.py", line 2360, in <module>
+[2025-09-11 12:02:19,514] WARNING: stderr:     app.run()
+[2025-09-11 12:02:19,515] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/app.py", line 956, in run
+[2025-09-11 12:02:19,515] WARNING: stderr:     runTouchApp()
+[2025-09-11 12:02:19,515] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 574, in runTouchApp
+[2025-09-11 12:02:19,516] WARNING: stderr:     EventLoop.mainloop()
+[2025-09-11 12:02:19,516] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 339, in mainloop
+[2025-09-11 12:02:19,516] WARNING: stderr:     self.idle()
+[2025-09-11 12:02:19,516] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 379, in idle
+[2025-09-11 12:02:19,516] WARNING: stderr:     Clock.tick()
+[2025-09-11 12:02:19,516] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 733, in tick
+[2025-09-11 12:02:19,517] WARNING: stderr:     self.post_idle(ts, self.idle())
+[2025-09-11 12:02:19,517] WARNING: stderr:                        ^^^^^^^^^^^
+[2025-09-11 12:02:19,517] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 689, in idle
+[2025-09-11 12:02:19,518] WARNING: stderr:     usleep(1000000 * sleeptime)
+[2025-09-11 12:02:19,518] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 965, in usleep
+[2025-09-11 12:02:19,519] WARNING: stderr:     _usleep(microseconds, self._sleep_obj)
+[2025-09-11 12:02:19,519] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 556, in _usleep
+[2025-09-11 12:02:19,519] WARNING: stderr:     _libc_usleep(int(microseconds))
+[2025-09-11 12:02:19,520] WARNING: stderr: KeyboardInterrupt
+[2025-09-11 12:05:31,998] INFO: Kivy: v2.3.1
+[2025-09-11 12:05:31,998] INFO: Logger: Record log in /home/pi/.kivy/logs/kivy_25-09-11_7.txt
+[2025-09-11 12:05:31,998] INFO: Kivy: Installed at "/home/pi/.local/lib/python3.11/site-packages/kivy/__init__.py"
+[2025-09-11 12:05:31,999] INFO: Python: v3.11.2 (main, Apr 28 2025, 14:11:48) [GCC 12.2.0]
+[2025-09-11 12:05:31,999] INFO: Python: Interpreter at "/usr/bin/python3"
+[2025-09-11 12:05:31,999] INFO: Logger: Purge log fired. Processing...
+[2025-09-11 12:05:32,000] INFO: Logger: Purge finished!
+[2025-09-11 12:05:32,031] INFO: Factory: 195 symbols loaded
+[2025-09-11 12:05:32,195] INFO: Image: Providers: img_tex, img_dds, img_sdl2, img_pil (img_ffpyplayer ignored)
+[2025-09-11 12:05:32,204] INFO: Text: Provider: sdl2
+[2025-09-11 12:05:32,219] INFO: Window: Provider: sdl2
+[2025-09-11 12:05:32,529] INFO: GL: Using the "OpenGL" graphics system
+[2025-09-11 12:05:32,530] INFO: GL: Backend used <sdl2>
+[2025-09-11 12:05:32,530] INFO: GL: OpenGL version <b'3.1 Mesa 24.2.8-1~bpo12+rpt3'>
+[2025-09-11 12:05:32,530] INFO: GL: OpenGL vendor <b'Broadcom'>
+[2025-09-11 12:05:32,531] INFO: GL: OpenGL renderer <b'V3D 7.1.10.2'>
+[2025-09-11 12:05:32,531] INFO: GL: OpenGL parsed version: 3, 1
+[2025-09-11 12:05:32,531] INFO: GL: Shading version <b'1.40'>
+[2025-09-11 12:05:32,531] INFO: GL: Texture max size <4096>
+[2025-09-11 12:05:32,531] INFO: GL: Texture max units <24>
+[2025-09-11 12:05:32,568] INFO: Window: auto add sdl2 input provider
+[2025-09-11 12:05:32,568] INFO: Window: virtual keyboard not allowed, single mode, not docked
+[2025-09-11 12:05:32,572] INFO: KivyMD: 2.0.1.dev0, git-Unknown, 2025-09-11 (installed at "/home/pi/.local/lib/python3.11/site-packages/kivymd/__init__.py")
+[2025-09-11 12:05:32,593] INFO: Clipboard: Provider: xclip
+[2025-09-11 12:05:32,593] INFO: CutBuffer: cut buffer support enabled
+[2025-09-11 12:05:33,363] INFO: Base: Start application main loop
+[2025-09-11 12:05:33,364] INFO: GL: NPOT texture support is available
+[2025-09-11 12:05:58,723] WARNING: Deprecated property "<BooleanProperty name=allow_stretch>" of object "<kivy.uix.image.Image object at 0x7ffebbe12970>" has been set, it will be removed in a future version
+[2025-09-11 12:05:58,723] WARNING: Deprecated property "<BooleanProperty name=keep_ratio>" of object "<kivy.uix.image.Image object at 0x7ffebbe12970>" was accessed, it will be removed in a future version
+[2025-09-11 12:06:08,001] INFO: toggle_recording called - current state: is_running=False, process=False
+[2025-09-11 12:06:08,001] INFO: start_recording called
+[2025-09-11 12:06:08,001] INFO: Reset workflow state for new recording
+[2025-09-11 12:06:08,001] INFO: Starting recording process with script: /home/pi/Desktop/v2_Tripple S/Aufnahme.py
+[2025-09-11 12:06:08,002] INFO: Aufnahme gestartet (PID: 31937)
+[2025-09-11 12:06:13,137] INFO: toggle_recording called - current state: is_running=True, process=True
+[2025-09-11 12:06:13,137] INFO: stop_recording called - is_running: True, process: True
+[2025-09-11 12:06:13,137] INFO: Stoppe Aufnahme (PID: 31937)...
+[2025-09-11 12:06:13,137] INFO: Sending SIGTERM to process 31937
+[2025-09-11 12:06:13,156] DEBUG: Recording stdout: Aufnahme.py - Audio Recording Script
+Press Ctrl+C or send SIGTERM to stop recording
+Audio recorder starting...
+Starting recording to: /home/pi/Desktop/v2_Tripple S/aufnahme.wav
+Using standardized path...
+[2025-09-11 12:06:13,156] INFO: Aufnahme gestoppt
+[2025-09-11 12:06:13,156] INFO: Creating workflow trigger after recording stop
+[2025-09-11 12:06:13,156] INFO: Attempting to create trigger file: /home/pi/Desktop/v2_Tripple S/workflow_trigger.txt
+[2025-09-11 12:06:13,166] INFO: Trigger file created atomically with lock
+[2025-09-11 12:06:13,166] INFO: Workflow-Trigger erstellt
+[2025-09-11 12:06:13,166] INFO: Starting workflow service via start_workflow_service.py
+[2025-09-11 12:06:18,168] INFO: Workflow-Service gestartet (läuft im Hintergrund)
+[2025-09-11 12:06:18,170] INFO: Started workflow status checking
+[2025-09-11 12:06:33,509] INFO: Base: Leaving application in progress...
+[2025-09-11 12:06:33,511] WARNING: stderr: Traceback (most recent call last):
+[2025-09-11 12:06:33,511] WARNING: stderr:   File "/home/pi/Desktop/v2_Tripple S/main.py", line 2360, in <module>
+[2025-09-11 12:06:34,075] WARNING: stderr:     app.run()
+[2025-09-11 12:06:34,076] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/app.py", line 956, in run
+[2025-09-11 12:06:37,273] WARNING: stderr:     runTouchApp()
+[2025-09-11 12:06:37,274] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 574, in runTouchApp
+[2025-09-11 12:06:38,590] WARNING: stderr:     EventLoop.mainloop()
+[2025-09-11 12:06:38,731] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 339, in mainloop
+[2025-09-11 12:06:38,736] WARNING: stderr:     self.idle()
+[2025-09-11 12:06:38,737] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 379, in idle
+[2025-09-11 12:06:38,738] WARNING: stderr:     Clock.tick()
+[2025-09-11 12:06:38,739] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 733, in tick
+[2025-09-11 12:06:38,745] WARNING: stderr:     self.post_idle(ts, self.idle())
+[2025-09-11 12:06:38,747] WARNING: stderr:                        ^^^^^^^^^^^
+[2025-09-11 12:06:38,749] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 689, in idle
+[2025-09-11 12:06:38,752] WARNING: stderr:     usleep(1000000 * sleeptime)
+[2025-09-11 12:06:38,753] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 965, in usleep
+[2025-09-11 12:06:38,753] WARNING: stderr:     _usleep(microseconds, self._sleep_obj)
+[2025-09-11 12:06:38,754] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 556, in _usleep
+[2025-09-11 12:06:38,754] WARNING: stderr:     _libc_usleep(int(microseconds))
+[2025-09-11 12:06:38,755] WARNING: stderr: KeyboardInterrupt
+[2025-09-11 12:07:11,031] INFO: Kivy: v2.3.1
+[2025-09-11 12:07:11,031] INFO: Logger: Record log in /home/pi/.kivy/logs/kivy_25-09-11_8.txt
+[2025-09-11 12:07:11,032] INFO: Kivy: Installed at "/home/pi/.local/lib/python3.11/site-packages/kivy/__init__.py"
+[2025-09-11 12:07:11,032] INFO: Python: v3.11.2 (main, Apr 28 2025, 14:11:48) [GCC 12.2.0]
+[2025-09-11 12:07:11,032] INFO: Python: Interpreter at "/usr/bin/python3"
+[2025-09-11 12:07:11,032] INFO: Logger: Purge log fired. Processing...
+[2025-09-11 12:07:11,033] INFO: Logger: Purge finished!
+[2025-09-11 12:07:11,078] INFO: Factory: 195 symbols loaded
+[2025-09-11 12:07:11,351] INFO: Image: Providers: img_tex, img_dds, img_sdl2, img_pil (img_ffpyplayer ignored)
+[2025-09-11 12:07:11,365] INFO: Text: Provider: sdl2
+[2025-09-11 12:07:11,401] INFO: Window: Provider: sdl2
+[2025-09-11 12:07:11,738] INFO: GL: Using the "OpenGL" graphics system
+[2025-09-11 12:07:11,739] INFO: GL: Backend used <sdl2>
+[2025-09-11 12:07:11,740] INFO: GL: OpenGL version <b'3.1 Mesa 24.2.8-1~bpo12+rpt3'>
+[2025-09-11 12:07:11,740] INFO: GL: OpenGL vendor <b'Broadcom'>
+[2025-09-11 12:07:11,740] INFO: GL: OpenGL renderer <b'V3D 7.1.10.2'>
+[2025-09-11 12:07:11,741] INFO: GL: OpenGL parsed version: 3, 1
+[2025-09-11 12:07:11,741] INFO: GL: Shading version <b'1.40'>
+[2025-09-11 12:07:11,741] INFO: GL: Texture max size <4096>
+[2025-09-11 12:07:11,741] INFO: GL: Texture max units <24>
+[2025-09-11 12:07:11,772] INFO: Window: auto add sdl2 input provider
+[2025-09-11 12:07:11,773] INFO: Window: virtual keyboard not allowed, single mode, not docked
+[2025-09-11 12:07:11,778] INFO: KivyMD: 2.0.1.dev0, git-Unknown, 2025-09-11 (installed at "/home/pi/.local/lib/python3.11/site-packages/kivymd/__init__.py")
+[2025-09-11 12:07:11,798] INFO: Clipboard: Provider: xclip
+[2025-09-11 12:07:11,798] INFO: CutBuffer: cut buffer support enabled
+[2025-09-11 12:07:12,521] INFO: Base: Start application main loop
+[2025-09-11 12:07:12,523] INFO: GL: NPOT texture support is available
+[2025-09-11 12:07:24,425] WARNING: Deprecated property "<BooleanProperty name=allow_stretch>" of object "<kivy.uix.image.Image object at 0x7fff9bc4e970>" has been set, it will be removed in a future version
+[2025-09-11 12:07:24,426] WARNING: Deprecated property "<BooleanProperty name=keep_ratio>" of object "<kivy.uix.image.Image object at 0x7fff9bc4e970>" was accessed, it will be removed in a future version
+[2025-09-11 12:07:37,560] INFO: toggle_recording called - current state: is_running=False, process=False
+[2025-09-11 12:07:37,560] INFO: start_recording called
+[2025-09-11 12:07:37,560] INFO: Reset workflow state for new recording
+[2025-09-11 12:07:37,560] INFO: Starting recording process with script: /home/pi/Desktop/v2_Tripple S/Aufnahme.py
+[2025-09-11 12:07:37,561] INFO: Aufnahme gestartet (PID: 32082)
+[2025-09-11 12:07:44,683] INFO: toggle_recording called - current state: is_running=True, process=True
+[2025-09-11 12:07:44,684] INFO: stop_recording called - is_running: True, process: True
+[2025-09-11 12:07:44,684] INFO: Stoppe Aufnahme (PID: 32082)...
+[2025-09-11 12:07:44,684] INFO: Sending SIGTERM to process 32082
+[2025-09-11 12:07:44,722] DEBUG: Recording stdout: Aufnahme.py - Audio Recording Script
+Press Ctrl+C or send SIGTERM to stop recording
+Audio recorder starting...
+Starting recording to: /home/pi/Desktop/v2_Tripple S/aufnahme.wav
+Using standardized path...
+[2025-09-11 12:07:44,723] INFO: Aufnahme gestoppt
+[2025-09-11 12:07:44,723] INFO: Creating workflow trigger after recording stop
+[2025-09-11 12:07:44,723] INFO: Attempting to create trigger file: /home/pi/Desktop/v2_Tripple S/workflow_trigger.txt
+[2025-09-11 12:07:44,731] INFO: Trigger file created atomically with lock
+[2025-09-11 12:07:44,731] INFO: Workflow-Trigger erstellt
+[2025-09-11 12:07:44,731] INFO: Starting workflow service via start_workflow_service.py
+[2025-09-11 12:07:49,733] INFO: Workflow-Service gestartet (läuft im Hintergrund)
+[2025-09-11 12:07:49,737] INFO: Started workflow status checking
+[2025-09-11 12:08:04,953] INFO: close_popup called
+[2025-09-11 12:08:04,953] INFO: Stopped workflow status checking
+[2025-09-11 12:08:04,953] INFO: Removed popup from parent widget
+[2025-09-11 12:08:08,291] INFO: Base: Leaving application in progress...
+[2025-09-11 12:43:20,113] INFO: Kivy: v2.3.1
+[2025-09-11 12:43:20,114] INFO: Logger: Record log in /home/pi/.kivy/logs/kivy_25-09-11_9.txt
+[2025-09-11 12:43:20,114] INFO: Kivy: Installed at "/home/pi/.local/lib/python3.11/site-packages/kivy/__init__.py"
+[2025-09-11 12:43:20,114] INFO: Python: v3.11.2 (main, Apr 28 2025, 14:11:48) [GCC 12.2.0]
+[2025-09-11 12:43:20,114] INFO: Python: Interpreter at "/usr/bin/python3"
+[2025-09-11 12:43:20,114] INFO: Logger: Purge log fired. Processing...
+[2025-09-11 12:43:20,116] INFO: Logger: Purge finished!
+[2025-09-11 12:43:20,161] INFO: Factory: 195 symbols loaded
+[2025-09-11 12:43:20,374] INFO: Image: Providers: img_tex, img_dds, img_sdl2, img_pil (img_ffpyplayer ignored)
+[2025-09-11 12:43:20,386] INFO: Text: Provider: sdl2
+[2025-09-11 12:43:20,413] INFO: Window: Provider: sdl2
+[2025-09-11 12:43:20,729] INFO: GL: Using the "OpenGL" graphics system
+[2025-09-11 12:43:20,731] INFO: GL: Backend used <sdl2>
+[2025-09-11 12:43:20,731] INFO: GL: OpenGL version <b'3.1 Mesa 24.2.8-1~bpo12+rpt3'>
+[2025-09-11 12:43:20,731] INFO: GL: OpenGL vendor <b'Broadcom'>
+[2025-09-11 12:43:20,732] INFO: GL: OpenGL renderer <b'V3D 7.1.10.2'>
+[2025-09-11 12:43:20,732] INFO: GL: OpenGL parsed version: 3, 1
+[2025-09-11 12:43:20,732] INFO: GL: Shading version <b'1.40'>
+[2025-09-11 12:43:20,732] INFO: GL: Texture max size <4096>
+[2025-09-11 12:43:20,732] INFO: GL: Texture max units <24>
+[2025-09-11 12:43:20,767] INFO: Window: auto add sdl2 input provider
+[2025-09-11 12:43:20,768] INFO: Window: virtual keyboard not allowed, single mode, not docked
+[2025-09-11 12:43:20,773] INFO: KivyMD: 2.0.1.dev0, git-Unknown, 2025-09-11 (installed at "/home/pi/.local/lib/python3.11/site-packages/kivymd/__init__.py")
+[2025-09-11 12:43:20,793] INFO: Clipboard: Provider: xclip
+[2025-09-11 12:43:20,794] INFO: CutBuffer: cut buffer support enabled
+[2025-09-11 12:43:21,549] INFO: Base: Start application main loop
+[2025-09-11 12:43:21,551] INFO: GL: NPOT texture support is available
+[2025-09-11 12:43:32,140] WARNING: Deprecated property "<BooleanProperty name=allow_stretch>" of object "<kivy.uix.image.Image object at 0x7fff155ae970>" has been set, it will be removed in a future version
+[2025-09-11 12:43:32,141] WARNING: Deprecated property "<BooleanProperty name=keep_ratio>" of object "<kivy.uix.image.Image object at 0x7fff155ae970>" was accessed, it will be removed in a future version
+[2025-09-11 12:43:37,353] INFO: toggle_recording called - current state: is_running=False, process=False
+[2025-09-11 12:43:37,353] INFO: start_recording called
+[2025-09-11 12:43:37,353] INFO: Reset workflow state for new recording
+[2025-09-11 12:43:37,353] INFO: Starting recording process with script: /home/pi/Desktop/v2_Tripple S/Aufnahme.py
+[2025-09-11 12:43:37,354] INFO: Aufnahme gestartet (PID: 33502)
+[2025-09-11 12:43:44,625] INFO: toggle_recording called - current state: is_running=True, process=True
+[2025-09-11 12:43:44,625] INFO: stop_recording called - is_running: True, process: True
+[2025-09-11 12:43:44,625] INFO: Stoppe Aufnahme (PID: 33502)...
+[2025-09-11 12:43:44,628] INFO: Sending SIGTERM to process 33502
+[2025-09-11 12:43:44,714] DEBUG: Recording stdout: Aufnahme.py - Audio Recording Script
+Press Ctrl+C or send SIGTERM to stop recording
+Audio recorder starting...
+Starting recording to: /home/pi/Desktop/v2_Tripple S/aufnahme.wav
+Using standardized path...
+[2025-09-11 12:43:44,714] INFO: Aufnahme gestoppt
+[2025-09-11 12:43:44,714] INFO: Creating workflow trigger after recording stop
+[2025-09-11 12:43:44,714] INFO: Attempting to create trigger file: /home/pi/Desktop/v2_Tripple S/workflow_trigger.txt
+[2025-09-11 12:43:44,719] INFO: Trigger file created atomically with lock
+[2025-09-11 12:43:44,719] INFO: Workflow-Trigger erstellt
+[2025-09-11 12:43:44,719] INFO: Starting workflow service via start_workflow_service.py
+[2025-09-11 12:43:49,721] INFO: Workflow-Service gestartet (läuft im Hintergrund)
+[2025-09-11 12:43:49,722] INFO: Started workflow status checking
+[2025-09-11 12:44:11,607] INFO: close_popup called
+[2025-09-11 12:44:11,608] INFO: Stopped workflow status checking
+[2025-09-11 12:44:11,608] INFO: Removed popup from parent widget
+[2025-09-11 12:44:42,432] INFO: Base: Leaving application in progress...
+[2025-09-11 12:44:42,434] WARNING: stderr: Traceback (most recent call last):
+[2025-09-11 12:44:42,435] WARNING: stderr:   File "/home/pi/Desktop/v2_Tripple S/main.py", line 2360, in <module>
+[2025-09-11 12:44:42,436] WARNING: stderr:     app.run()
+[2025-09-11 12:44:42,436] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/app.py", line 956, in run
+[2025-09-11 12:44:42,438] WARNING: stderr:     runTouchApp()
+[2025-09-11 12:44:42,439] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 574, in runTouchApp
+[2025-09-11 12:44:42,440] WARNING: stderr:     EventLoop.mainloop()
+[2025-09-11 12:44:42,441] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 339, in mainloop
+[2025-09-11 12:44:42,441] WARNING: stderr:     self.idle()
+[2025-09-11 12:44:42,442] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 379, in idle
+[2025-09-11 12:44:42,443] WARNING: stderr:     Clock.tick()
+[2025-09-11 12:44:42,444] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 733, in tick
+[2025-09-11 12:44:42,444] WARNING: stderr:     self.post_idle(ts, self.idle())
+[2025-09-11 12:44:42,445] WARNING: stderr:                        ^^^^^^^^^^^
+[2025-09-11 12:44:42,445] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 689, in idle
+[2025-09-11 12:44:42,445] WARNING: stderr:     usleep(1000000 * sleeptime)
+[2025-09-11 12:44:42,446] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 965, in usleep
+[2025-09-11 12:44:42,447] WARNING: stderr:     _usleep(microseconds, self._sleep_obj)
+[2025-09-11 12:44:42,447] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 556, in _usleep
+[2025-09-11 12:44:42,448] WARNING: stderr:     _libc_usleep(int(microseconds))
+[2025-09-11 12:44:42,448] WARNING: stderr: KeyboardInterrupt
+[2025-09-11 13:14:15,094] INFO: Kivy: v2.3.1
+[2025-09-11 13:14:15,094] INFO: Logger: Record log in /home/pi/.kivy/logs/kivy_25-09-11_10.txt
+[2025-09-11 13:14:15,094] INFO: Kivy: Installed at "/home/pi/.local/lib/python3.11/site-packages/kivy/__init__.py"
+[2025-09-11 13:14:15,095] INFO: Python: v3.11.2 (main, Apr 28 2025, 14:11:48) [GCC 12.2.0]
+[2025-09-11 13:14:15,095] INFO: Python: Interpreter at "/usr/bin/python3"
+[2025-09-11 13:14:15,095] INFO: Logger: Purge log fired. Processing...
+[2025-09-11 13:14:15,096] INFO: Logger: Purge finished!
+[2025-09-11 13:14:15,132] INFO: Factory: 195 symbols loaded
+[2025-09-11 13:14:15,313] INFO: Image: Providers: img_tex, img_dds, img_sdl2, img_pil (img_ffpyplayer ignored)
+[2025-09-11 13:14:15,322] INFO: Text: Provider: sdl2
+[2025-09-11 13:14:15,343] INFO: Window: Provider: sdl2
+[2025-09-11 13:14:15,662] INFO: GL: Using the "OpenGL" graphics system
+[2025-09-11 13:14:15,663] INFO: GL: Backend used <sdl2>
+[2025-09-11 13:14:15,664] INFO: GL: OpenGL version <b'3.1 Mesa 24.2.8-1~bpo12+rpt3'>
+[2025-09-11 13:14:15,664] INFO: GL: OpenGL vendor <b'Broadcom'>
+[2025-09-11 13:14:15,664] INFO: GL: OpenGL renderer <b'V3D 7.1.10.2'>
+[2025-09-11 13:14:15,664] INFO: GL: OpenGL parsed version: 3, 1
+[2025-09-11 13:14:15,664] INFO: GL: Shading version <b'1.40'>
+[2025-09-11 13:14:15,664] INFO: GL: Texture max size <4096>
+[2025-09-11 13:14:15,664] INFO: GL: Texture max units <24>
+[2025-09-11 13:14:15,695] INFO: Window: auto add sdl2 input provider
+[2025-09-11 13:14:15,696] INFO: Window: virtual keyboard not allowed, single mode, not docked
+[2025-09-11 13:14:15,699] INFO: KivyMD: 2.0.1.dev0, git-Unknown, 2025-09-11 (installed at "/home/pi/.local/lib/python3.11/site-packages/kivymd/__init__.py")
+[2025-09-11 13:14:15,776] INFO: Clipboard: Provider: xclip
+[2025-09-11 13:14:15,776] INFO: CutBuffer: cut buffer support enabled
+[2025-09-11 13:14:16,484] INFO: Base: Start application main loop
+[2025-09-11 13:14:16,486] INFO: GL: NPOT texture support is available
+[2025-09-11 13:14:25,139] WARNING: Deprecated property "<BooleanProperty name=allow_stretch>" of object "<kivy.uix.image.Image object at 0x7ffefaf9e970>" has been set, it will be removed in a future version
+[2025-09-11 13:14:25,142] WARNING: Deprecated property "<BooleanProperty name=keep_ratio>" of object "<kivy.uix.image.Image object at 0x7ffefaf9e970>" was accessed, it will be removed in a future version
+[2025-09-11 13:14:30,277] INFO: close_popup called
+[2025-09-11 13:14:30,277] INFO: Removed popup from parent widget
+[2025-09-11 13:14:46,714] INFO: toggle_recording called - current state: is_running=False, process=False
+[2025-09-11 13:14:46,714] INFO: start_recording called
+[2025-09-11 13:14:46,718] INFO: Reset workflow state for new recording
+[2025-09-11 13:14:46,718] INFO: Starting recording process with script: /home/pi/Desktop/v2_Tripple S/Aufnahme.py
+[2025-09-11 13:14:46,719] INFO: Aufnahme gestartet (PID: 34573)
+[2025-09-11 13:14:46,720] INFO: toggle_recording called - current state: is_running=True, process=True
+[2025-09-11 13:14:46,721] INFO: stop_recording called - is_running: True, process: True
+[2025-09-11 13:14:46,721] INFO: Stoppe Aufnahme (PID: 34573)...
+[2025-09-11 13:14:46,721] INFO: Sending SIGTERM to process 34573
+[2025-09-11 13:14:46,722] INFO: Aufnahme gestoppt
+[2025-09-11 13:14:46,722] INFO: Creating workflow trigger after recording stop
+[2025-09-11 13:14:46,722] INFO: Attempting to create trigger file: /home/pi/Desktop/v2_Tripple S/workflow_trigger.txt
+[2025-09-11 13:14:46,731] INFO: Trigger file created atomically with lock
+[2025-09-11 13:14:46,731] INFO: Workflow-Trigger erstellt
+[2025-09-11 13:14:46,732] INFO: Starting workflow service via start_workflow_service.py
+[2025-09-11 13:14:46,794] INFO: Workflow-Service erfolgreich gestartet
+[2025-09-11 13:14:46,794] INFO: Started workflow status checking
+[2025-09-11 13:15:05,088] INFO: close_popup called
+[2025-09-11 13:15:05,088] INFO: Stopped workflow status checking
+[2025-09-11 13:15:05,088] INFO: Removed popup from parent widget
+[2025-09-11 13:15:26,391] INFO: toggle_recording called - current state: is_running=False, process=False
+[2025-09-11 13:15:26,392] INFO: start_recording called
+[2025-09-11 13:15:26,392] INFO: Reset workflow state for new recording
+[2025-09-11 13:15:26,392] INFO: Starting recording process with script: /home/pi/Desktop/v2_Tripple S/Aufnahme.py
+[2025-09-11 13:15:26,393] INFO: Aufnahme gestartet (PID: 34618)
+[2025-09-11 13:15:31,881] INFO: toggle_recording called - current state: is_running=True, process=True
+[2025-09-11 13:15:31,881] INFO: stop_recording called - is_running: True, process: True
+[2025-09-11 13:15:31,881] INFO: Stoppe Aufnahme (PID: 34618)...
+[2025-09-11 13:15:31,881] INFO: Sending SIGTERM to process 34618
+[2025-09-11 13:15:31,970] DEBUG: Recording stdout: Aufnahme.py - Audio Recording Script
+Press Ctrl+C or send SIGTERM to stop recording
+Audio recorder starting...
+Starting recording to: /home/pi/Desktop/v2_Tripple S/aufnahme.wav
+Using standardized path...
+[2025-09-11 13:15:31,970] INFO: Aufnahme gestoppt
+[2025-09-11 13:15:31,970] INFO: Creating workflow trigger after recording stop
+[2025-09-11 13:15:31,970] INFO: Attempting to create trigger file: /home/pi/Desktop/v2_Tripple S/workflow_trigger.txt
+[2025-09-11 13:15:31,979] INFO: Trigger file created atomically with lock
+[2025-09-11 13:15:31,979] INFO: Workflow-Trigger erstellt
+[2025-09-11 13:15:31,979] INFO: Starting workflow service via start_workflow_service.py
+[2025-09-11 13:15:36,981] INFO: Workflow-Service gestartet (läuft im Hintergrund)
+[2025-09-11 13:15:36,982] INFO: Started workflow status checking
+[2025-09-11 13:15:47,905] INFO: close_popup called
+[2025-09-11 13:15:47,905] INFO: Stopped workflow status checking
+[2025-09-11 13:15:47,912] INFO: Removed popup from parent widget
+[2025-09-11 13:16:11,117] INFO: Base: Leaving application in progress...
+[2025-09-11 13:16:11,118] WARNING: stderr: Traceback (most recent call last):
+[2025-09-11 13:16:11,119] WARNING: stderr:   File "/home/pi/Desktop/v2_Tripple S/main.py", line 2360, in <module>
+[2025-09-11 13:16:11,120] WARNING: stderr:     app.run()
+[2025-09-11 13:16:11,120] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/app.py", line 956, in run
+[2025-09-11 13:16:11,121] WARNING: stderr:     runTouchApp()
+[2025-09-11 13:16:11,121] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 574, in runTouchApp
+[2025-09-11 13:16:11,122] WARNING: stderr:     EventLoop.mainloop()
+[2025-09-11 13:16:11,123] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 339, in mainloop
+[2025-09-11 13:16:11,123] WARNING: stderr:     self.idle()
+[2025-09-11 13:16:11,123] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 379, in idle
+[2025-09-11 13:16:11,124] WARNING: stderr:     Clock.tick()
+[2025-09-11 13:16:11,124] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 733, in tick
+[2025-09-11 13:16:11,125] WARNING: stderr:     self.post_idle(ts, self.idle())
+[2025-09-11 13:16:11,125] WARNING: stderr:                        ^^^^^^^^^^^
+[2025-09-11 13:16:11,125] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 689, in idle
+[2025-09-11 13:16:11,126] WARNING: stderr:     usleep(1000000 * sleeptime)
+[2025-09-11 13:16:11,126] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 965, in usleep
+[2025-09-11 13:16:11,127] WARNING: stderr:     _usleep(microseconds, self._sleep_obj)
+[2025-09-11 13:16:11,127] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 556, in _usleep
+[2025-09-11 13:16:11,128] WARNING: stderr:     _libc_usleep(int(microseconds))
+[2025-09-11 13:16:11,129] WARNING: stderr: KeyboardInterrupt
+[2025-09-11 13:36:55,951] INFO: Kivy: v2.3.1
+[2025-09-11 13:36:55,951] INFO: Logger: Record log in /home/pi/.kivy/logs/kivy_25-09-11_11.txt
+[2025-09-11 13:36:55,952] INFO: Kivy: Installed at "/home/pi/.local/lib/python3.11/site-packages/kivy/__init__.py"
+[2025-09-11 13:36:55,952] INFO: Python: v3.11.2 (main, Apr 28 2025, 14:11:48) [GCC 12.2.0]
+[2025-09-11 13:36:55,952] INFO: Python: Interpreter at "/usr/bin/python3"
+[2025-09-11 13:36:55,952] INFO: Logger: Purge log fired. Processing...
+[2025-09-11 13:36:55,957] INFO: Logger: Purge finished!
+[2025-09-11 13:36:55,998] INFO: Factory: 195 symbols loaded
+[2025-09-11 13:36:56,200] INFO: Image: Providers: img_tex, img_dds, img_sdl2, img_pil (img_ffpyplayer ignored)
+[2025-09-11 13:36:56,212] INFO: Text: Provider: sdl2
+[2025-09-11 13:36:56,234] INFO: Window: Provider: sdl2
+[2025-09-11 13:36:56,573] INFO: GL: Using the "OpenGL" graphics system
+[2025-09-11 13:36:56,573] INFO: GL: Backend used <sdl2>
+[2025-09-11 13:36:56,573] INFO: GL: OpenGL version <b'3.1 Mesa 24.2.8-1~bpo12+rpt3'>
+[2025-09-11 13:36:56,574] INFO: GL: OpenGL vendor <b'Broadcom'>
+[2025-09-11 13:36:56,574] INFO: GL: OpenGL renderer <b'V3D 7.1.10.2'>
+[2025-09-11 13:36:56,574] INFO: GL: OpenGL parsed version: 3, 1
+[2025-09-11 13:36:56,574] INFO: GL: Shading version <b'1.40'>
+[2025-09-11 13:36:56,574] INFO: GL: Texture max size <4096>
+[2025-09-11 13:36:56,574] INFO: GL: Texture max units <24>
+[2025-09-11 13:36:56,604] INFO: Window: auto add sdl2 input provider
+[2025-09-11 13:36:56,604] INFO: Window: virtual keyboard not allowed, single mode, not docked
+[2025-09-11 13:36:56,609] INFO: KivyMD: 2.0.1.dev0, git-Unknown, 2025-09-11 (installed at "/home/pi/.local/lib/python3.11/site-packages/kivymd/__init__.py")
+[2025-09-11 13:36:56,628] INFO: Clipboard: Provider: xclip
+[2025-09-11 13:36:56,629] INFO: CutBuffer: cut buffer support enabled
+[2025-09-11 13:36:57,585] INFO: Base: Start application main loop
+[2025-09-11 13:36:57,588] INFO: GL: NPOT texture support is available
+[2025-09-11 13:37:04,712] WARNING: Deprecated property "<BooleanProperty name=allow_stretch>" of object "<kivy.uix.image.Image object at 0x7fff7a41e970>" has been set, it will be removed in a future version
+[2025-09-11 13:37:04,712] WARNING: Deprecated property "<BooleanProperty name=keep_ratio>" of object "<kivy.uix.image.Image object at 0x7fff7a41e970>" was accessed, it will be removed in a future version
+[2025-09-11 13:37:06,981] INFO: toggle_recording called - current state: is_running=False, process=False
+[2025-09-11 13:37:06,982] INFO: start_recording called
+[2025-09-11 13:37:06,982] INFO: Reset workflow state for new recording
+[2025-09-11 13:37:06,982] INFO: Starting recording process with script: /home/pi/Desktop/v2_Tripple S/Aufnahme.py
+[2025-09-11 13:37:06,983] INFO: Aufnahme gestartet (PID: 35401)
+[2025-09-11 13:37:20,027] INFO: toggle_recording called - current state: is_running=True, process=True
+[2025-09-11 13:37:20,027] INFO: stop_recording called - is_running: True, process: True
+[2025-09-11 13:37:20,027] INFO: Stoppe Aufnahme (PID: 35401)...
+[2025-09-11 13:37:20,028] INFO: Sending SIGTERM to process 35401
+[2025-09-11 13:37:20,051] DEBUG: Recording stdout: Aufnahme.py - Audio Recording Script
+Press Ctrl+C or send SIGTERM to stop recording
+Audio recorder starting...
+Starting recording to: /home/pi/Desktop/v2_Tripple S/aufnahme.wav
+Using standardized path...
+[2025-09-11 13:37:20,052] INFO: Aufnahme gestoppt
+[2025-09-11 13:37:20,052] INFO: Creating workflow trigger after recording stop
+[2025-09-11 13:37:20,053] INFO: Attempting to create trigger file: /home/pi/Desktop/v2_Tripple S/workflow_trigger.txt
+[2025-09-11 13:37:20,062] INFO: Trigger file created atomically with lock
+[2025-09-11 13:37:20,062] INFO: Workflow-Trigger erstellt
+[2025-09-11 13:37:20,063] INFO: Starting workflow service via start_workflow_service.py
+[2025-09-11 13:37:25,065] INFO: Workflow-Service gestartet (läuft im Hintergrund)
+[2025-09-11 13:37:25,065] INFO: Started workflow status checking
+[2025-09-11 13:37:45,677] INFO: close_popup called
+[2025-09-11 13:37:45,677] INFO: Stopped workflow status checking
+[2025-09-11 13:37:45,677] INFO: Removed popup from parent widget
+[2025-09-11 13:38:03,056] INFO: Base: Leaving application in progress...
+[2025-09-11 13:38:03,057] WARNING: stderr: Traceback (most recent call last):
+[2025-09-11 13:38:03,057] WARNING: stderr:   File "/home/pi/Desktop/v2_Tripple S/main.py", line 2360, in <module>
+[2025-09-11 13:38:03,058] WARNING: stderr:     app.run()
+[2025-09-11 13:38:03,058] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/app.py", line 956, in run
+[2025-09-11 13:38:03,058] WARNING: stderr:     runTouchApp()
+[2025-09-11 13:38:03,058] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 574, in runTouchApp
+[2025-09-11 13:38:03,058] WARNING: stderr:     EventLoop.mainloop()
+[2025-09-11 13:38:03,059] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 339, in mainloop
+[2025-09-11 13:38:03,059] WARNING: stderr:     self.idle()
+[2025-09-11 13:38:03,059] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 379, in idle
+[2025-09-11 13:38:03,059] WARNING: stderr:     Clock.tick()
+[2025-09-11 13:38:03,059] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 733, in tick
+[2025-09-11 13:38:03,060] WARNING: stderr:     self.post_idle(ts, self.idle())
+[2025-09-11 13:38:03,060] WARNING: stderr:                        ^^^^^^^^^^^
+[2025-09-11 13:38:03,060] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 689, in idle
+[2025-09-11 13:38:03,060] WARNING: stderr:     usleep(1000000 * sleeptime)
+[2025-09-11 13:38:03,060] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 965, in usleep
+[2025-09-11 13:38:03,061] WARNING: stderr:     _usleep(microseconds, self._sleep_obj)
+[2025-09-11 13:38:03,062] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 556, in _usleep
+[2025-09-11 13:38:03,062] WARNING: stderr:     _libc_usleep(int(microseconds))
+[2025-09-11 13:38:03,062] WARNING: stderr: KeyboardInterrupt
+[2025-09-11 13:43:19,642] INFO: Kivy: v2.3.1
+[2025-09-11 13:43:19,642] INFO: Logger: Record log in /home/pi/.kivy/logs/kivy_25-09-11_12.txt
+[2025-09-11 13:43:19,643] INFO: Kivy: Installed at "/home/pi/.local/lib/python3.11/site-packages/kivy/__init__.py"
+[2025-09-11 13:43:19,643] INFO: Python: v3.11.2 (main, Apr 28 2025, 14:11:48) [GCC 12.2.0]
+[2025-09-11 13:43:19,643] INFO: Python: Interpreter at "/usr/bin/python3"
+[2025-09-11 13:43:19,643] INFO: Logger: Purge log fired. Processing...
+[2025-09-11 13:43:19,644] INFO: Logger: Purge finished!
+[2025-09-11 13:43:19,675] INFO: Factory: 195 symbols loaded
+[2025-09-11 13:43:19,845] INFO: Image: Providers: img_tex, img_dds, img_sdl2, img_pil (img_ffpyplayer ignored)
+[2025-09-11 13:43:19,853] INFO: Text: Provider: sdl2
+[2025-09-11 13:43:19,869] INFO: Window: Provider: sdl2
+[2025-09-11 13:43:20,184] INFO: GL: Using the "OpenGL" graphics system
+[2025-09-11 13:43:20,185] INFO: GL: Backend used <sdl2>
+[2025-09-11 13:43:20,185] INFO: GL: OpenGL version <b'3.1 Mesa 24.2.8-1~bpo12+rpt3'>
+[2025-09-11 13:43:20,185] INFO: GL: OpenGL vendor <b'Broadcom'>
+[2025-09-11 13:43:20,185] INFO: GL: OpenGL renderer <b'V3D 7.1.10.2'>
+[2025-09-11 13:43:20,185] INFO: GL: OpenGL parsed version: 3, 1
+[2025-09-11 13:43:20,186] INFO: GL: Shading version <b'1.40'>
+[2025-09-11 13:43:20,186] INFO: GL: Texture max size <4096>
+[2025-09-11 13:43:20,186] INFO: GL: Texture max units <24>
+[2025-09-11 13:43:20,215] INFO: Window: auto add sdl2 input provider
+[2025-09-11 13:43:20,216] INFO: Window: virtual keyboard not allowed, single mode, not docked
+[2025-09-11 13:43:20,219] INFO: KivyMD: 2.0.1.dev0, git-Unknown, 2025-09-11 (installed at "/home/pi/.local/lib/python3.11/site-packages/kivymd/__init__.py")
+[2025-09-11 13:43:20,234] INFO: Clipboard: Provider: xclip
+[2025-09-11 13:43:20,234] INFO: CutBuffer: cut buffer support enabled
+[2025-09-11 13:43:21,063] INFO: Base: Start application main loop
+[2025-09-11 13:43:21,065] INFO: GL: NPOT texture support is available
+[2025-09-11 13:43:29,363] WARNING: Deprecated property "<BooleanProperty name=allow_stretch>" of object "<kivy.uix.image.Image object at 0x7fff0b0ee970>" has been set, it will be removed in a future version
+[2025-09-11 13:43:29,363] WARNING: Deprecated property "<BooleanProperty name=keep_ratio>" of object "<kivy.uix.image.Image object at 0x7fff0b0ee970>" was accessed, it will be removed in a future version
+[2025-09-11 13:43:31,799] INFO: toggle_recording called - current state: is_running=False, process=False
+[2025-09-11 13:43:31,800] INFO: start_recording called
+[2025-09-11 13:43:31,800] INFO: Reset workflow state for new recording
+[2025-09-11 13:43:31,800] INFO: Starting recording process with script: /home/pi/Desktop/v2_Tripple S/Aufnahme.py
+[2025-09-11 13:43:31,801] INFO: Aufnahme gestartet (PID: 35728)
+[2025-09-11 13:43:44,880] INFO: toggle_recording called - current state: is_running=True, process=True
+[2025-09-11 13:43:44,880] INFO: stop_recording called - is_running: True, process: True
+[2025-09-11 13:43:44,880] INFO: Stoppe Aufnahme (PID: 35728)...
+[2025-09-11 13:43:44,881] INFO: Sending SIGTERM to process 35728
+[2025-09-11 13:43:44,981] DEBUG: Recording stdout: Aufnahme.py - Audio Recording Script
+Press Ctrl+C or send SIGTERM to stop recording
+Audio recorder starting...
+Starting recording to: /home/pi/Desktop/v2_Tripple S/aufnahme.wav
+Using standardized path...
+[2025-09-11 13:43:44,982] INFO: Aufnahme gestoppt
+[2025-09-11 13:43:44,982] INFO: Creating workflow trigger after recording stop
+[2025-09-11 13:43:44,983] INFO: Attempting to create trigger file: /home/pi/Desktop/v2_Tripple S/workflow_trigger.txt
+[2025-09-11 13:43:44,995] INFO: Trigger file created atomically with lock
+[2025-09-11 13:43:44,996] INFO: Workflow-Trigger erstellt
+[2025-09-11 13:43:44,996] INFO: Starting workflow service via start_workflow_service.py
+[2025-09-11 13:43:49,998] INFO: Workflow-Service gestartet (läuft im Hintergrund)
+[2025-09-11 13:43:51,345] INFO: Started workflow status checking
+[2025-09-11 13:44:07,114] INFO: close_popup called
+[2025-09-11 13:44:07,115] INFO: Stopped workflow status checking
+[2025-09-11 13:44:07,115] INFO: Removed popup from parent widget
+[2025-09-11 13:46:25,275] INFO: Base: Leaving application in progress...
+[2025-09-11 13:46:25,276] WARNING: stderr: Traceback (most recent call last):
+[2025-09-11 13:46:25,276] WARNING: stderr:   File "/home/pi/Desktop/v2_Tripple S/main.py", line 2360, in <module>
+[2025-09-11 13:46:25,277] WARNING: stderr:     app.run()
+[2025-09-11 13:46:25,277] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/app.py", line 956, in run
+[2025-09-11 13:46:25,278] WARNING: stderr:     runTouchApp()
+[2025-09-11 13:46:25,278] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 574, in runTouchApp
+[2025-09-11 13:46:25,278] WARNING: stderr:     EventLoop.mainloop()
+[2025-09-11 13:46:25,279] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 339, in mainloop
+[2025-09-11 13:46:25,279] WARNING: stderr:     self.idle()
+[2025-09-11 13:46:25,279] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 379, in idle
+[2025-09-11 13:46:25,279] WARNING: stderr:     Clock.tick()
+[2025-09-11 13:46:25,279] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 733, in tick
+[2025-09-11 13:46:25,280] WARNING: stderr:     self.post_idle(ts, self.idle())
+[2025-09-11 13:46:25,280] WARNING: stderr:                        ^^^^^^^^^^^
+[2025-09-11 13:46:25,280] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 689, in idle
+[2025-09-11 13:46:25,280] WARNING: stderr:     usleep(1000000 * sleeptime)
+[2025-09-11 13:46:25,280] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 965, in usleep
+[2025-09-11 13:46:25,281] WARNING: stderr:     _usleep(microseconds, self._sleep_obj)
+[2025-09-11 13:46:25,281] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 556, in _usleep
+[2025-09-11 13:46:25,281] WARNING: stderr:     _libc_usleep(int(microseconds))
+[2025-09-11 13:46:25,282] WARNING: stderr: KeyboardInterrupt
+[2025-09-11 13:46:32,359] INFO: Kivy: v2.3.1
+[2025-09-11 13:46:32,360] INFO: Logger: Record log in /home/pi/.kivy/logs/kivy_25-09-11_13.txt
+[2025-09-11 13:46:32,360] INFO: Kivy: Installed at "/home/pi/.local/lib/python3.11/site-packages/kivy/__init__.py"
+[2025-09-11 13:46:32,360] INFO: Python: v3.11.2 (main, Apr 28 2025, 14:11:48) [GCC 12.2.0]
+[2025-09-11 13:46:32,360] INFO: Python: Interpreter at "/usr/bin/python3"
+[2025-09-11 13:46:32,360] INFO: Logger: Purge log fired. Processing...
+[2025-09-11 13:46:32,361] INFO: Logger: Purge finished!
+[2025-09-11 13:46:32,400] INFO: Factory: 195 symbols loaded
+[2025-09-11 13:46:32,577] INFO: Image: Providers: img_tex, img_dds, img_sdl2, img_pil (img_ffpyplayer ignored)
+[2025-09-11 13:46:32,586] INFO: Text: Provider: sdl2
+[2025-09-11 13:46:32,607] INFO: Window: Provider: sdl2
+[2025-09-11 13:46:32,942] INFO: GL: Using the "OpenGL" graphics system
+[2025-09-11 13:46:32,943] INFO: GL: Backend used <sdl2>
+[2025-09-11 13:46:32,943] INFO: GL: OpenGL version <b'3.1 Mesa 24.2.8-1~bpo12+rpt3'>
+[2025-09-11 13:46:32,943] INFO: GL: OpenGL vendor <b'Broadcom'>
+[2025-09-11 13:46:32,943] INFO: GL: OpenGL renderer <b'V3D 7.1.10.2'>
+[2025-09-11 13:46:32,944] INFO: GL: OpenGL parsed version: 3, 1
+[2025-09-11 13:46:32,944] INFO: GL: Shading version <b'1.40'>
+[2025-09-11 13:46:32,944] INFO: GL: Texture max size <4096>
+[2025-09-11 13:46:32,944] INFO: GL: Texture max units <24>
+[2025-09-11 13:46:32,977] INFO: Window: auto add sdl2 input provider
+[2025-09-11 13:46:32,977] INFO: Window: virtual keyboard not allowed, single mode, not docked
+[2025-09-11 13:46:32,980] INFO: KivyMD: 2.0.1.dev0, git-Unknown, 2025-09-11 (installed at "/home/pi/.local/lib/python3.11/site-packages/kivymd/__init__.py")
+[2025-09-11 13:46:32,998] INFO: Clipboard: Provider: xclip
+[2025-09-11 13:46:32,998] INFO: CutBuffer: cut buffer support enabled
+[2025-09-11 13:46:33,772] INFO: Base: Start application main loop
+[2025-09-11 13:46:33,774] INFO: GL: NPOT texture support is available
+[2025-09-11 13:46:43,204] WARNING: Deprecated property "<BooleanProperty name=allow_stretch>" of object "<kivy.uix.image.Image object at 0x7ffee997e970>" has been set, it will be removed in a future version
+[2025-09-11 13:46:43,204] WARNING: Deprecated property "<BooleanProperty name=keep_ratio>" of object "<kivy.uix.image.Image object at 0x7ffee997e970>" was accessed, it will be removed in a future version
+[2025-09-11 13:46:53,874] INFO: toggle_recording called - current state: is_running=False, process=False
+[2025-09-11 13:46:53,874] INFO: start_recording called
+[2025-09-11 13:46:53,874] INFO: Reset workflow state for new recording
+[2025-09-11 13:46:53,874] INFO: Starting recording process with script: /home/pi/Desktop/v2_Tripple S/Aufnahme.py
+[2025-09-11 13:46:53,875] INFO: Aufnahme gestartet (PID: 35983)
+[2025-09-11 13:47:13,289] INFO: toggle_recording called - current state: is_running=True, process=True
+[2025-09-11 13:47:13,290] INFO: stop_recording called - is_running: True, process: True
+[2025-09-11 13:47:13,290] INFO: Stoppe Aufnahme (PID: 35983)...
+[2025-09-11 13:47:13,290] INFO: Sending SIGTERM to process 35983
+[2025-09-11 13:47:13,366] DEBUG: Recording stdout: Aufnahme.py - Audio Recording Script
+Press Ctrl+C or send SIGTERM to stop recording
+Audio recorder starting...
+Starting recording to: /home/pi/Desktop/v2_Tripple S/aufnahme.wav
+Using standardized path...
+[2025-09-11 13:47:13,366] INFO: Aufnahme gestoppt
+[2025-09-11 13:47:13,366] INFO: Creating workflow trigger after recording stop
+[2025-09-11 13:47:13,367] INFO: Attempting to create trigger file: /home/pi/Desktop/v2_Tripple S/workflow_trigger.txt
+[2025-09-11 13:47:13,374] INFO: Trigger file created atomically with lock
+[2025-09-11 13:47:13,374] INFO: Workflow-Trigger erstellt
+[2025-09-11 13:47:13,374] INFO: Starting workflow service via start_workflow_service.py
+[2025-09-11 13:47:18,377] INFO: Workflow-Service gestartet (läuft im Hintergrund)
+[2025-09-11 13:47:18,377] INFO: Started workflow status checking
+[2025-09-11 13:47:32,121] INFO: Base: Leaving application in progress...
+[2025-09-11 13:47:32,122] WARNING: stderr: Traceback (most recent call last):
+[2025-09-11 13:47:32,123] WARNING: stderr:   File "/home/pi/Desktop/v2_Tripple S/main.py", line 2360, in <module>
+[2025-09-11 13:47:32,124] WARNING: stderr:     app.run()
+[2025-09-11 13:47:32,124] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/app.py", line 956, in run
+[2025-09-11 13:47:32,125] WARNING: stderr:     runTouchApp()
+[2025-09-11 13:47:32,125] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 574, in runTouchApp
+[2025-09-11 13:47:32,125] WARNING: stderr:     EventLoop.mainloop()
+[2025-09-11 13:47:32,126] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 339, in mainloop
+[2025-09-11 13:47:32,126] WARNING: stderr:     self.idle()
+[2025-09-11 13:47:32,126] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/base.py", line 379, in idle
+[2025-09-11 13:47:32,127] WARNING: stderr:     Clock.tick()
+[2025-09-11 13:47:32,127] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 733, in tick
+[2025-09-11 13:47:32,128] WARNING: stderr:     self.post_idle(ts, self.idle())
+[2025-09-11 13:47:32,128] WARNING: stderr:                        ^^^^^^^^^^^
+[2025-09-11 13:47:32,128] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 689, in idle
+[2025-09-11 13:47:32,128] WARNING: stderr:     usleep(1000000 * sleeptime)
+[2025-09-11 13:47:32,129] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 965, in usleep
+[2025-09-11 13:47:32,129] WARNING: stderr:     _usleep(microseconds, self._sleep_obj)
+[2025-09-11 13:47:32,129] WARNING: stderr:   File "/home/pi/.local/lib/python3.11/site-packages/kivy/clock.py", line 556, in _usleep
+[2025-09-11 13:47:32,130] WARNING: stderr:     _libc_usleep(int(microseconds))
+[2025-09-11 13:47:32,130] WARNING: stderr: KeyboardInterrupt

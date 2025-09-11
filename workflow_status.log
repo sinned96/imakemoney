@@ -1,0 +1,37 @@
+[2025-09-11 13:47:13] INFO: Workflow-Manager gestartet
+[2025-09-11 13:47:13] INFO: Überwache Verzeichnis: /home/pi/Desktop/v2_Tripple S
+[2025-09-11 13:47:13] INFO: Trigger-Datei: /home/pi/Desktop/v2_Tripple S/workflow_trigger.txt
+[2025-09-11 13:47:13] INFO: Workflow-Trigger erkannt
+[2025-09-11 13:47:13] INFO: === Starting Clean Vertex AI Workflow ===
+[2025-09-11 13:47:13] INFO: Streamlined workflow: Recording → Transcription → File Operations → Vertex AI Image Generation
+[2025-09-11 13:47:13] INFO: Schritt 1/3: Spracherkennung (voiceToGoogle.py)...
+[2025-09-11 13:47:13] INFO: Setting GOOGLE_APPLICATION_CREDENTIALS to: /home/pi/Desktop/v2_Tripple S/cloudKey.json
+[2025-09-11 13:47:14] Trigger erkannt, starte Workflow!
+[2025-09-11 13:47:14] Workflow gestartet...
+[2025-09-11 13:47:14] Starte Kopiervorgang...
+[2025-09-11 13:47:14] Starte Spracherkennung...
+[2025-09-11 13:47:20] INFO: ✓ Spracherkennung erfolgreich
+[2025-09-11 13:47:20] INFO: Transcript erstellt: 'Ein Bild von einem Schwein das über einem Feuer gegrillt wird im Hintergrund Menschen die Wein trink...'
+[2025-09-11 13:47:20] INFO: ✓ JSON-Transcript für AI-Integration erstellt: /home/pi/Desktop/v2_Tripple S/transkript.json
+[2025-09-11 13:47:20] INFO: Schritt 2/3: Dateioperationen (dateiKopieren.py)...
+[2025-09-11 13:47:21] Alle Arbeitsschritte abgeschlossen!
+[2025-09-11 13:47:21] Trigger gelöscht. Service wartet erneut...
+[2025-09-11 13:47:32] INFO: Service-Lock freigegeben
+[2025-09-11 13:47:32] INFO: Workflow-Manager gestoppt
+[2025-09-11 13:47:32] INFO: ✓ Dateioperationen erfolgreich
+[2025-09-11 13:47:32] INFO: Schritt 3/3: Bildgenerierung mit Vertex AI...
+[2025-09-11 13:47:32] INFO: Sending transcript to Vertex AI for image generation
+[2025-09-11 13:47:32] INFO: Using JSON transcript (method: google_speech_api, real: True)
+[2025-09-11 13:47:32] INFO: Transcript found for AI processing: 'Ein Bild von einem Schwein das über einem Feuer gegrillt wird im Hintergrund Menschen die Wein trink...'
+[2025-09-11 13:47:32] INFO: Target directory ensured: /home/pi/Desktop/v2_Tripple S/BilderVertex
+[2025-09-11 13:47:32] INFO: Sending prompt to Vertex AI Imagen API...
+[2025-09-11 13:47:32] INFO: === Vertex AI Image Generation ===
+[2025-09-11 13:47:32] INFO: Prompt: 'Ein Bild von einem Schwein das über einem Feuer gegrillt wird im Hintergrund Menschen die Wein trink...'
+[2025-09-11 13:47:32] INFO: Target directory: /home/pi/Desktop/v2_Tripple S/BilderVertex
+[2025-09-11 13:47:32] INFO: Using Google Cloud credentials: /home/pi/Desktop/v2_Tripple S/cloudKey.json
+[2025-09-11 13:47:32] INFO: Authenticating with Google Cloud...
+[2025-09-11 13:47:32] INFO: ✓ Authentication successful
+[2025-09-11 13:47:32] INFO: Sending request to Vertex AI Imagen API...
+[2025-09-11 13:47:32] INFO: Endpoint: https://us-central1-aiplatform.googleapis.com/v1/projects/trippe-s/locations/us-central1/publishers/google/models/imagen-4.0-generate-001:predict
+[2025-09-11 13:47:32] INFO: Parameters: 1 images, 16:9 aspect ratio, 2k resolution
+[2025-09-11 13:47:32] INFO: Workflow-Manager gestoppt

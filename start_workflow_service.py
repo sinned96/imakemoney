@@ -4,6 +4,7 @@ start_workflow_service.py - Utility to start the background workflow service
 
 This script starts the PythonServer.py background service that watches for
 workflow trigger files created by the GUI.
+Now, after the workflow service completes, it automatically runs the Vertex-AI image generation step.
 """
 
 import os
@@ -11,6 +12,10 @@ import sys
 import subprocess
 import time
 from pathlib import Path
+
+VERTEX_SCRIPT = "vertex_ai_image_workflow.py"
+TRANSCRIPT_PATH = "transkript.txt"
+BILDER_DIR = "BilderVertex"
 
 def check_service_running():
     """Check if the workflow service is already running"""
@@ -46,6 +51,41 @@ def check_service_running():
     except Exception:
         pass
     return False
+
+def run_vertex_step(script_dir):
+    """Run the Vertex AI image generation step if transcript exists"""
+    vertex_script = script_dir / VERTEX_SCRIPT
+    transcript_file = script_dir / TRANSCRIPT_PATH
+    bilder_dir = script_dir / BILDER_DIR
+
+    print("\n--- Starte Vertex KI Bildgenerierungsschritt ---")
+    if not vertex_script.exists():
+        print(f"Vertex-Skript nicht gefunden: {vertex_script}")
+        return False
+    if not transcript_file.exists():
+        print(f"Transkript nicht gefunden: {transcript_file}")
+        return False
+
+    try:
+        # Start Vertex image generation script
+        result = subprocess.run(
+            [sys.executable, str(vertex_script)],
+            cwd=str(script_dir),
+            capture_output=True,
+            text=True
+        )
+        print(result.stdout)
+        if result.returncode == 0:
+            print(f"✓ Vertex KI Bildgenerierung abgeschlossen. Bild sollte in {bilder_dir} liegen.")
+            return True
+        else:
+            print(f"✗ Fehler beim Vertex KI Schritt! Code: {result.returncode}")
+            if result.stderr:
+                print(result.stderr)
+            return False
+    except Exception as e:
+        print(f"Fehler beim Ausführen des Vertex KI Skripts: {e}")
+        return False
 
 def start_service():
     """Start the workflow service"""
@@ -91,8 +131,7 @@ def start_service():
             if process.poll() is None:
                 print(f"\n✓ Service läuft stabil (PID: {process.pid})")
                 print("Service wird im Hintergrund weitergeführt...")
-                
-                # Don't wait for process - let it run in background and exit after one workflow
+                # Let it run in background and exit after one workflow
                 return True
             else:
                 stdout, stderr = process.communicate()
@@ -101,6 +140,8 @@ def start_service():
                     print("STDOUT:", stdout)
                 if stderr:
                     print("STDERR:", stderr)
+                # Nach erfolgreichem Durchlauf: Vertex-Schritt!
+                run_vertex_step(script_dir)
                 return process.returncode == 0
         else:
             stdout, stderr = process.communicate()
@@ -140,7 +181,7 @@ def main():
         print("Service erfolgreich gestartet.")
     else:
         print("Service konnte nicht gestartet werden.")
-        if not args.auto:  # Only exit with error in interactive mode
+        if not args.auto:
             sys.exit(1)
 
 if __name__ == "__main__":
