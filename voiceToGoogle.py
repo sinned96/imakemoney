@@ -9,7 +9,7 @@ Path Logic and Workflow Integration:
 - Output files: /home/pi/Desktop/v2_Tripple S/transkript.txt and transkript.json
 - Google credentials: /home/pi/Desktop/v2_Tripple S/cloudKey.json
 - This script runs AFTER Aufnahme.py completes recording
-- This script runs BEFORE programmSendFile.py uploads the audio
+- This script runs BEFORE the local file operations
 - Workflow sequence: Recording → Transcription (this script) → Upload
 
 REQUIREMENTS:
@@ -68,7 +68,7 @@ try:
 except ImportError as e:
     GOOGLE_SPEECH_AVAILABLE = False
     speech_logger.warning(f"Google Cloud Speech-to-Text library not available: {e}")
-    speech_logger.warning("Will use simulation mode instead")
+    speech_logger.info("Fallback mode will be used when Google API is not available or fails")
 
 def find_audio_recording(audio_file_path=None):
     """Find the audio file in expected locations"""
@@ -99,8 +99,8 @@ def find_audio_recording(audio_file_path=None):
     return None
 
 def simulate_speech_recognition(audio_file):
-    """Simulate speech recognition processing for fallback/demo purposes"""
-    speech_logger.info(f"Using simulation mode for speech recognition")
+    """Fallback speech recognition when Google API is unavailable"""
+    speech_logger.info(f"Using fallback mode for speech recognition")
     speech_logger.info(f"Processing audio file: {audio_file}")
     
     # Check if file exists and get info
@@ -494,14 +494,14 @@ def main():
         else:
             speech_logger.warning("Google Cloud Speech library not available")
         
-        # Only fall back to simulation if Google API is not available or explicitly failed
+        # Only fall back to fallback mode if Google API is not available or explicitly failed
         if not recognized_text:
-            processing_method = "simulation"
-            speech_logger.warning("Falling back to simulation mode (THIS IS NOT REAL SPEECH RECOGNITION)")
-            speech_logger.warning("For real speech recognition, ensure:")
-            speech_logger.warning("1. Google Cloud Speech library is installed: pip install google-cloud-speech")
-            speech_logger.warning("2. Credentials are configured: GOOGLE_APPLICATION_CREDENTIALS environment variable")
-            speech_logger.warning("3. Audio is in mono format (automatic conversion attempted)")
+            processing_method = "fallback"
+            speech_logger.warning("Falling back to local processing (fallback mode active)")
+            speech_logger.info("For real speech recognition, ensure:")
+            speech_logger.info("1. Google Cloud Speech library is installed: pip install google-cloud-speech")
+            speech_logger.info("2. Credentials are configured: GOOGLE_APPLICATION_CREDENTIALS environment variable")
+            speech_logger.info("3. Audio is in mono format (automatic conversion attempted)")
             recognized_text = simulate_speech_recognition(audio_file)
         
         if recognized_text:

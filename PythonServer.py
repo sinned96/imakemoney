@@ -62,7 +62,6 @@ ENDPOINT = f"https://us-central1-aiplatform.googleapis.com/v1/projects/{PROJECT_
 # Script paths - consistent with repository structure
 AUFNAHME_SCRIPT = str(SCRIPT_DIR / "Aufnahme.py")
 VOICE_SCRIPT = str(SCRIPT_DIR / "voiceToGoogle.py")
-UPLOAD_SCRIPT = str(SCRIPT_DIR / "programmSendFile.py")  # NEW: Upload script
 COPY_SCRIPT = str(SCRIPT_DIR / "dateiKopieren.py")
 
 # Standardized file paths in working directory
@@ -382,29 +381,29 @@ class WorkflowFileWatcher:
     
     def execute_workflow(self):
         """
-        Execute the complete workflow after recording
+        Execute the clean, streamlined workflow after recording
         
-        Workflow Sequence as per requirements:
+        Streamlined Workflow Sequence:
         1. Transcription: voiceToGoogle.py processes aufnahme.wav → creates transkript.json
-        2. File Upload: programmSendFile.py uploads aufnahme.wav to server
-        3. File Operations: dateiKopieren.py handles local file management 
-        4. Image Generation: Generate image from transcript (optional)
+        2. File Operations: dateiKopieren.py handles local file management 
+        3. Image Generation: Vertex AI generates images from transcript → saves to BilderVertex/
         
         Path Logic:
         - All files located in /home/pi/Desktop/v2_Tripple S/
         - aufnahme.wav: source audio file
         - transkript.json: transcript with metadata (AI processing ready)
-        - cloudKey.json: Google service account credentials
+        - BilderVertex/: generated images directory
+        - cloudKey.json: Google service account credentials (for Vertex AI)
         """
-        self.log_status("=== Starting Speech Recording Workflow ===")
-        self.log_status("Workflow sequence: Recording → Transcription → Upload → Processing")
+        self.log_status("=== Starting Clean Vertex AI Workflow ===")
+        self.log_status("Streamlined workflow: Recording → Transcription → File Operations → Vertex AI Image Generation")
         
         success_count = 0
-        total_steps = 4  # Updated to include upload step
+        total_steps = 3  # Streamlined to 3 essential steps
         
         try:
-            # Step 1: Voice recognition (Transcription First!)
-            self.log_status("Schritt 1/4: Spracherkennung (voiceToGoogle.py)...")
+            # Step 1: Voice recognition (Transcription)
+            self.log_status("Schritt 1/3: Spracherkennung (voiceToGoogle.py)...")
             self.log_status(f"Setting GOOGLE_APPLICATION_CREDENTIALS to: {GOOGLE_SPEECH_CREDENTIALS}")
             
             manager = AsyncWorkflowManager()
@@ -436,34 +435,16 @@ class WorkflowFileWatcher:
                 self.log_status("- Network error or Google Cloud API problem", "INFO")
                 self.log_status(f"- Audio file not found: {AUDIO_FILE}", "INFO")
             
-            # Step 2: File Upload (Upload after Transcription!)
-            self.log_status("Schritt 2/4: Server-Upload (programmSendFile.py)...")
-            self.log_status(f"Uploading {AUDIO_FILE} to target server...")
-            
-            if os.path.exists(UPLOAD_SCRIPT):
-                if manager.run_script_sync(UPLOAD_SCRIPT, "Server-Upload"):
-                    success_count += 1
-                    self.log_status("✓ Server-Upload erfolgreich")
-                else:
-                    self.log_status("✗ Server-Upload fehlgeschlagen", "WARNING")
-                    self.log_status("Mögliche Ursachen:", "INFO")
-                    self.log_status("- SSH-Schlüssel nicht konfiguriert", "INFO")
-                    self.log_status("- Netzwerkverbindung zum Zielserver fehlgeschlagen", "INFO")
-                    self.log_status("- Server-Berechtigungen unzureichend", "INFO")
-                    self.log_status("- Upload-Konfiguration (SERVER_HOST, SERVER_USER) nicht gesetzt", "INFO")
-            else:
-                self.log_status(f"Upload-Skript nicht gefunden: {UPLOAD_SCRIPT}", "ERROR")
-            
-            # Step 3: File operations (Local Management)
-            self.log_status("Schritt 3/4: Dateioperationen (dateiKopieren.py)...")
+            # Step 2: File operations (Local Management)
+            self.log_status("Schritt 2/3: Dateioperationen (dateiKopieren.py)...")
             if manager.run_script_sync(str(self.work_dir / "dateiKopieren.py"), "Dateioperationen"):
                 success_count += 1
                 self.log_status("✓ Dateioperationen erfolgreich")
             else:
                 self.log_status("✗ Dateioperationen fehlgeschlagen", "WARNING")
             
-            # Step 4: Image generation (Vertex AI Integration)
-            self.log_status("Schritt 4/4: Bildgenerierung mit Vertex AI...")
+            # Step 3: Image generation (Vertex AI Integration)
+            self.log_status("Schritt 3/3: Bildgenerierung mit Vertex AI...")
             self.log_status("Sending transcript to Vertex AI for image generation")
             
             # Get transcript text - prioritize JSON format for better metadata
@@ -719,15 +700,37 @@ def generate_image_imagen4(prompt, image_count=1, bilder_dir=BILDER_DIR, output_
     """
     Generate images using Google's Vertex AI Imagen 4.0 API
     
+    This function provides a clean, robust integration with Vertex AI for image generation.
+    It automatically falls back to demo mode when Google Cloud is not available.
+    
+    Configuration (transparent setup):
+    - Google Cloud Project ID: Set via PROJECT_ID environment variable (default: "trippe-s")
+    - Credentials File: {GOOGLE_CREDENTIALS} (service account JSON key)
+    - API Endpoint: Vertex AI Imagen 4.0 in us-central1 region
+    - Image Parameters: 16:9 aspect ratio, 2k resolution
+    - Error Handling: Graceful fallback to demo images if API unavailable
+    
     Args:
-        prompt (str): Text prompt for image generation
-        image_count (int): Number of images to generate
-        bilder_dir (str): Directory to save generated images
-        output_prefix (str): Prefix for generated image filenames
+        prompt (str): Text prompt for image generation (max ~2000 characters)
+        image_count (int): Number of images to generate (default: 1)
+        bilder_dir (str): Target directory for generated images (default: {BILDER_DIR})
+        output_prefix (str): Filename prefix for generated images (default: "bild")
         logger (callable): Optional logging function for status updates
     
     Returns:
         list: List of generated image file paths, empty list if failed
+        
+    Production Setup Required:
+        1. Install dependencies: pip install google-cloud-aiplatform google-auth requests
+        2. Set up Google Cloud project with Vertex AI API enabled
+        3. Create service account with "Vertex AI User" role
+        4. Download service account JSON key to: {GOOGLE_CREDENTIALS}
+        5. Set PROJECT_ID environment variable (or use default)
+        
+    Demo Mode Behavior:
+        - When Google Cloud libraries are missing or credentials unavailable
+        - Creates placeholder PNG images to test workflow
+        - All error handling is transparent with detailed logging
     """
     def log(message, level="INFO"):
         if logger:
