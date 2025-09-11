@@ -292,3 +292,79 @@
 [2025-09-11 11:22:08,038] WARNING: ⚠ Simulation mode - transcript contains placeholder text, not real speech
 [2025-09-11 11:22:08,038] INFO: ✓ Speech recognition completed successfully
 [2025-09-11 11:22:08,038] INFO: Speech recognition workflow completed successfully
+[2025-09-11 11:24:22,753] INFO: Google Cloud Speech-to-Text library loaded successfully
+[2025-09-11 11:24:22,753] INFO: === Voice to Google Speech Recognition ===
+[2025-09-11 11:24:22,753] INFO: Starting speech-to-text processing...
+[2025-09-11 11:24:22,753] INFO: Using audio file from command line: /tmp/mono_audio_test/test_stereo.wav
+[2025-09-11 11:24:22,753] INFO: Processing audio file: test_stereo.wav
+[2025-09-11 11:24:22,753] INFO: Attempting real Google Speech-to-Text recognition...
+[2025-09-11 11:24:22,754] ERROR: GOOGLE_APPLICATION_CREDENTIALS environment variable not set
+[2025-09-11 11:24:22,754] ERROR: Please set it to point to your service account key file:
+[2025-09-11 11:24:22,754] ERROR: export GOOGLE_APPLICATION_CREDENTIALS='/home/pi/Desktop/v2_Tripple S/cloudKey.json'
+[2025-09-11 11:24:22,754] ERROR: Google credentials not properly configured
+[2025-09-11 11:24:22,754] WARNING: Real Google Speech-to-Text failed - check credentials and audio format
+[2025-09-11 11:24:22,754] WARNING: Falling back to simulation mode (THIS IS NOT REAL SPEECH RECOGNITION)
+[2025-09-11 11:24:22,754] WARNING: For real speech recognition, ensure:
+[2025-09-11 11:24:22,754] WARNING: 1. Google Cloud Speech library is installed: pip install google-cloud-speech
+[2025-09-11 11:24:22,754] WARNING: 2. Credentials are configured: GOOGLE_APPLICATION_CREDENTIALS environment variable
+[2025-09-11 11:24:22,754] WARNING: 3. Audio is in mono format (automatic conversion attempted)
+[2025-09-11 11:24:22,754] INFO: Using simulation mode for speech recognition
+[2025-09-11 11:24:22,754] INFO: Processing audio file: /tmp/mono_audio_test/test_stereo.wav
+[2025-09-11 11:24:22,754] INFO: Audio file size: 529,278 bytes
+[2025-09-11 11:24:22,754] INFO: Analyzing audio content... (estimated 1.0s)
+[2025-09-11 11:24:22,754] INFO:   Processing... 1/1
+[2025-09-11 11:24:23,754] INFO: --- Recognition Result ---
+[2025-09-11 11:24:23,755] INFO: "Dies ist eine ausführliche Audioaufnahme mit vielen Details. Die Spracherkennung hat erfolgreich den gesprochenen Inhalt erkannt und in Text umgewandelt. Dieser Text kann nun für die Bildgenerierung verwendet werden."
+[2025-09-11 11:24:23,755] INFO: --- End Result ---
+[2025-09-11 11:24:23,755] INFO: Transcript saved to: /home/runner/work/imakemoney/imakemoney/transkript.txt
+[2025-09-11 11:24:23,755] INFO: Transcript content: 'Dies ist eine ausführliche Audioaufnahme mit vielen Details. Die Spracherkennung hat erfolgreich den gesprochenen Inhalt erkannt und in Text umgewandelt. Dieser Text kann nun für die Bildgenerierung verwendet werden.'
+[2025-09-11 11:24:23,755] INFO: Processing method: simulation
+[2025-09-11 11:24:23,755] ERROR: No audio file found in any expected location
+[2025-09-11 11:24:23,755] ERROR: Expected locations:
+[2025-09-11 11:24:23,755] ERROR:   - /home/pi/Desktop/v2_Tripple S/aufnahme.wav
+[2025-09-11 11:24:23,755] ERROR:   - /home/runner/Desktop/v2_Tripple S/aufnahme.wav
+[2025-09-11 11:24:23,755] ERROR:   - Aufnahmen/aufnahme.wav
+[2025-09-11 11:24:23,755] ERROR:   - aufnahme.wav
+[2025-09-11 11:24:23,755] ERROR:   - /tmp/aufnahme.wav
+[2025-09-11 11:24:23,756] INFO: Transcript metadata saved to: /home/runner/work/imakemoney/imakemoney/transkript.json
+[2025-09-11 11:24:23,756] WARNING: ⚠ Simulation mode - transcript contains placeholder text, not real speech
+[2025-09-11 11:24:23,756] INFO: ✓ Speech recognition completed successfully
+[2025-09-11 11:24:23,756] INFO: Speech recognition workflow completed successfully
+[2025-09-11 11:24:24,010] INFO: Google Cloud Speech-to-Text library loaded successfully
+[2025-09-11 11:24:24,010] INFO: === Voice to Google Speech Recognition ===
+[2025-09-11 11:24:24,010] INFO: Starting speech-to-text processing...
+[2025-09-11 11:24:24,010] INFO: Using audio file from command line: /tmp/mono_audio_test/test_mono.wav
+[2025-09-11 11:24:24,010] INFO: Processing audio file: test_mono.wav
+[2025-09-11 11:24:24,010] INFO: Attempting real Google Speech-to-Text recognition...
+[2025-09-11 11:24:24,010] ERROR: GOOGLE_APPLICATION_CREDENTIALS environment variable not set
+[2025-09-11 11:24:24,010] ERROR: Please set it to point to your service account key file:
+[2025-09-11 11:24:24,010] ERROR: export GOOGLE_APPLICATION_CREDENTIALS='/home/pi/Desktop/v2_Tripple S/cloudKey.json'
+[2025-09-11 11:24:24,010] ERROR: Google credentials not properly configured
+[2025-09-11 11:24:24,011] WARNING: Real Google Speech-to-Text failed - check credentials and audio format
+[2025-09-11 11:24:24,011] WARNING: Falling back to simulation mode (THIS IS NOT REAL SPEECH RECOGNITION)
+[2025-09-11 11:24:24,011] WARNING: For real speech recognition, ensure:
+[2025-09-11 11:24:24,011] WARNING: 1. Google Cloud Speech library is installed: pip install google-cloud-speech
+[2025-09-11 11:24:24,011] WARNING: 2. Credentials are configured: GOOGLE_APPLICATION_CREDENTIALS environment variable
+[2025-09-11 11:24:24,011] WARNING: 3. Audio is in mono format (automatic conversion attempted)
+[2025-09-11 11:24:24,011] INFO: Using simulation mode for speech recognition
+[2025-09-11 11:24:24,011] INFO: Processing audio file: /tmp/mono_audio_test/test_mono.wav
+[2025-09-11 11:24:24,011] INFO: Audio file size: 264,678 bytes
+[2025-09-11 11:24:24,011] INFO: Analyzing audio content... (estimated 1.0s)
+[2025-09-11 11:24:24,011] INFO:   Processing... 1/1
+[2025-09-11 11:24:25,011] INFO: --- Recognition Result ---
+[2025-09-11 11:24:25,011] INFO: "Hallo, dies ist eine längere Audioaufnahme die von der Spracherkennung verarbeitet wird. Bitte erstelle ein Bild basierend auf diesem Text."
+[2025-09-11 11:24:25,011] INFO: --- End Result ---
+[2025-09-11 11:24:25,012] INFO: Transcript saved to: /home/runner/work/imakemoney/imakemoney/transkript.txt
+[2025-09-11 11:24:25,012] INFO: Transcript content: 'Hallo, dies ist eine längere Audioaufnahme die von der Spracherkennung verarbeitet wird. Bitte erstelle ein Bild basierend auf diesem Text.'
+[2025-09-11 11:24:25,012] INFO: Processing method: simulation
+[2025-09-11 11:24:25,012] ERROR: No audio file found in any expected location
+[2025-09-11 11:24:25,012] ERROR: Expected locations:
+[2025-09-11 11:24:25,012] ERROR:   - /home/pi/Desktop/v2_Tripple S/aufnahme.wav
+[2025-09-11 11:24:25,012] ERROR:   - /home/runner/Desktop/v2_Tripple S/aufnahme.wav
+[2025-09-11 11:24:25,012] ERROR:   - Aufnahmen/aufnahme.wav
+[2025-09-11 11:24:25,012] ERROR:   - aufnahme.wav
+[2025-09-11 11:24:25,013] ERROR:   - /tmp/aufnahme.wav
+[2025-09-11 11:24:25,013] INFO: Transcript metadata saved to: /home/runner/work/imakemoney/imakemoney/transkript.json
+[2025-09-11 11:24:25,013] WARNING: ⚠ Simulation mode - transcript contains placeholder text, not real speech
+[2025-09-11 11:24:25,013] INFO: ✓ Speech recognition completed successfully
+[2025-09-11 11:24:25,013] INFO: Speech recognition workflow completed successfully
