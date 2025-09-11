@@ -1,0 +1,106 @@
+[2025-09-11 10:08:53,118] WARNING: Google Cloud Speech-to-Text library not available: No module named 'google'
+[2025-09-11 10:08:53,118] WARNING: Will use simulation mode instead
+[2025-09-11 10:09:07,709] WARNING: Google Cloud Speech-to-Text library not available: No module named 'google'
+[2025-09-11 10:09:07,709] WARNING: Will use simulation mode instead
+[2025-09-11 10:09:07,710] INFO: === Voice to Google Speech Recognition ===
+[2025-09-11 10:09:07,710] INFO: Starting speech-to-text processing...
+[2025-09-11 10:09:07,710] INFO: Using audio file from command line: /tmp/test_audio/aufnahme.wav
+[2025-09-11 10:09:07,710] INFO: Processing audio file: aufnahme.wav
+[2025-09-11 10:09:07,710] INFO: Falling back to simulation mode...
+[2025-09-11 10:09:07,710] INFO: Using simulation mode for speech recognition
+[2025-09-11 10:09:07,710] INFO: Processing audio file: /tmp/test_audio/aufnahme.wav
+[2025-09-11 10:09:07,710] INFO: Audio file size: 19 bytes
+[2025-09-11 10:09:07,710] INFO: Analyzing audio content... (estimated 1.0s)
+[2025-09-11 10:09:07,710] INFO:   Processing... 1/1
+[2025-09-11 10:09:08,710] INFO: --- Recognition Result ---
+[2025-09-11 10:09:08,711] INFO: "Kurze Aufnahme erkannt"
+[2025-09-11 10:09:08,711] INFO: --- End Result ---
+[2025-09-11 10:09:08,711] INFO: Transcript saved to: transkript.txt
+[2025-09-11 10:09:08,711] INFO: Transcript content: 'Kurze Aufnahme erkannt'
+[2025-09-11 10:09:08,711] INFO: Transcript metadata saved to: transkript.json
+[2025-09-11 10:09:08,711] INFO: ✓ Speech recognition completed successfully
+[2025-09-11 10:09:08,711] INFO: Speech recognition workflow completed successfully
+[2025-09-11 10:09:26,471] WARNING: Google Cloud Speech-to-Text library not available: No module named 'google'
+[2025-09-11 10:09:26,471] WARNING: Will use simulation mode instead
+[2025-09-11 10:09:26,472] INFO: === Voice to Google Speech Recognition ===
+[2025-09-11 10:09:26,472] INFO: Starting speech-to-text processing...
+[2025-09-11 10:09:26,472] INFO: Using audio file from command line: /tmp/test_audio/aufnahme.wav
+[2025-09-11 10:09:26,472] INFO: Processing audio file: aufnahme.wav
+[2025-09-11 10:09:26,472] INFO: Falling back to simulation mode...
+[2025-09-11 10:09:26,472] INFO: Using simulation mode for speech recognition
+[2025-09-11 10:09:26,472] INFO: Processing audio file: /tmp/test_audio/aufnahme.wav
+[2025-09-11 10:09:26,472] INFO: Audio file size: 19 bytes
+[2025-09-11 10:09:26,472] INFO: Analyzing audio content... (estimated 1.0s)
+[2025-09-11 10:09:26,472] INFO:   Processing... 1/1
+[2025-09-11 10:09:27,472] INFO: --- Recognition Result ---
+[2025-09-11 10:09:27,473] INFO: "Kurze Aufnahme erkannt"
+[2025-09-11 10:09:27,473] INFO: --- End Result ---
+[2025-09-11 10:09:27,473] INFO: Transcript saved to: transkript.txt
+[2025-09-11 10:09:27,473] INFO: Transcript content: 'Kurze Aufnahme erkannt'
+[2025-09-11 10:09:27,473] INFO: Transcript metadata saved to: transkript.json
+[2025-09-11 10:09:27,473] INFO: ✓ Speech recognition completed successfully
+[2025-09-11 10:09:27,473] INFO: Speech recognition workflow completed successfully
+[2025-09-11 10:09:52,672] WARNING: Google Cloud Speech-to-Text library not available: No module named 'google'
+[2025-09-11 10:09:52,672] WARNING: Will use simulation mode instead
+[2025-09-11 10:09:52,672] INFO: === Voice to Google Speech Recognition ===
+[2025-09-11 10:09:52,672] INFO: Starting speech-to-text processing...
+[2025-09-11 10:09:52,672] INFO: Found audio file at: Aufnahmen/aufnahme.wav
+[2025-09-11 10:09:52,672] INFO: Processing audio file: aufnahme.wav
+[2025-09-11 10:09:52,672] INFO: Falling back to simulation mode...
+[2025-09-11 10:09:52,672] INFO: Using simulation mode for speech recognition
+[2025-09-11 10:09:52,672] INFO: Processing audio file: Aufnahmen/aufnahme.wav
+[2025-09-11 10:09:52,672] INFO: Audio file size: 52 bytes
+[2025-09-11 10:09:52,673] INFO: Analyzing audio content... (estimated 1.0s)
+[2025-09-11 10:09:52,673] INFO:   Processing... 1/1
+[2025-09-11 10:09:53,673] INFO: --- Recognition Result ---
+[2025-09-11 10:09:53,673] INFO: "Kurze Aufnahme erkannt"
+[2025-09-11 10:09:53,673] INFO: --- End Result ---
+[2025-09-11 10:09:53,673] INFO: Transcript saved to: transkript.txt
+[2025-09-11 10:09:53,673] INFO: Transcript content: 'Kurze Aufnahme erkannt'
+[2025-09-11 10:09:53,674] INFO: Transcript metadata saved to: transkript.json
+[2025-09-11 10:09:53,674] INFO: ✓ Speech recognition completed successfully
+[2025-09-11 10:09:53,674] INFO: Speech recognition workflow completed successfully
+[2025-09-11 10:10:18,064] WARNING: Google Cloud Speech-to-Text library not available: No module named 'google'
+[2025-09-11 10:10:18,064] WARNING: Will use simulation mode instead
+[2025-09-11 10:10:18,064] INFO: === Voice to Google Speech Recognition ===
+[2025-09-11 10:10:18,064] INFO: Starting speech-to-text processing...
+[2025-09-11 10:10:18,064] ERROR: No audio file found in any expected location
+[2025-09-11 10:10:18,064] ERROR: Expected locations:
+[2025-09-11 10:10:18,064] ERROR:   - /home/pi/Desktop/v2_Tripple S/Aufnahmen/aufnahme.wav
+[2025-09-11 10:10:18,064] ERROR:   - Aufnahmen/aufnahme.wav
+[2025-09-11 10:10:18,064] ERROR:   - aufnahme.wav
+[2025-09-11 10:10:18,065] ERROR:   - /home/runner/Desktop/v2_Tripple S/Aufnahmen/aufnahme.wav
+[2025-09-11 10:10:18,065] ERROR:   - /tmp/aufnahme.wav
+[2025-09-11 10:10:18,065] ERROR: No aufnahme.wav file found in any of the expected locations
+[2025-09-11 10:10:18,065] ERROR: Expected locations:
+[2025-09-11 10:10:18,065] ERROR:   - /home/pi/Desktop/v2_Tripple S/Aufnahmen/aufnahme.wav
+[2025-09-11 10:10:18,065] ERROR:   - Aufnahmen/aufnahme.wav
+[2025-09-11 10:10:18,065] ERROR:   - aufnahme.wav
+[2025-09-11 10:10:18,065] ERROR:   - /home/runner/Desktop/v2_Tripple S/Aufnahmen/aufnahme.wav
+[2025-09-11 10:10:18,065] ERROR:   - /tmp/aufnahme.wav
+[2025-09-11 10:10:18,065] INFO: Creating dummy transcript for workflow testing...
+[2025-09-11 10:10:18,065] INFO: Transcript saved to: transkript.txt
+[2025-09-11 10:10:18,065] INFO: Transcript content: 'Test Audio Aufnahme - Bitte erstelle ein schönes Bild von einer Landschaft mit Bergen und einem See'
+[2025-09-11 10:10:18,066] INFO: Transcript metadata saved to: transkript.json
+[2025-09-11 10:10:18,066] INFO: ✓ Dummy transcript created successfully
+[2025-09-11 10:10:18,066] INFO: Speech recognition workflow completed successfully
+[2025-09-11 10:11:46,778] WARNING: Google Cloud Speech-to-Text library not available: No module named 'google'
+[2025-09-11 10:11:46,778] WARNING: Will use simulation mode instead
+[2025-09-11 10:11:46,779] INFO: === Voice to Google Speech Recognition ===
+[2025-09-11 10:11:46,779] INFO: Starting speech-to-text processing...
+[2025-09-11 10:11:46,779] INFO: Found audio file at: aufnahme.wav
+[2025-09-11 10:11:46,779] INFO: Processing audio file: aufnahme.wav
+[2025-09-11 10:11:46,779] INFO: Falling back to simulation mode...
+[2025-09-11 10:11:46,779] INFO: Using simulation mode for speech recognition
+[2025-09-11 10:11:46,779] INFO: Processing audio file: aufnahme.wav
+[2025-09-11 10:11:46,779] INFO: Audio file size: 36 bytes
+[2025-09-11 10:11:46,779] INFO: Analyzing audio content... (estimated 1.0s)
+[2025-09-11 10:11:46,779] INFO:   Processing... 1/1
+[2025-09-11 10:11:47,779] INFO: --- Recognition Result ---
+[2025-09-11 10:11:47,779] INFO: "Kurze Aufnahme erkannt"
+[2025-09-11 10:11:47,780] INFO: --- End Result ---
+[2025-09-11 10:11:47,780] INFO: Transcript saved to: transkript.txt
+[2025-09-11 10:11:47,780] INFO: Transcript content: 'Kurze Aufnahme erkannt'
+[2025-09-11 10:11:47,780] INFO: Transcript metadata saved to: transkript.json
+[2025-09-11 10:11:47,780] INFO: ✓ Speech recognition completed successfully
+[2025-09-11 10:11:47,780] INFO: Speech recognition workflow completed successfully
