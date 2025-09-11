@@ -75,6 +75,8 @@ test_aufnahme.py
 # Workflow output files (generated during testing/runtime)
 workflow_trigger.txt
 workflow_status.log
+workflow_service.lock
+recording_debug.log
 transkript.txt
 BilderVertex/
 Transkripte/

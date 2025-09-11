@@ -9,11 +9,33 @@ import types
 import threading
 import time
 import signal
+import logging
+import fcntl
 try:
     from tkinter import Tk, Button, Label
     TKINTER_AVAILABLE = True
 except ImportError:
     TKINTER_AVAILABLE = False
+
+# Setup debug logging for recording workflow
+def setup_debug_logging():
+    """Setup debug logging for recording workflow"""
+    log_dir = Path(__file__).parent
+    log_file = log_dir / "recording_debug.log"
+    
+    # Configure logging
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='[%(asctime)s] %(levelname)s: %(message)s',
+        handlers=[
+            logging.FileHandler(str(log_file), mode='a', encoding='utf-8'),
+            logging.StreamHandler()
+        ]
+    )
+    return logging.getLogger(__name__)
+
+# Initialize debug logger
+debug_logger = setup_debug_logging()
 
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
@@ -776,8 +798,10 @@ class AufnahmePopup(FloatLayout):
         self.is_running = False
         self.start_time = None
         self.timer_event = None
-        self.workflow_triggered = False  # NEW: Track if workflow was already triggered
-        self.workflow_status_checker = None  # NEW: Track status checker
+        self.workflow_triggered = False  # Track if workflow was already triggered
+        self.workflow_status_checker = None  # Track status checker
+        self.workflow_lock_file = None  # NEW: Track workflow lockfile
+        self.trigger_creation_lock = threading.Lock()  # NEW: Thread-safe trigger creation
         
         # Background
         with self.canvas.before:
@@ -893,6 +917,8 @@ class AufnahmePopup(FloatLayout):
     
     def toggle_recording(self, instance):
         """Toggle recording start/stop as requested"""
+        debug_logger.info(f"toggle_recording called - current state: is_running={self.is_running}, process={self.process is not None}")
+        
         if not self.is_running:
             self.start_recording()
         else:
@@ -900,22 +926,32 @@ class AufnahmePopup(FloatLayout):
     
     def start_recording(self):
         """Start Aufnahme.py as subprocess"""
+        debug_logger.info("start_recording called")
+        
+        if self.is_running:
+            debug_logger.warning("start_recording called but recording already running")
+            self.add_output_text("[color=ffaa44]Warnung: Aufnahme läuft bereits[/color]")
+            return
+            
         try:
             # Reset workflow state for new recording
             self.workflow_triggered = False
             if self.workflow_status_checker:
                 Clock.unschedule(self.workflow_status_checker)
                 self.workflow_status_checker = None
+            debug_logger.info("Reset workflow state for new recording")
             
             aufnahme_path = APP_DIR / "Aufnahme.py"
             if not aufnahme_path.exists():
                 error_msg = f"Fehler: Aufnahme.py nicht gefunden bei {aufnahme_path}"
+                debug_logger.error(error_msg)
                 print(error_msg)
                 self.add_output_text(f"[color=ff4444]{error_msg}[/color]")
                 return
             
             # Clear previous output
             self.output_text.text = "Starte Aufnahme..."
+            debug_logger.info(f"Starting recording process with script: {aufnahme_path}")
             
             # Start the subprocess with output capture
             self.process = subprocess.Popen(
@@ -936,14 +972,20 @@ class AufnahmePopup(FloatLayout):
             # Schedule output reading
             Clock.schedule_interval(self.read_process_output, 0.1)
             
-            success_msg = "Aufnahme gestartet"
+            success_msg = f"Aufnahme gestartet (PID: {self.process.pid})"
+            debug_logger.info(success_msg)
             print(success_msg)
             self.add_output_text(f"[color=44ff44]{success_msg}[/color]")
             
         except Exception as e:
             error_msg = f"Fehler beim Starten der Aufnahme: {e}"
+            debug_logger.error(error_msg, exc_info=True)
             print(error_msg)
             self.add_output_text(f"[color=ff4444]{error_msg}[/color]")
+            # Reset state on error
+            self.is_running = False
+            self.button.text = "Start"
+            self.button.background_color = (0.25, 0.55, 0.25, 1)
     
     def read_process_output(self, dt):
         """Read output from the recording process"""
@@ -989,50 +1031,83 @@ class AufnahmePopup(FloatLayout):
     
     def stop_recording(self):
         """Stop Aufnahme.py subprocess cleanly using SIGTERM"""
-        if self.process and self.is_running:
-            stop_msg_starting = "Stoppe Aufnahme..."
-            print(stop_msg_starting)
-            self.add_output_text(f"[color=ffff44]{stop_msg_starting}[/color]")
-            
-            try:
-                # Send SIGTERM for graceful shutdown as required
-                self.process.terminate()
-                
-                # Wait for the process and capture final output
-                try:
-                    stdout, stderr = self.process.communicate(timeout=10)
-                    if stdout:
-                        self.add_output_text(stdout.strip())
-                    if stderr:
-                        self.add_output_text(f"[color=ffaa44]Warnung: {stderr.strip()}[/color]")
-                        
-                except subprocess.TimeoutExpired:
-                    # Force kill if terminate doesn't work within timeout
-                    timeout_msg = "Erzwinge Beendigung (Timeout)"
-                    print(timeout_msg)
-                    self.add_output_text(f"[color=ff4444]{timeout_msg}[/color]")
-                    self.process.kill()
-                    self.process.wait()
-                    
-            except Exception as e:
-                error_msg = f"Fehler beim Stoppen: {e}"
-                print(error_msg)
-                self.add_output_text(f"[color=ff4444]{error_msg}[/color]")
-            finally:
-                self.process = None
+        debug_logger.info(f"stop_recording called - is_running: {self.is_running}, process: {self.process is not None}")
         
+        # Validate recording state BEFORE attempting to stop
+        if not self.is_running:
+            debug_logger.warning("stop_recording called but no recording is running")
+            self.add_output_text("[color=ffaa44]Warnung: Keine Aufnahme läuft[/color]")
+            # Ensure UI state is correct
+            self.button.text = "Start"
+            self.button.background_color = (0.25, 0.55, 0.25, 1)
+            self.stop_timer()
+            return
+            
+        if not self.process:
+            debug_logger.warning("stop_recording: is_running=True but process is None")
+            # Reset inconsistent state
+            self.is_running = False
+            self.button.text = "Start"
+            self.button.background_color = (0.25, 0.55, 0.25, 1)
+            self.stop_timer()
+            self.add_output_text("[color=ffaa44]Warnung: Inkonsistenter Zustand korrigiert[/color]")
+            return
+        
+        stop_msg_starting = f"Stoppe Aufnahme (PID: {self.process.pid})..."
+        debug_logger.info(stop_msg_starting)
+        print(stop_msg_starting)
+        self.add_output_text(f"[color=ffff44]{stop_msg_starting}[/color]")
+        
+        try:
+            # Send SIGTERM for graceful shutdown as required
+            debug_logger.info(f"Sending SIGTERM to process {self.process.pid}")
+            self.process.terminate()
+            
+            # Wait for the process and capture final output
+            try:
+                stdout, stderr = self.process.communicate(timeout=10)
+                if stdout:
+                    debug_logger.debug(f"Recording stdout: {stdout[:200]}...")
+                    self.add_output_text(stdout.strip())
+                if stderr:
+                    debug_logger.warning(f"Recording stderr: {stderr}")
+                    self.add_output_text(f"[color=ffaa44]Warnung: {stderr.strip()}[/color]")
+                    
+            except subprocess.TimeoutExpired:
+                # Force kill if terminate doesn't work within timeout
+                timeout_msg = "Erzwinge Beendigung (Timeout)"
+                debug_logger.warning(timeout_msg)
+                print(timeout_msg)
+                self.add_output_text(f"[color=ff4444]{timeout_msg}[/color]")
+                self.process.kill()
+                self.process.wait()
+                
+        except Exception as e:
+            error_msg = f"Fehler beim Stoppen: {e}"
+            debug_logger.error(error_msg, exc_info=True)
+            print(error_msg)
+            self.add_output_text(f"[color=ff4444]{error_msg}[/color]")
+        finally:
+            # Always clean up state
+            self.process = None
+        
+        # Update state
         self.is_running = False
         self.button.text = "Start"
         self.button.background_color = (0.25, 0.55, 0.25, 1)  # Green for start
         self.stop_timer()
         
         stop_msg = "Aufnahme gestoppt"
+        debug_logger.info(stop_msg)
         print(stop_msg)
         self.add_output_text(f"[color=44ff44]{stop_msg}[/color]")
         
-        # NEW: Create workflow trigger file after stopping recording (only once per recording)
+        # Create workflow trigger file after stopping recording (only once per recording)
         if not self.workflow_triggered:
+            debug_logger.info("Creating workflow trigger after recording stop")
             self.create_workflow_trigger()
+        else:
+            debug_logger.info("Workflow already triggered for this recording, skipping")
     
     def start_timer(self):
         """Start the timer display"""
@@ -1053,40 +1128,122 @@ class AufnahmePopup(FloatLayout):
             self.timer_label.text = f"{minutes:02d}:{seconds:02d}"
     
     def create_workflow_trigger(self):
-        """Create workflow trigger file to signal background processing"""
-        if self.workflow_triggered:
-            warning_msg = "Workflow-Trigger bereits erstellt, überspringe"
-            print(warning_msg)
-            self.add_output_text(f"[color=ffaa44]{warning_msg}[/color]")
-            return
-            
-        try:
-            trigger_file = APP_DIR / "workflow_trigger.txt"
-            
-            # Check if trigger file already exists
-            if trigger_file.exists():
-                warning_msg = "Workflow-Trigger-Datei existiert bereits"
+        """Create workflow trigger file to signal background processing - ATOMIC OPERATION"""
+        # Use thread lock to prevent race conditions from multiple button clicks
+        with self.trigger_creation_lock:
+            if self.workflow_triggered:
+                warning_msg = "Workflow-Trigger bereits erstellt, überspringe"
+                debug_logger.warning(warning_msg)
                 print(warning_msg)
                 self.add_output_text(f"[color=ffaa44]{warning_msg}[/color]")
                 return
             
-            with open(trigger_file, "w", encoding="utf-8") as f:
-                f.write("run")
+            try:
+                trigger_file = APP_DIR / "workflow_trigger.txt"
+                lockfile_path = APP_DIR / "workflow_service.lock"
+                
+                debug_logger.info(f"Attempting to create trigger file: {trigger_file}")
+                
+                # Check if workflow service is already running via lockfile
+                if lockfile_path.exists():
+                    try:
+                        lock_stat = lockfile_path.stat()
+                        lock_age = time.time() - lock_stat.st_mtime
+                        if lock_age < 300:  # Less than 5 minutes old
+                            warning_msg = "Workflow-Service läuft bereits (Lockfile aktiv)"
+                            debug_logger.warning(f"{warning_msg}, lock age: {lock_age:.1f}s")
+                            print(warning_msg)
+                            self.add_output_text(f"[color=ffaa44]{warning_msg}[/color]")
+                            return
+                        else:
+                            debug_logger.info(f"Removing stale lockfile (age: {lock_age:.1f}s)")
+                            lockfile_path.unlink()
+                    except Exception as e:
+                        debug_logger.warning(f"Error checking lockfile: {e}")
+                
+                # Atomic trigger file creation with exclusive lock
+                trigger_created = False
+                try:
+                    # Use exclusive creation (fails if exists)
+                    with open(trigger_file, "x", encoding="utf-8") as f:
+                        # Get exclusive lock on the file
+                        try:
+                            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                            f.write("run")
+                            f.flush()
+                            os.fsync(f.fileno())  # Ensure data is written to disk
+                            trigger_created = True
+                            debug_logger.info("Trigger file created atomically with lock")
+                        except (OSError, IOError) as lock_err:
+                            debug_logger.error(f"Failed to lock trigger file: {lock_err}")
+                            raise
+                        finally:
+                            # Lock is automatically released when file is closed
+                            pass
+                            
+                except FileExistsError:
+                    warning_msg = "Workflow-Trigger-Datei existiert bereits (von anderem Prozess erstellt)"
+                    debug_logger.warning(warning_msg)
+                    print(warning_msg)
+                    self.add_output_text(f"[color=ffaa44]{warning_msg}[/color]")
+                    return
+                
+                if not trigger_created:
+                    raise Exception("Failed to create trigger file atomically")
+                
+                # Mark as triggered ONLY after successful creation
+                self.workflow_triggered = True
+                
+                trigger_msg = "Workflow-Trigger erstellt"
+                debug_logger.info(trigger_msg)
+                print(trigger_msg)
+                self.add_output_text(f"[color=44ff44]{trigger_msg}[/color]")
+                
+                # Start workflow service ONCE using the existing script
+                self._start_workflow_service()
+                
+                # Start checking for workflow status (but stop any existing checker first)
+                if self.workflow_status_checker:
+                    Clock.unschedule(self.workflow_status_checker)
+                
+                self.workflow_status_checker = Clock.schedule_interval(self.check_workflow_status, 2.0)
+                debug_logger.info("Started workflow status checking")
+                
+            except Exception as e:
+                error_msg = f"Fehler beim Erstellen des Workflow-Triggers: {e}"
+                debug_logger.error(error_msg, exc_info=True)
+                print(error_msg)
+                self.add_output_text(f"[color=ff4444]{error_msg}[/color]")
+                # Reset trigger state on error
+                self.workflow_triggered = False
+    
+    def _start_workflow_service(self):
+        """Start the workflow service using the existing start_workflow_service.py script"""
+        try:
+            service_script = APP_DIR / "start_workflow_service.py"
+            if not service_script.exists():
+                debug_logger.error(f"Workflow service script not found: {service_script}")
+                return
             
-            self.workflow_triggered = True  # Mark as triggered
+            debug_logger.info("Starting workflow service via start_workflow_service.py")
             
-            trigger_msg = "Workflow-Trigger erstellt"
-            print(trigger_msg)
-            self.add_output_text(f"[color=44ff44]{trigger_msg}[/color]")
+            # Start the service script as fire-and-forget subprocess
+            service_process = subprocess.Popen(
+                ["python3", str(service_script)],
+                cwd=str(APP_DIR),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True
+            )
             
-            # Start checking for workflow status (but stop any existing checker first)
-            if self.workflow_status_checker:
-                Clock.unschedule(self.workflow_status_checker)
-            
-            self.workflow_status_checker = Clock.schedule_interval(self.check_workflow_status, 1.0)
+            service_msg = f"Workflow-Service gestartet (PID: {service_process.pid})"
+            debug_logger.info(service_msg)
+            print(service_msg)
+            self.add_output_text(f"[color=44ff44]{service_msg}[/color]")
             
         except Exception as e:
-            error_msg = f"Fehler beim Erstellen des Workflow-Triggers: {e}"
+            error_msg = f"Fehler beim Starten des Workflow-Service: {e}"
+            debug_logger.error(error_msg, exc_info=True)
             print(error_msg)
             self.add_output_text(f"[color=ff4444]{error_msg}[/color]")
     
@@ -1122,18 +1279,23 @@ class AufnahmePopup(FloatLayout):
     
     def close_popup(self, instance):
         """Close the popup window"""
+        debug_logger.info("close_popup called")
+        
         # Stop recording if running
         if self.is_running:
+            debug_logger.info("Stopping recording before closing popup")
             self.stop_recording()
         
         # Stop status checking
         if self.workflow_status_checker:
             Clock.unschedule(self.workflow_status_checker)
             self.workflow_status_checker = None
+            debug_logger.info("Stopped workflow status checking")
         
         # Remove from parent
         if self.parent:
             self.parent.remove_widget(self)
+            debug_logger.info("Removed popup from parent widget")
 class GeneralSettingsPopup(FloatLayout):
     def __init__(self, slideshow, **kw):
         super().__init__(**kw)
