@@ -43,9 +43,8 @@ class AudioRecorder:
         recordings_dir = Path.home() / "Desktop" / "v2_Tripple S" / "Aufnahmen"
         recordings_dir.mkdir(parents=True, exist_ok=True)
         
-        # Generate timestamped filename
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.output_file = recordings_dir / f"aufnahme_{timestamp}.wav"
+        # Use fixed filename - always overwrite previous recording
+        self.output_file = recordings_dir / "aufnahme.wav"
         
         print(f"Starting recording to: {self.output_file}")
         

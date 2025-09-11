@@ -79,14 +79,42 @@ def copy_transcript_to_clipboard(transcript_file="transkript.txt"):
             return True
         return False
 
-def backup_recordings(source_dir="Aufnahmen", backup_dir="Aufnahmen_Backup"):
+def backup_recordings(source_dir=None, backup_dir="Aufnahmen_Backup"):
     """Create backups of recording files"""
+    # If no source directory specified, use the standard recording location
+    if source_dir is None:
+        source_dir = str(Path.home() / "Desktop" / "v2_Tripple S" / "Aufnahmen")
+        # Also try local directory as fallback
+        if not os.path.exists(source_dir):
+            source_dir = "Aufnahmen"
+    
     success_count = 0
     error_count = 0
     
     if not os.path.exists(source_dir):
         print(f"Source directory not found: {source_dir}")
-        return False
+        # Try to find recordings in alternative locations
+        alternative_dirs = [
+            "Aufnahmen",
+            str(Path.home() / "Desktop" / "v2_Tripple S" / "Aufnahmen"),
+            "."
+        ]
+        
+        for alt_dir in alternative_dirs:
+            if alt_dir != source_dir and os.path.exists(alt_dir):
+                # Check if directory contains audio files
+                audio_files = []
+                for ext in ['.wav', '.mp3', '.m4a', '.flac', '.ogg', '.aac']:
+                    audio_files.extend(list(Path(alt_dir).glob(f'*{ext}')))
+                
+                if audio_files:
+                    print(f"Using alternative source directory: {alt_dir}")
+                    source_dir = alt_dir
+                    break
+        
+        if not os.path.exists(source_dir):
+            print("No recording directories found with audio files")
+            return True  # No files to backup is not an error condition
     
     # Ensure backup directory exists
     if not ensure_directory(backup_dir):
@@ -161,6 +189,11 @@ def organize_files():
             ensure_directory(dest_dir)
             
             for file_path in matching_files:
+                # Skip the active aufnahme.wav file to prevent moving the current recording
+                if file_path.name == "aufnahme.wav":
+                    print(f"  Skipping active recording file: {file_path.name}")
+                    continue
+                    
                 if file_path.parent.name == dest_dir.rstrip('/'):
                     # File is already in the correct directory
                     continue
