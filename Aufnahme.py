@@ -57,14 +57,14 @@ class AudioRecorder:
         print(f"Starting recording to: {self.output_file}")
         print(f"Using standardized path: /home/pi/Desktop/v2_Tripple S/aufnahme.wav")
         
-        # Try different recording tools in order of preference
+        # Try different recording tools in order of preference - MODIFIED FOR MONO RECORDING
         recording_commands = [
-            # ALSA tools (most common on Linux)
-            ['arecord', '-f', 'cd', '-t', 'wav', str(self.output_file)],
-            # PulseAudio tools
-            ['parecord', '--format=s16le', '--rate=44100', '--channels=2', str(self.output_file)],
-            # FFmpeg (fallback)
-            ['ffmpeg', '-f', 'alsa', '-i', 'default', '-ac', '2', '-ar', '44100', str(self.output_file)]
+            # ALSA tools (most common on Linux) - use mono format (-c 1) for Google Speech-to-Text compatibility
+            ['arecord', '-f', 'S16_LE', '-c', '1', '-r', '44100', '-t', 'wav', str(self.output_file)],
+            # PulseAudio tools - use mono (--channels=1) for Google Speech-to-Text compatibility
+            ['parecord', '--format=s16le', '--rate=44100', '--channels=1', str(self.output_file)],
+            # FFmpeg (fallback) - use mono (-ac 1) for Google Speech-to-Text compatibility
+            ['ffmpeg', '-f', 'alsa', '-i', 'default', '-ac', '1', '-ar', '44100', str(self.output_file)]
         ]
         
         cmd_found = None
@@ -152,9 +152,9 @@ except KeyboardInterrupt:
             duration = time.time() - self.start_time
             print(f"Recording duration: {duration:.2f} seconds")
             
-            # Estimate frame count (44.1kHz * channels * duration)
+            # Estimate frame count (44.1kHz * channels * duration) - using MONO (1 channel)
             sample_rate = 44100
-            channels = 2  # Stereo for CD format
+            channels = 1  # Mono for Google Speech-to-Text compatibility
             self.frame_count = int(sample_rate * channels * duration)
             
         # Check if file was created and get size
