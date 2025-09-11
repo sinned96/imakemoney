@@ -275,8 +275,44 @@ class WorkflowFileWatcher:
         self.work_dir = Path(work_dir) if work_dir else Path(__file__).parent
         self.trigger_file = self.work_dir / "workflow_trigger.txt"
         self.status_log = self.work_dir / "workflow_status.log"
+        self.lock_file = self.work_dir / "workflow_service.lock"
         self.running = False
         self.check_interval = 1.0  # Check every second
+        self.workflow_completed = False
+        
+    def acquire_service_lock(self):
+        """Acquire exclusive lock to prevent multiple service instances"""
+        try:
+            if self.lock_file.exists():
+                # Check if existing lock is stale
+                lock_stat = self.lock_file.stat()
+                lock_age = time.time() - lock_stat.st_mtime
+                if lock_age > 300:  # 5 minutes - consider stale
+                    self.log_status("Entferne veraltete Lock-Datei", "WARNING")
+                    self.lock_file.unlink()
+                else:
+                    self.log_status("Service bereits aktiv (Lock-Datei vorhanden)", "ERROR")
+                    return False
+            
+            # Create lock file with PID
+            with open(self.lock_file, "w", encoding="utf-8") as f:
+                f.write(str(os.getpid()))
+            
+            self.log_status(f"Service-Lock erworben (PID: {os.getpid()})")
+            return True
+            
+        except Exception as e:
+            self.log_status(f"Fehler beim Erwerben des Service-Locks: {e}", "ERROR")
+            return False
+    
+    def release_service_lock(self):
+        """Release service lock"""
+        try:
+            if self.lock_file.exists():
+                self.lock_file.unlink()
+                self.log_status("Service-Lock freigegeben")
+        except Exception as e:
+            self.log_status(f"Fehler beim Freigeben des Service-Locks: {e}", "WARNING")
         
     def log_status(self, message, level="INFO"):
         """Log status message to log file"""
@@ -358,7 +394,8 @@ class WorkflowFileWatcher:
             except Exception as e:
                 self.log_status(f"Fehler beim Löschen der Trigger-Datei: {e}", "WARNING")
             
-            # Stop the service after workflow completion to prevent endless loop
+            # Mark workflow as completed and stop the service to prevent endless loop
+            self.workflow_completed = True
             self.log_status("Service beendet sich nach erfolgreichem Workflow-Durchlauf")
             self.running = False
     
@@ -383,36 +420,51 @@ class WorkflowFileWatcher:
         """Start watching for trigger files in background thread"""
         if self.running:
             print("Watcher bereits aktiv")
-            return
+            return False
+        
+        # Acquire exclusive service lock
+        if not self.acquire_service_lock():
+            return False
         
         self.running = True
+        self.workflow_completed = False
         self.clear_status_log()
         self.log_status("Workflow-Manager gestartet")
         self.log_status(f"Überwache Verzeichnis: {self.work_dir}")
         self.log_status(f"Trigger-Datei: {self.trigger_file}")
         
         def watcher_thread():
-            while self.running:
-                try:
-                    if self.check_trigger():
-                        # Workflow was executed, wait a bit before next check
-                        time.sleep(2.0)
-                    else:
-                        time.sleep(self.check_interval)
-                except Exception as e:
-                    self.log_status(f"Watcher-Fehler: {e}", "ERROR")
-                    time.sleep(5.0)  # Wait longer on error
+            try:
+                while self.running and not self.workflow_completed:
+                    try:
+                        if self.check_trigger():
+                            # Workflow was executed, service will stop
+                            break
+                        else:
+                            time.sleep(self.check_interval)
+                    except Exception as e:
+                        self.log_status(f"Watcher-Fehler: {e}", "ERROR")
+                        time.sleep(5.0)  # Wait longer on error
+            except Exception as e:
+                self.log_status(f"Watcher-Thread-Fehler: {e}", "ERROR")
+            finally:
+                # Always ensure service stops and lock is released
+                self.running = False
+                self.workflow_completed = True
+                self.release_service_lock()
         
         import threading
         self.watcher_thread = threading.Thread(target=watcher_thread, daemon=True)
         self.watcher_thread.start()
         
         print(f"Workflow-Manager läuft im Hintergrund (PID: {os.getpid()})")
-        print("Drücke Ctrl+C zum Beenden")
+        print("Service beendet sich automatisch nach einem Workflow-Durchlauf")
+        return True
     
     def stop_watching(self):
         """Stop the background watcher"""
         self.running = False
+        self.release_service_lock()
         self.log_status("Workflow-Manager gestoppt")
         print("Workflow-Manager gestoppt")
 
@@ -629,22 +681,44 @@ def run_original_workflow():
     print("Workflow abgeschlossen!")
 
 def run_background_service():
-    """Run as background workflow manager service"""
+    """Run as background workflow manager service - runs ONCE then exits"""
     print("=== Workflow Manager Service ===")
     print("Startet als Hintergrunddienst für die Überwachung von Workflow-Triggern")
+    print("Service wird nach EINEM erfolgreichen Workflow-Durchlauf beendet")
     
     watcher = WorkflowFileWatcher()
-    watcher.start_watching()
+    
+    # Set up signal handlers for clean shutdown
+    import signal
+    def signal_handler(signum, frame):
+        print(f"\nSignal {signum} empfangen, beende Service...")
+        watcher.stop_watching()
     
     try:
-        # Keep the service running
-        while watcher.running:
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+    except Exception as e:
+        print(f"Warning: Could not set signal handlers: {e}")
+    
+    if not watcher.start_watching():
+        print("Fehler: Konnte Service nicht starten (möglicherweise läuft bereits eine Instanz)")
+        return False
+    
+    try:
+        # Keep the service running until one workflow completes
+        while watcher.running and not watcher.workflow_completed:
             time.sleep(1)
+        
+        print("Workflow-Service beendet sich nach erfolgreichem Durchlauf")
+        return True
+        
     except KeyboardInterrupt:
         print("\nService wird beendet...")
         watcher.stop_watching()
-    
-    return True
+        return False
+    finally:
+        # Ensure cleanup even if something goes wrong
+        watcher.stop_watching()
 
 if __name__ == "__main__":
     # Check command line arguments
