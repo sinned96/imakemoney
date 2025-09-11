@@ -1227,19 +1227,36 @@ class AufnahmePopup(FloatLayout):
             
             debug_logger.info("Starting workflow service via start_workflow_service.py")
             
-            # Start the service script as fire-and-forget subprocess
+            # Start the service script with --auto flag for non-interactive mode
             service_process = subprocess.Popen(
-                ["python3", str(service_script)],
+                ["python3", str(service_script), "--auto"],
                 cwd=str(APP_DIR),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 universal_newlines=True
             )
             
-            service_msg = f"Workflow-Service gestartet (PID: {service_process.pid})"
-            debug_logger.info(service_msg)
-            print(service_msg)
-            self.add_output_text(f"[color=44ff44]{service_msg}[/color]")
+            # Wait briefly to see if it starts successfully
+            try:
+                stdout, stderr = service_process.communicate(timeout=5)
+                if service_process.returncode == 0:
+                    service_msg = "Workflow-Service erfolgreich gestartet"
+                    debug_logger.info(service_msg)
+                    print(service_msg)
+                    self.add_output_text(f"[color=44ff44]{service_msg}[/color]")
+                else:
+                    error_msg = f"Workflow-Service Start-Fehler (Code: {service_process.returncode})"
+                    debug_logger.warning(f"{error_msg}\nSTDOUT: {stdout}\nSTDERR: {stderr}")
+                    print(error_msg)
+                    self.add_output_text(f"[color=ffaa44]{error_msg}[/color]")
+                    if stdout:
+                        self.add_output_text(f"[color=cccccc]Output: {stdout.strip()}[/color]")
+            except subprocess.TimeoutExpired:
+                # Service is still running, which is normal
+                service_msg = f"Workflow-Service gestartet (läuft im Hintergrund)"
+                debug_logger.info(service_msg)
+                print(service_msg)
+                self.add_output_text(f"[color=44ff44]{service_msg}[/color]")
             
         except Exception as e:
             error_msg = f"Fehler beim Starten des Workflow-Service: {e}"

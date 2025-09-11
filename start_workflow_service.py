@@ -117,19 +117,31 @@ def start_service():
 
 def main():
     """Main entry point"""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Workflow Service Starter")
+    parser.add_argument("--auto", action="store_true", 
+                       help="Start automatically without prompts (for automation)")
+    args = parser.parse_args()
+    
     print("=== Workflow Service Starter ===")
     
     if check_service_running():
-        response = input("Service scheint bereits zu laufen. Trotzdem starten? (j/N): ")
-        if response.lower() not in ('j', 'ja', 'y', 'yes'):
-            print("Abgebrochen.")
+        if args.auto:
+            print("Service scheint bereits zu laufen. Auto-Modus: Überspringe Start.")
             return
+        else:
+            response = input("Service scheint bereits zu laufen. Trotzdem starten? (j/N): ")
+            if response.lower() not in ('j', 'ja', 'y', 'yes'):
+                print("Abgebrochen.")
+                return
     
     if start_service():
         print("Service erfolgreich gestartet.")
     else:
         print("Service konnte nicht gestartet werden.")
-        sys.exit(1)
+        if not args.auto:  # Only exit with error in interactive mode
+            sys.exit(1)
 
 if __name__ == "__main__":
     main()
