@@ -16,25 +16,21 @@ from pathlib import Path
 # For demo purposes, we'll simulate speech recognition
 # In a real implementation, this would use Google Speech-to-Text API
 
-def find_latest_recording(recordings_dir):
-    """Find the most recent audio recording file"""
-    if not os.path.exists(recordings_dir):
-        return None
+def find_fixed_recording():
+    """Find the fixed aufnahme.wav file in expected locations"""
+    # Define possible recording locations for the fixed filename
+    possible_paths = [
+        "Aufnahmen/aufnahme.wav",  # Local directory
+        "aufnahme.wav",  # Current directory
+        str(Path.home() / "Desktop" / "v2_Tripple S" / "Aufnahmen" / "aufnahme.wav"),  # Original path
+        "/tmp/aufnahme.wav"  # Fallback for temporary files
+    ]
     
-    # Look for common audio file extensions
-    extensions = ['.wav', '.mp3', '.m4a', '.flac', '.ogg']
-    recording_files = []
+    for audio_path in possible_paths:
+        if os.path.exists(audio_path):
+            return audio_path
     
-    for ext in extensions:
-        files = list(Path(recordings_dir).glob(f'*{ext}'))
-        recording_files.extend(files)
-    
-    if not recording_files:
-        return None
-    
-    # Return the most recently created file
-    latest_file = max(recording_files, key=lambda f: f.stat().st_mtime)
-    return str(latest_file)
+    return None
 
 def simulate_speech_recognition(audio_file):
     """Simulate speech recognition processing"""
@@ -101,28 +97,19 @@ def main():
     print("=== Voice to Google Speech Recognition ===")
     print("Starting speech-to-text processing...")
     
-    # Define possible recording locations
-    possible_dirs = [
-        "Aufnahmen",  # Local directory
-        ".",  # Current directory
-        str(Path.home() / "Desktop" / "v2_Tripple S" / "Aufnahmen"),  # Original path
-        "/tmp"  # Fallback for temporary files
-    ]
-    
-    audio_file = None
-    
-    # Try to find an audio file in possible directories
-    for recordings_dir in possible_dirs:
-        if os.path.exists(recordings_dir):
-            audio_file = find_latest_recording(recordings_dir)
-            if audio_file:
-                print(f"Found audio recording in: {recordings_dir}")
-                break
+    # Look for the fixed aufnahme.wav file
+    audio_file = find_fixed_recording()
     
     if not audio_file:
-        print("No audio recording found in any of the expected directories:")
-        for d in possible_dirs:
-            print(f"  - {d}")
+        print("No aufnahme.wav file found in any of the expected locations:")
+        possible_paths = [
+            "Aufnahmen/aufnahme.wav",
+            "aufnahme.wav", 
+            str(Path.home() / "Desktop" / "v2_Tripple S" / "Aufnahmen" / "aufnahme.wav"),
+            "/tmp/aufnahme.wav"
+        ]
+        for path in possible_paths:
+            print(f"  - {path}")
         
         # Create a dummy transcript for testing purposes
         print("Creating dummy transcript for workflow testing...")
