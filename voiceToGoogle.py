@@ -3,13 +3,25 @@
 voiceToGoogle.py - Speech recognition script that processes audio recordings
 and converts them to text using Google's speech recognition services.
 
-This script is part of the asynchronous workflow managed by PythonServer.py.
-It processes the audio recording created by Aufnahme.py and generates a transcript.
+Path Logic and Workflow Integration:
+- Base directory: /home/pi/Desktop/v2_Tripple S/
+- Input file: /home/pi/Desktop/v2_Tripple S/aufnahme.wav
+- Output files: /home/pi/Desktop/v2_Tripple S/transkript.txt and transkript.json
+- Google credentials: /home/pi/Desktop/v2_Tripple S/cloudKey.json
+- This script runs AFTER Aufnahme.py completes recording
+- This script runs BEFORE programmSendFile.py uploads the audio
+- Workflow sequence: Recording → Transcription (this script) → Upload
 
 REQUIREMENTS:
 - GOOGLE_APPLICATION_CREDENTIALS environment variable must be set to point to service account key
 - google-cloud-speech library must be installed: pip install google-cloud-speech
 - Audio file must be in WAV format compatible with Google Speech-to-Text
+- cloudKey.json must be present in the working directory for authentication
+
+Optional AI Integration Note:
+- transkript.json output is ready for further AI processing (e.g., Vertex AI)
+- Contains transcript text, metadata, and processing information
+- Can be used for content analysis, sentiment analysis, or content generation workflows
 """
 
 import os
@@ -22,7 +34,9 @@ from pathlib import Path
 # Setup logging for speech-to-text processing
 def setup_speech_logging():
     """Setup logging for speech recognition with both file and console output"""
-    log_dir = Path(__file__).parent
+    # Use standardized base directory
+    log_dir = Path("/home/pi/Desktop/v2_Tripple S")
+    log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "speech_recognition.log"
     
     # Configure logging
@@ -56,13 +70,13 @@ def find_audio_recording(audio_file_path=None):
         speech_logger.info(f"Using provided audio file: {audio_file_path}")
         return audio_file_path
     
-    # Define possible recording locations for the fixed filename
+    # Define possible recording locations with standardized path as priority
     possible_paths = [
-        "/home/pi/Desktop/v2_Tripple S/Aufnahmen/aufnahme.wav",  # Required path from problem statement
-        "Aufnahmen/aufnahme.wav",  # Local directory
-        "aufnahme.wav",  # Current directory  
-        str(Path.home() / "Desktop" / "v2_Tripple S" / "Aufnahmen" / "aufnahme.wav"),  # Original path
-        "/tmp/aufnahme.wav"  # Fallback for temporary files
+        "/home/pi/Desktop/v2_Tripple S/aufnahme.wav",  # Primary path as per requirements
+        str(Path.home() / "Desktop" / "v2_Tripple S" / "aufnahme.wav"),  # Alternative home path
+        "Aufnahmen/aufnahme.wav",  # Local directory fallback
+        "aufnahme.wav",  # Current directory fallback
+        "/tmp/aufnahme.wav"  # Temporary files fallback
     ]
     
     for audio_path in possible_paths:
@@ -115,7 +129,15 @@ def check_google_credentials():
     if not credentials_path:
         speech_logger.error("GOOGLE_APPLICATION_CREDENTIALS environment variable not set")
         speech_logger.error("Please set it to point to your service account key file:")
-        speech_logger.error("export GOOGLE_APPLICATION_CREDENTIALS='/home/pi/meinprojekt-venv/cloudKey.json'")
+        speech_logger.error("export GOOGLE_APPLICATION_CREDENTIALS='/home/pi/Desktop/v2_Tripple S/cloudKey.json'")
+        
+        # Also check for cloudKey.json in the standardized directory
+        default_key_path = "/home/pi/Desktop/v2_Tripple S/cloudKey.json"
+        if os.path.exists(default_key_path):
+            speech_logger.info(f"Found credentials at standard location: {default_key_path}")
+            speech_logger.info("Consider setting GOOGLE_APPLICATION_CREDENTIALS environment variable")
+            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = default_key_path
+            return True
         return False
     
     if not os.path.exists(credentials_path):
@@ -230,30 +252,39 @@ def real_google_speech_recognition(audio_file_path):
         
         return None
 
-def save_transcript(text, output_file="transkript.txt"):
-    """Save the recognized text to a file with proper logging"""
+def save_transcript(text, output_file=None):
+    """Save the recognized text to files in the standardized directory with proper logging"""
+    if output_file is None:
+        # Use standardized base directory
+        base_dir = Path("/home/pi/Desktop/v2_Tripple S")
+        base_dir.mkdir(parents=True, exist_ok=True)
+        output_file = str(base_dir / "transkript.txt")
+    
     try:
-        # Save the transcript
+        # Save the transcript as text file
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(text)
         
         speech_logger.info(f"Transcript saved to: {output_file}")
         speech_logger.info(f"Transcript content: '{text}'")
         
-        # Also save as JSON with metadata
+        # Also save as JSON with metadata in the same directory
         json_file = output_file.replace('.txt', '.json')
         transcript_data = {
             "transcript": text,
             "timestamp": time.time(),
             "iso_timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             "file_size": len(text),
-            "processing_method": "google_speech_api" if GOOGLE_SPEECH_AVAILABLE else "simulation"
+            "processing_method": "google_speech_api" if GOOGLE_SPEECH_AVAILABLE else "simulation",
+            "audio_source": find_audio_recording(),  # Include source audio path
+            "workflow_step": "transcription_complete"  # Mark workflow step for integration
         }
         
         with open(json_file, 'w', encoding='utf-8') as f:
             json.dump(transcript_data, f, ensure_ascii=False, indent=2)
         
         speech_logger.info(f"Transcript metadata saved to: {json_file}")
+        speech_logger.info("--- Transcript ready for AI integration (Vertex AI compatible) ---")
         return True
         
     except Exception as e:
@@ -278,10 +309,10 @@ def main():
         speech_logger.error("No aufnahme.wav file found in any of the expected locations")
         speech_logger.error("Expected locations:")
         expected_paths = [
-            "/home/pi/Desktop/v2_Tripple S/Aufnahmen/aufnahme.wav",
+            "/home/pi/Desktop/v2_Tripple S/aufnahme.wav",
+            str(Path.home() / "Desktop" / "v2_Tripple S" / "aufnahme.wav"),
             "Aufnahmen/aufnahme.wav",
             "aufnahme.wav", 
-            str(Path.home() / "Desktop" / "v2_Tripple S" / "Aufnahmen" / "aufnahme.wav"),
             "/tmp/aufnahme.wav"
         ]
         for path in expected_paths:

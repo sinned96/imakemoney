@@ -2,6 +2,14 @@
 """
 Aufnahme.py - Audio recording script with SIGTERM handling
 
+Path Logic and Workflow Integration:
+- Base directory: /home/pi/Desktop/v2_Tripple S/
+- Output file: /home/pi/Desktop/v2_Tripple S/aufnahme.wav (fixed filename, always overwrite)
+- This script starts the workflow by creating the audio recording
+- After recording completes, voiceToGoogle.py processes the audio
+- Finally, programmSendFile.py uploads the file to the server
+- Workflow sequence: Recording (this script) → Transcription → Upload
+
 This script starts recording immediately when launched and stops cleanly
 when receiving SIGTERM. It outputs frame count and file location when stopping.
 """
@@ -39,14 +47,15 @@ class AudioRecorder:
             print("Warning: Recording already started")
             return
             
-        # Create output directory if it doesn't exist
-        recordings_dir = Path.home() / "Desktop" / "v2_Tripple S" / "Aufnahmen"
+        # Create standardized output directory if it doesn't exist
+        recordings_dir = Path("/home/pi/Desktop/v2_Tripple S")
         recordings_dir.mkdir(parents=True, exist_ok=True)
         
-        # Use fixed filename - always overwrite previous recording
+        # Use fixed filename in standardized location - always overwrite previous recording
         self.output_file = recordings_dir / "aufnahme.wav"
         
         print(f"Starting recording to: {self.output_file}")
+        print(f"Using standardized path: /home/pi/Desktop/v2_Tripple S/aufnahme.wav")
         
         # Try different recording tools in order of preference
         recording_commands = [

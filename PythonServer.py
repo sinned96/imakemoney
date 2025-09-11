@@ -9,6 +9,7 @@ import sys
 import time
 import threading
 import select
+import traceback  # Added for better error reporting
 
 # Optional Google Cloud dependencies
 try:
@@ -31,19 +32,27 @@ SCRIPT_DIR = Path(__file__).parent
 IS_RASPBERRY_PI = os.path.exists('/etc/rpi-issue') or 'raspberry' in platform.platform().lower()
 IS_HEADLESS = not os.environ.get('DISPLAY') and platform.system() == 'Linux'
 
-# Google Cloud Configuration
-GOOGLE_CREDENTIALS = os.getenv('GOOGLE_CREDENTIALS', str(SCRIPT_DIR / "cloudKey.json"))
-# For Google Speech-to-Text, use the specific credentials path as required
-GOOGLE_SPEECH_CREDENTIALS = os.getenv('GOOGLE_APPLICATION_CREDENTIALS', '/home/pi/meinprojekt-venv/cloudKey.json')
+# Standardized paths as per requirements - all files in /home/pi/Desktop/v2_Tripple S/
+BASE_DIR = Path("/home/pi/Desktop/v2_Tripple S")
+
+# Google Cloud Configuration  
+GOOGLE_CREDENTIALS = os.getenv('GOOGLE_CREDENTIALS', str(BASE_DIR / "cloudKey.json"))
+# For Google Speech-to-Text, use the standardized credentials path
+GOOGLE_SPEECH_CREDENTIALS = os.getenv('GOOGLE_APPLICATION_CREDENTIALS', str(BASE_DIR / "cloudKey.json"))
 PROJECT_ID = os.getenv('PROJECT_ID', "trippe-s")
 ENDPOINT = f"https://us-central1-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/us-central1/publishers/google/models/imagen-4.0-generate-001:predict"
 
-# Script paths - use relative paths from current directory
+# Script paths - consistent with repository structure
 AUFNAHME_SCRIPT = str(SCRIPT_DIR / "Aufnahme.py")
 VOICE_SCRIPT = str(SCRIPT_DIR / "voiceToGoogle.py")
+UPLOAD_SCRIPT = str(SCRIPT_DIR / "programmSendFile.py")  # NEW: Upload script
 COPY_SCRIPT = str(SCRIPT_DIR / "dateiKopieren.py")
-TRANSKRIPT_PATH = str(SCRIPT_DIR / "transkript.txt")
-BILDER_DIR = str(SCRIPT_DIR / "BilderVertex")
+
+# Standardized file paths in working directory
+AUDIO_FILE = str(BASE_DIR / "aufnahme.wav")
+TRANSKRIPT_PATH = str(BASE_DIR / "transkript.txt")
+TRANSKRIPT_JSON_PATH = str(BASE_DIR / "transkript.json")
+BILDER_DIR = str(BASE_DIR / "BilderVertex")
 
 # Print environment info on startup
 if __name__ == "__main__":
@@ -355,72 +364,129 @@ class WorkflowFileWatcher:
             print(f"Error clearing log: {e}")
     
     def execute_workflow(self):
-        """Execute the complete workflow after recording"""
-        self.log_status("Workflow gestartet")
+        """
+        Execute the complete workflow after recording
+        
+        Workflow Sequence as per requirements:
+        1. Transcription: voiceToGoogle.py processes aufnahme.wav → creates transkript.json
+        2. File Upload: programmSendFile.py uploads aufnahme.wav to server
+        3. File Operations: dateiKopieren.py handles local file management 
+        4. Image Generation: Generate image from transcript (optional)
+        
+        Path Logic:
+        - All files located in /home/pi/Desktop/v2_Tripple S/
+        - aufnahme.wav: source audio file
+        - transkript.json: transcript with metadata (AI processing ready)
+        - cloudKey.json: Google service account credentials
+        """
+        self.log_status("=== Starting Speech Recording Workflow ===")
+        self.log_status("Workflow sequence: Recording → Transcription → Upload → Processing")
         
         success_count = 0
-        total_steps = 3
+        total_steps = 4  # Updated to include upload step
         
         try:
-            # Step 1: Voice recognition
-            self.log_status("Schritt 1/3: Spracherkennung...")
+            # Step 1: Voice recognition (Transcription First!)
+            self.log_status("Schritt 1/4: Spracherkennung (voiceToGoogle.py)...")
             self.log_status(f"Setting GOOGLE_APPLICATION_CREDENTIALS to: {GOOGLE_SPEECH_CREDENTIALS}")
             
             manager = AsyncWorkflowManager()
             if manager.run_script_sync(str(self.work_dir / "voiceToGoogle.py"), "Spracherkennung"):
                 success_count += 1
-                self.log_status("Spracherkennung erfolgreich")
+                self.log_status("✓ Spracherkennung erfolgreich")
                 
-                # Check if transcript was created
-                transcript_file = self.work_dir / "transkript.txt"
-                if transcript_file.exists():
+                # Check if transcript files were created in standardized location
+                transcript_txt = Path(TRANSKRIPT_PATH)
+                transcript_json = Path(TRANSKRIPT_JSON_PATH)
+                
+                if transcript_txt.exists():
                     try:
-                        with open(transcript_file, 'r', encoding='utf-8') as f:
+                        with open(transcript_txt, 'r', encoding='utf-8') as f:
                             transcript_content = f.read()
                         self.log_status(f"Transcript erstellt: '{transcript_content[:100]}{'...' if len(transcript_content) > 100 else ''}'")
                     except Exception as e:
                         self.log_status(f"Transcript-Datei konnte nicht gelesen werden: {e}", "WARNING")
+                        
+                if transcript_json.exists():
+                    self.log_status(f"✓ JSON-Transcript für AI-Integration erstellt: {transcript_json}")
                 else:
-                    self.log_status("Transcript-Datei wurde nicht erstellt", "WARNING")
+                    self.log_status("JSON-Transcript wurde nicht erstellt", "WARNING")
             else:
-                self.log_status("Spracherkennung fehlgeschlagen", "WARNING")
+                self.log_status("✗ Spracherkennung fehlgeschlagen", "WARNING")
                 self.log_status("Mögliche Ursachen:", "INFO")
-                self.log_status("- GOOGLE_APPLICATION_CREDENTIALS nicht gesetzt oder Datei nicht gefunden", "INFO")
-                self.log_status("- google-cloud-speech Bibliothek nicht installiert", "INFO") 
-                self.log_status("- Netzwerkfehler oder Google Cloud API Problem", "INFO")
-                self.log_status("- Ungültige Audio-Datei oder Audio-Datei nicht gefunden", "INFO")
+                self.log_status(f"- GOOGLE_APPLICATION_CREDENTIALS not set or file missing: {GOOGLE_SPEECH_CREDENTIALS}", "INFO")
+                self.log_status("- google-cloud-speech library not installed", "INFO") 
+                self.log_status("- Network error or Google Cloud API problem", "INFO")
+                self.log_status(f"- Audio file not found: {AUDIO_FILE}", "INFO")
             
-            # Step 2: File operations
-            self.log_status("Schritt 2/3: Dateioperationen...")
+            # Step 2: File Upload (Upload after Transcription!)
+            self.log_status("Schritt 2/4: Server-Upload (programmSendFile.py)...")
+            self.log_status(f"Uploading {AUDIO_FILE} to target server...")
+            
+            if os.path.exists(UPLOAD_SCRIPT):
+                if manager.run_script_sync(UPLOAD_SCRIPT, "Server-Upload"):
+                    success_count += 1
+                    self.log_status("✓ Server-Upload erfolgreich")
+                else:
+                    self.log_status("✗ Server-Upload fehlgeschlagen", "WARNING")
+                    self.log_status("Mögliche Ursachen:", "INFO")
+                    self.log_status("- SSH-Schlüssel nicht konfiguriert", "INFO")
+                    self.log_status("- Netzwerkverbindung zum Zielserver fehlgeschlagen", "INFO")
+                    self.log_status("- Server-Berechtigungen unzureichend", "INFO")
+                    self.log_status("- Upload-Konfiguration (SERVER_HOST, SERVER_USER) nicht gesetzt", "INFO")
+            else:
+                self.log_status(f"Upload-Skript nicht gefunden: {UPLOAD_SCRIPT}", "ERROR")
+            
+            # Step 3: File operations (Local Management)
+            self.log_status("Schritt 3/4: Dateioperationen (dateiKopieren.py)...")
             if manager.run_script_sync(str(self.work_dir / "dateiKopieren.py"), "Dateioperationen"):
                 success_count += 1
-                self.log_status("Dateioperationen erfolgreich")
+                self.log_status("✓ Dateioperationen erfolgreich")
             else:
-                self.log_status("Dateioperationen fehlgeschlagen", "WARNING")
+                self.log_status("✗ Dateioperationen fehlgeschlagen", "WARNING")
             
-            # Step 3: Image generation
-            self.log_status("Schritt 3/3: Bildgenerierung...")
+            # Step 4: Image generation (Optional AI Processing)
+            self.log_status("Schritt 4/4: Bildgenerierung...")
+            self.log_status("Note: Using transcript for AI-powered image generation (Vertex AI integration)")
+            
             prompt_text = get_copied_content()
+            if not prompt_text.strip() and os.path.exists(TRANSKRIPT_PATH):
+                # Fallback to transcript file if clipboard is empty
+                try:
+                    with open(TRANSKRIPT_PATH, 'r', encoding='utf-8') as f:
+                        prompt_text = f.read().strip()
+                    self.log_status(f"Using transcript as prompt: '{prompt_text[:50]}...'")
+                except Exception as e:
+                    self.log_status(f"Could not read transcript for image generation: {e}", "WARNING")
+                    
             if prompt_text.strip():
                 try:
+                    # Ensure BilderVertex directory exists in standardized location
+                    bilder_dir_path = Path(BILDER_DIR)
+                    bilder_dir_path.mkdir(parents=True, exist_ok=True)
+                    
                     generate_image_imagen4(prompt_text, image_count=1, 
-                                         bilder_dir=str(self.work_dir / "BilderVertex"), 
+                                         bilder_dir=str(bilder_dir_path), 
                                          output_prefix="bild")
                     success_count += 1
-                    self.log_status("Bildgenerierung erfolgreich")
+                    self.log_status("✓ Bildgenerierung erfolgreich")
                 except Exception as e:
-                    self.log_status(f"Bildgenerierung fehlgeschlagen: {e}", "ERROR")
+                    self.log_status(f"✗ Bildgenerierung fehlgeschlagen: {e}", "ERROR")
             else:
                 self.log_status("Kein Text für Bildgenerierung gefunden", "WARNING")
             
             # Final status
             if success_count == total_steps:
-                self.log_status("WORKFLOW_COMPLETE: Alle Schritte erfolgreich")
+                self.log_status("WORKFLOW_COMPLETE: Alle Schritte erfolgreich abgeschlossen")
+                self.log_status(f"✓ Transcription → Upload → Processing workflow completed")
             else:
                 self.log_status(f"WORKFLOW_COMPLETE: {success_count}/{total_steps} Schritte erfolgreich", "WARNING")
+                self.log_status("Workflow partially completed - check individual step logs")
                 
         except Exception as e:
-            self.log_status(f"WORKFLOW_ERROR: {e}", "ERROR")
+            self.log_status(f"WORKFLOW_ERROR: Unerwarteter Fehler: {e}", "ERROR")
+            import traceback
+            self.log_status(f"Traceback: {traceback.format_exc()}", "ERROR")
         
         finally:
             # Clean up trigger file
