@@ -121,11 +121,12 @@ except KeyboardInterrupt:
             sys.exit(1)
             
     def stop_recording(self):
-        """Stop the recording and cleanup"""
+        """Stop the recording and cleanup with improved error handling"""
         if not self.recording_started or not self.recording_process:
             print("No recording to stop")
             return
             
+        process_exit_code = None
         try:
             # Terminate the recording process
             if self.recording_process.poll() is None:  # Process is still running
@@ -134,16 +135,20 @@ except KeyboardInterrupt:
                 
                 # Wait for process to finish
                 stdout, stderr = self.recording_process.communicate(timeout=5)
+                process_exit_code = self.recording_process.returncode
                 
                 if stderr:
                     stderr_text = stderr.decode('utf-8', errors='ignore')
                     if stderr_text.strip():
                         print(f"Recording warnings: {stderr_text}")
+            else:
+                process_exit_code = self.recording_process.returncode
                 
         except subprocess.TimeoutExpired:
             print("Warning: Recording process didn't terminate cleanly, forcing kill")
             os.killpg(os.getpgid(self.recording_process.pid), signal.SIGKILL)
             self.recording_process.wait()
+            process_exit_code = self.recording_process.returncode
         except Exception as e:
             print(f"Error stopping recording: {e}")
             
@@ -156,15 +161,39 @@ except KeyboardInterrupt:
             sample_rate = 44100
             channels = 1  # Mono for Google Speech-to-Text compatibility
             self.frame_count = int(sample_rate * channels * duration)
-            
-        # Check if file was created and get size
+        
+        # Improved error handling: Check file creation success first
+        file_created_successfully = False
+        file_size = 0
+        
         if self.output_file and self.output_file.exists():
             file_size = self.output_file.stat().st_size
+            # Consider file created successfully if it has reasonable size (at least 1KB for very short recordings)
+            file_created_successfully = file_size > 1024
+            
             print(f"Recording saved to: {self.output_file}")
             print(f"File size: {file_size:,} bytes ({file_size / 1024 / 1024:.2f} MB)")
             print(f"Estimated frames recorded: {self.frame_count:,}")
+            
+            if file_created_successfully:
+                print("✓ Audio file successfully created")
+            else:
+                print("⚠ Warning: Audio file is very small, may be incomplete")
         else:
-            print("Warning: Recording file was not created or is missing")
+            print("✗ Error: Recording file was not created or is missing")
+            
+        # Enhanced error reporting based on file creation success
+        if process_exit_code is not None and process_exit_code != 0:
+            if file_created_successfully:
+                # Exit code != 0 but file was created successfully
+                # This is common when stopping recording tools with SIGTERM/SIGINT
+                print(f"ℹ Info: Recording process ended with exit code {process_exit_code}, but audio file was saved successfully")
+                print("This is normal when stopping recording tools via signal")
+            else:
+                # Exit code != 0 AND no valid file created - this is a real error
+                print(f"✗ Error: Recording process ended with error code {process_exit_code} and no valid audio file was created")
+        elif file_created_successfully:
+            print("✓ Recording completed successfully")
             
         self.recording_started = False
         
@@ -184,8 +213,7 @@ except KeyboardInterrupt:
                 time.sleep(0.1)  # Small sleep to prevent busy waiting
                 
             # If we get here, recording process ended naturally
-            if self.recording_process and self.recording_process.returncode != 0:
-                print(f"Recording process ended with error code: {self.recording_process.returncode}")
+            # Note: We handle exit codes in stop_recording() method with file validation
                 
         except KeyboardInterrupt:
             print("Interrupted by user")
