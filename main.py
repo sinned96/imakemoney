@@ -791,7 +791,7 @@ class SettingsRootPopup(FloatLayout):
         if self.slideshow.current_overlay is self:
             self.slideshow.current_overlay=None
 class AufnahmePopup(FloatLayout):
-    """Popup window for recording functionality as requested in requirements"""
+    """Popup window for recording functionality with improved error handling"""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.process = None
@@ -802,6 +802,9 @@ class AufnahmePopup(FloatLayout):
         self.workflow_status_checker = None  # Track status checker
         self.workflow_lock_file = None  # NEW: Track workflow lockfile
         self.trigger_creation_lock = threading.Lock()  # NEW: Thread-safe trigger creation
+        
+        # Audio file path for validation (standardized location)
+        self.audio_file_path = Path("/home/pi/Desktop/v2_Tripple S/aufnahme.wav")
         
         # Background
         with self.canvas.before:
@@ -900,6 +903,67 @@ class AufnahmePopup(FloatLayout):
         
         self.add_widget(panel)
     
+    def _validate_audio_file(self):
+        """
+        Validate the recorded audio file for existence, size, and basic integrity
+        
+        Returns:
+            tuple: (is_valid, status_message, message_level)
+                - is_valid: True if file is considered valid
+                - status_message: Description of file status
+                - message_level: 'success', 'info', 'warning', or 'error'
+        """
+        try:
+            if not self.audio_file_path.exists():
+                return False, "Audiodatei wurde nicht erstellt", "error"
+            
+            file_size = self.audio_file_path.stat().st_size
+            
+            # Check if file is too small (less than 1KB indicates likely failure)
+            if file_size < 1024:
+                return False, f"Audiodatei ist zu klein ({file_size} Bytes) - möglicherweise unvollständig", "warning"
+            
+            # File exists and has reasonable size
+            duration_estimate = ""
+            if self.start_time:
+                duration = time.time() - self.start_time
+                duration_estimate = f" (ca. {duration:.1f}s)"
+            
+            size_mb = file_size / 1024 / 1024
+            status_msg = f"Audiodatei erfolgreich gespeichert: {size_mb:.1f} MB{duration_estimate}"
+            
+            # Additional check: Try to verify it's a valid audio file by checking header
+            try:
+                with open(self.audio_file_path, 'rb') as f:
+                    header = f.read(12)
+                    if len(header) >= 12 and b'RIFF' in header and b'WAVE' in header:
+                        return True, status_msg + " ✓ Gültiges WAV-Format", "success"
+                    else:
+                        return True, status_msg + " ⚠ Format unbekannt, aber Datei vorhanden", "info"
+            except Exception:
+                # Even if we can't read the header, if file exists and has size, consider it valid
+                return True, status_msg, "success"
+                
+        except Exception as e:
+            return False, f"Fehler bei der Dateivalidierung: {e}", "error"
+    
+    def _add_status_message(self, message, level="info"):
+        """
+        Add a status message with appropriate color coding
+        
+        Args:
+            message: The message to display
+            level: 'success', 'info', 'warning', or 'error'
+        """
+        color_map = {
+            'success': '44ff44',
+            'info': '4499ff', 
+            'warning': 'ffaa44',
+            'error': 'ff4444'
+        }
+        color = color_map.get(level, 'ffffff')
+        self.add_output_text(f"[color={color}]{message}[/color]")
+
     def _update_bg(self, *args):
         self.bg.pos = self.pos
         self.bg.size = self.size
@@ -988,7 +1052,7 @@ class AufnahmePopup(FloatLayout):
             self.button.background_color = (0.25, 0.55, 0.25, 1)
     
     def read_process_output(self, dt):
-        """Read output from the recording process"""
+        """Read output from the recording process with improved termination handling"""
         if not self.process or not self.is_running:
             return False  # Stop scheduling
             
@@ -999,10 +1063,18 @@ class AufnahmePopup(FloatLayout):
                 final_output = self.process.stdout.read()
                 if final_output:
                     self.add_output_text(final_output.strip())
+                
+                # Process ended - handle this gracefully without showing automatic error
+                debug_logger.info(f"Recording process ended naturally with exit code: {self.process.returncode}")
+                
+                # Don't show error message here - let stop_recording handle the validation
                 self.is_running = False
-                self.button.text = "Start"
+                self.button.text = "Start" 
                 self.button.background_color = (0.25, 0.55, 0.25, 1)
                 self.stop_timer()
+                
+                # Trigger validation through stop_recording method
+                self.stop_recording()
                 return False
             
             # Read available output without blocking
@@ -1024,13 +1096,13 @@ class AufnahmePopup(FloatLayout):
                     pass  # No output available
                     
         except Exception as e:
-            print(f"Error reading process output: {e}")
+            debug_logger.error(f"Error reading process output: {e}")
             return False
         
         return True  # Continue scheduling
     
     def stop_recording(self):
-        """Stop Aufnahme.py subprocess cleanly using SIGTERM"""
+        """Stop Aufnahme.py subprocess cleanly using SIGTERM with improved error handling"""
         debug_logger.info(f"stop_recording called - is_running: {self.is_running}, process: {self.process is not None}")
         
         # Validate recording state BEFORE attempting to stop
@@ -1058,6 +1130,7 @@ class AufnahmePopup(FloatLayout):
         print(stop_msg_starting)
         self.add_output_text(f"[color=ffff44]{stop_msg_starting}[/color]")
         
+        process_exit_code = None
         try:
             # Send SIGTERM for graceful shutdown as required
             debug_logger.info(f"Sending SIGTERM to process {self.process.pid}")
@@ -1066,6 +1139,8 @@ class AufnahmePopup(FloatLayout):
             # Wait for the process and capture final output
             try:
                 stdout, stderr = self.process.communicate(timeout=10)
+                process_exit_code = self.process.returncode
+                
                 if stdout:
                     debug_logger.debug(f"Recording stdout: {stdout[:200]}...")
                     self.add_output_text(stdout.strip())
@@ -1081,6 +1156,7 @@ class AufnahmePopup(FloatLayout):
                 self.add_output_text(f"[color=ff4444]{timeout_msg}[/color]")
                 self.process.kill()
                 self.process.wait()
+                process_exit_code = self.process.returncode
                 
         except Exception as e:
             error_msg = f"Fehler beim Stoppen: {e}"
@@ -1097,10 +1173,40 @@ class AufnahmePopup(FloatLayout):
         self.button.background_color = (0.25, 0.55, 0.25, 1)  # Green for start
         self.stop_timer()
         
-        stop_msg = "Aufnahme gestoppt"
-        debug_logger.info(stop_msg)
-        print(stop_msg)
-        self.add_output_text(f"[color=44ff44]{stop_msg}[/color]")
+        # IMPROVED ERROR HANDLING: Validate audio file and provide appropriate feedback
+        debug_logger.info("Validating recorded audio file...")
+        is_valid, status_message, message_level = self._validate_audio_file()
+        
+        if is_valid:
+            # Audio file is valid - this is success regardless of exit code
+            debug_logger.info("Audio file validation successful")
+            print(f"✓ {status_message}")
+            self._add_status_message(f"✓ {status_message}", "success")
+            
+            # Handle exit code information
+            if process_exit_code is not None and process_exit_code != 0:
+                # Exit code != 0 but file is valid - this is normal for recording tools stopped via signal
+                info_msg = f"Hinweis: Prozess beendet mit Code {process_exit_code}, Audio jedoch erfolgreich gespeichert"
+                debug_logger.info(info_msg)
+                print(f"ℹ {info_msg}")
+                self._add_status_message(f"ℹ {info_msg}", "info")
+                self.add_output_text("[color=4499ff]Dies ist normal beim Stoppen von Aufnahme-Tools[/color]")
+            else:
+                success_msg = "Aufnahme erfolgreich abgeschlossen"
+                debug_logger.info(success_msg)
+                print(f"✓ {success_msg}")
+                
+        else:
+            # Audio file is not valid - this is an error regardless of exit code
+            debug_logger.error(f"Audio file validation failed: {status_message}")
+            print(f"✗ {status_message}")
+            self._add_status_message(f"✗ {status_message}", message_level)
+            
+            if process_exit_code is not None and process_exit_code != 0:
+                error_detail = f"Zusätzlich: Prozess beendet mit Fehlercode {process_exit_code}"
+                debug_logger.error(error_detail)
+                print(f"✗ {error_detail}")
+                self._add_status_message(f"✗ {error_detail}", "error")
         
         # Create workflow trigger file after stopping recording (only once per recording)
         if not self.workflow_triggered:
