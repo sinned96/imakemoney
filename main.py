@@ -2,12 +2,12 @@ import os
 import json
 import hashlib
 import subprocess
-from datetime import datetime, time
+import time
+from datetime import datetime, time as dt_time
 from pathlib import Path
 from random import shuffle, choice, uniform, random
 import types
 import threading
-import time
 import signal
 import logging
 import fcntl
@@ -156,11 +156,11 @@ def check_account(benutzername, passwort):
 def parse_time(hhmm: str):
     try:
         h, m = hhmm.strip().split(":")
-        return time(int(h), int(m))
+        return dt_time(int(h), int(m))
     except Exception:
         return None
 
-def time_in_window(now_t: time, start_t: time, end_t: time):
+def time_in_window(now_t: dt_time, start_t: dt_time, end_t: dt_time):
     if start_t <= end_t:
         return start_t <= now_t <= end_t
     return now_t >= start_t or now_t <= end_t
@@ -2155,9 +2155,16 @@ class Slideshow(FloatLayout):
         return []
 
     def _check_new_files(self):
-        if not (self.current_mode and self.current_mode.name in ("Alle Bilder","Standard")):
+        if not self.current_mode:
             return
-        cur=self._scan_global()
+        
+        # Update images for all modes - especially important for Tag/Nacht mode switching
+        if self.current_mode.name in ("Alle Bilder","Standard"):
+            cur=self._scan_global()
+        else:
+            # For Tag/Nacht and other specific modes, check their assigned images
+            cur=self.current_mode.existing_images()
+            
         if cur!=self.images:
             self.images=cur
             self.index=min(self.index,len(self.images)-1) if self.images else 0
@@ -2421,6 +2428,33 @@ class Slideshow(FloatLayout):
     def on_mouse_down(self, window, x, y, button, modifiers):
         self._bring_up_toolbar()
 
+    def cleanup_on_exit(self):
+        """Clean up resources when app is closing to fix recording restart issue"""
+        debug_logger.info("Slideshow cleanup: stopping timers and processes")
+        
+        # Stop all timers
+        if self.event: 
+            Clock.unschedule(self.event)
+            self.event = None
+        if self.scheduler_event: 
+            Clock.unschedule(self.scheduler_event)
+            self.scheduler_event = None
+        if self._new_files_timer: 
+            Clock.unschedule(self._new_files_timer)
+            self._new_files_timer = None
+        if self._toolbar_timer: 
+            Clock.unschedule(self._toolbar_timer)
+            self._toolbar_timer = None
+            
+        # Stop any active recording processes
+        for child in self.children[:]:  # Copy list to avoid modification during iteration
+            if hasattr(child, 'is_running') and child.is_running:
+                debug_logger.info("Found running recording, stopping it")
+                if hasattr(child, 'stop_recording'):
+                    child.stop_recording()
+                    
+        debug_logger.info("Slideshow cleanup completed")
+
 # ---- App Klassen ----
 if KIVYMD_OK:
     class KioskMDApp(MDApp):
@@ -2429,6 +2463,7 @@ if KIVYMD_OK:
             self.theme_cls.primary_palette="Blue"
             self.mode_manager=ModeManager(MODES_PATH)
             self.root_widget=FloatLayout()
+            self.slideshow=None
             self.show_login()
             return self.root_widget
         def clear_root(self): self.root_widget.clear_widgets()
@@ -2440,11 +2475,18 @@ if KIVYMD_OK:
             self.clear_root()
             self.slideshow=Slideshow(self.mode_manager)
             self.root_widget.add_widget(self.slideshow)
+        def on_stop(self):
+            """Clean up resources when app is closing to fix recording restart issue"""
+            debug_logger.info("App is stopping - performing cleanup")
+            if self.slideshow:
+                self.slideshow.cleanup_on_exit()
+            return True
 else:
     class KioskMDApp(App):
         def build(self):
             self.mode_manager=ModeManager(MODES_PATH)
             self.root_widget=FloatLayout()
+            self.slideshow=None
             self.show_login()
             return self.root_widget
         def clear_root(self): self.root_widget.clear_widgets()
@@ -2456,6 +2498,12 @@ else:
             self.clear_root()
             self.slideshow=Slideshow(self.mode_manager)
             self.root_widget.add_widget(self.slideshow)
+        def on_stop(self):
+            """Clean up resources when app is closing to fix recording restart issue"""
+            debug_logger.info("App is stopping - performing cleanup")
+            if self.slideshow:
+                self.slideshow.cleanup_on_exit()
+            return True
 
 if __name__ == "__main__":
     app = KioskMDApp()
