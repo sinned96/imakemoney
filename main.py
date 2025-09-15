@@ -947,6 +947,84 @@ class AufnahmePopup(FloatLayout):
         except Exception as e:
             return False, f"Fehler bei der Dateivalidierung: {e}", "error"
     
+    def _validate_audio_file_with_stability_check(self):
+        """
+        Enhanced validation that includes file stability check to prevent race conditions
+        
+        This function ensures the audio file is not only valid but also stable (completely written)
+        before allowing the workflow to proceed. This prevents race conditions where voiceToGoogle.py
+        starts processing an incomplete file.
+        
+        Returns:
+            tuple: (is_valid, status_message, message_level)
+        """
+        import time
+        
+        try:
+            # First, do the basic validation
+            is_basic_valid, basic_msg, basic_level = self._validate_audio_file()
+            
+            if not is_basic_valid:
+                return is_basic_valid, basic_msg, basic_level
+            
+            debug_logger.info("Basic validation passed, checking file stability...")
+            
+            # File stability check: ensure file size is not changing
+            initial_size = self.audio_file_path.stat().st_size
+            time.sleep(0.2)  # Wait 200ms
+            
+            try:
+                final_size = self.audio_file_path.stat().st_size
+                if initial_size != final_size:
+                    debug_logger.warning(f"File size changed during stability check: {initial_size} -> {final_size}")
+                    return False, f"Audiodatei noch nicht stabil (Größe ändert sich: {initial_size} -> {final_size} Bytes)", "warning"
+            except Exception as e:
+                debug_logger.warning(f"Error during stability check: {e}")
+                return False, f"Fehler bei Stabilitätsprüfung: {e}", "error"
+            
+            # Try to open the file exclusively to ensure no other process is writing to it
+            try:
+                with open(self.audio_file_path, 'rb') as f:
+                    # Try to acquire an exclusive lock (will fail if file is still being written)
+                    try:
+                        import fcntl
+                        fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        fcntl.flock(f.fileno(), fcntl.LOCK_UN)  # Immediately release the lock
+                        debug_logger.info("File lock test passed - file not being written")
+                    except ImportError:
+                        # fcntl not available on all systems, skip lock test
+                        debug_logger.info("fcntl not available, skipping lock test")
+                        pass
+                    except OSError:
+                        debug_logger.warning("File appears to be locked by another process")
+                        return False, "Audiodatei wird noch von anderem Prozess verwendet", "warning"
+                    
+                    # Try to read the beginning and end of the file to ensure it's complete
+                    f.seek(0)
+                    header = f.read(12)
+                    
+                    # For WAV files, try to read the last few bytes
+                    f.seek(-4, 2)  # Seek to 4 bytes from end
+                    trailer = f.read(4)
+                    
+                    if not header or len(header) < 12:
+                        return False, "Audiodatei-Header unvollständig", "warning"
+                        
+                    debug_logger.info(f"File stability check passed: header={len(header)} bytes, trailer={len(trailer)} bytes")
+                    
+            except Exception as e:
+                debug_logger.warning(f"Error during file access check: {e}")
+                # Don't fail validation just because we can't do advanced checks
+                pass
+            
+            # All checks passed
+            debug_logger.info("File stability check completed successfully")
+            return True, basic_msg + " ✓ Datei stabil und bereit für Verarbeitung", "success"
+            
+        except Exception as e:
+            debug_logger.error(f"Error during stability validation: {e}")
+            return False, f"Fehler bei der erweiterten Dateivalidierung: {e}", "error"
+    
     def _add_status_message(self, message, level="info"):
         """
         Add a status message with appropriate color coding
@@ -1173,13 +1251,21 @@ class AufnahmePopup(FloatLayout):
         self.button.background_color = (0.25, 0.55, 0.25, 1)  # Green for start
         self.stop_timer()
         
-        # IMPROVED ERROR HANDLING: Validate audio file and provide appropriate feedback
-        debug_logger.info("Validating recorded audio file...")
-        is_valid, status_message, message_level = self._validate_audio_file()
+        # CRITICAL FIX: Wait for recording process to fully complete and ensure file stability
+        debug_logger.info("Waiting for recording process to fully complete and file to be stable...")
+        self.add_output_text("[color=4499ff]Warte auf vollständige Aufnahme-Beendigung...[/color]")
+        
+        # Wait a short time to ensure all file operations are complete
+        import time
+        time.sleep(0.5)  # Give the recording process time to fully close files
+        
+        # Validate audio file and ensure it's stable before triggering workflow
+        debug_logger.info("Validating recorded audio file after completion wait...")
+        is_valid, status_message, message_level = self._validate_audio_file_with_stability_check()
         
         if is_valid:
-            # Audio file is valid - this is success regardless of exit code
-            debug_logger.info("Audio file validation successful")
+            # Audio file is valid and stable - this is success regardless of exit code
+            debug_logger.info("Audio file validation successful - ready for workflow")
             print(f"✓ {status_message}")
             self._add_status_message(f"✓ {status_message}", "success")
             
@@ -1195,25 +1281,27 @@ class AufnahmePopup(FloatLayout):
                 success_msg = "Aufnahme erfolgreich abgeschlossen"
                 debug_logger.info(success_msg)
                 print(f"✓ {success_msg}")
+            
+            # CRITICAL FIX: Only create workflow trigger AFTER successful validation and file stability
+            if not self.workflow_triggered:
+                debug_logger.info("SAFE TO TRIGGER: Audio file validated and stable - creating workflow trigger")
+                self.add_output_text("[color=44ff44]✓ Audio validiert und stabil - starte Workflow[/color]")
+                self.create_workflow_trigger()
+            else:
+                debug_logger.info("Workflow already triggered for this recording, skipping")
                 
         else:
-            # Audio file is not valid - this is an error regardless of exit code
-            debug_logger.error(f"Audio file validation failed: {status_message}")
+            # Audio file is not valid - DO NOT trigger workflow
+            debug_logger.error(f"Audio file validation failed - NOT triggering workflow: {status_message}")
             print(f"✗ {status_message}")
             self._add_status_message(f"✗ {status_message}", message_level)
+            self.add_output_text("[color=ff4444]✗ Workflow NICHT gestartet - Audiodatei ungültig[/color]")
             
             if process_exit_code is not None and process_exit_code != 0:
                 error_detail = f"Zusätzlich: Prozess beendet mit Fehlercode {process_exit_code}"
                 debug_logger.error(error_detail)
                 print(f"✗ {error_detail}")
                 self._add_status_message(f"✗ {error_detail}", "error")
-        
-        # Create workflow trigger file after stopping recording (only once per recording)
-        if not self.workflow_triggered:
-            debug_logger.info("Creating workflow trigger after recording stop")
-            self.create_workflow_trigger()
-        else:
-            debug_logger.info("Workflow already triggered for this recording, skipping")
     
     def start_timer(self):
         """Start the timer display"""

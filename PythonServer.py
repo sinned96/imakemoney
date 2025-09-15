@@ -396,12 +396,49 @@ class WorkflowFileWatcher:
         - cloudKey.json: Google service account credentials (for Vertex AI)
         """
         self.log_status("=== Starting Clean Vertex AI Workflow ===")
-        self.log_status("Streamlined workflow: Recording → Transcription → File Operations → Vertex AI Image Generation")
+        self.log_status("Streamlined workflow: Recording → Transcription → Vertex AI Image Generation")
+        self.log_status("⚡ ENHANCED: Workflow now waits for complete recording validation before starting")
         
         success_count = 0
         total_steps = 2  # Streamlined to 2 essential steps: Speech Recognition → Vertex AI
         
         try:
+            # Pre-Step: Validate audio file is ready for transcription (race condition prevention)
+            self.log_status("Pre-Step: Validating audio file is ready for transcription...")
+            audio_file_path = Path(AUDIO_FILE)
+            
+            if not audio_file_path.exists():
+                self.log_status(f"✗ Audio file not found: {AUDIO_FILE}", "ERROR")
+                self.log_status("This indicates the recording was not completed properly", "ERROR")
+                self.log_status("WORKFLOW_ERROR: Recording incomplete - aborting transcription", "ERROR")
+                return
+            
+            # Check file size and stability
+            file_size = audio_file_path.stat().st_size
+            if file_size < 1024:
+                self.log_status(f"✗ Audio file too small: {file_size} bytes", "ERROR")
+                self.log_status("This indicates incomplete or failed recording", "ERROR")
+                self.log_status("WORKFLOW_ERROR: Invalid audio file - aborting transcription", "ERROR")
+                return
+            
+            # Quick stability check (ensure file is not still being written)
+            import time
+            initial_size = file_size
+            time.sleep(0.1)  # Brief wait
+            current_size = audio_file_path.stat().st_size
+            
+            if initial_size != current_size:
+                self.log_status(f"✗ Audio file still changing: {initial_size} -> {current_size} bytes", "WARNING")
+                self.log_status("File appears to be still in use - waiting and retrying...", "INFO")
+                time.sleep(0.5)  # Wait longer
+                current_size = audio_file_path.stat().st_size
+                if initial_size != current_size:
+                    self.log_status("WORKFLOW_ERROR: Audio file unstable - aborting to prevent race condition", "ERROR")
+                    return
+            
+            self.log_status(f"✓ Audio file validated and stable: {file_size:,} bytes", "INFO")
+            self.log_status("✅ RACE CONDITION PREVENTION: Audio file ready for safe transcription", "INFO")
+            
             # Step 1: Voice recognition (Transcription)
             self.log_status("Schritt 1/2: Spracherkennung (voiceToGoogle.py)...")
             self.log_status(f"Setting GOOGLE_APPLICATION_CREDENTIALS to: {GOOGLE_SPEECH_CREDENTIALS}")
@@ -433,7 +470,7 @@ class WorkflowFileWatcher:
                 self.log_status(f"- GOOGLE_APPLICATION_CREDENTIALS not set or file missing: {GOOGLE_SPEECH_CREDENTIALS}", "INFO")
                 self.log_status("- google-cloud-speech library not installed", "INFO") 
                 self.log_status("- Network error or Google Cloud API problem", "INFO")
-                self.log_status(f"- Audio file not found: {AUDIO_FILE}", "INFO")
+                self.log_status(f"- Audio file problem (despite validation): {AUDIO_FILE}", "INFO")
             
             # REMOVED STEP 2: File operations (dateiKopieren.py) - not needed for core workflow
             
