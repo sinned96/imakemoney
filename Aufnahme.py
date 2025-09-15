@@ -138,7 +138,8 @@ except KeyboardInterrupt:
                 process_exit_code = self.recording_process.returncode
                 
                 if stderr:
-                    stderr_text = stderr.decode('utf-8', errors='ignore')
+                    # Handle stderr properly - it's already a string due to universal_newlines=True
+                    stderr_text = stderr if isinstance(stderr, str) else stderr.decode('utf-8', errors='ignore')
                     if stderr_text.strip():
                         print(f"Recording warnings: {stderr_text}")
             else:
