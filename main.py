@@ -1267,6 +1267,29 @@ class AufnahmePopup(FloatLayout):
                     except Exception as e:
                         debug_logger.warning(f"Error checking lockfile: {e}")
                 
+                # Check if trigger file already exists and handle appropriately
+                if trigger_file.exists():
+                    try:
+                        trigger_stat = trigger_file.stat()
+                        trigger_age = time.time() - trigger_stat.st_mtime
+                        if trigger_age < 60:  # Less than 1 minute old - probably still processing
+                            warning_msg = "Workflow-Trigger-Datei existiert bereits und ist aktuell"
+                            debug_logger.warning(f"{warning_msg}, age: {trigger_age:.1f}s")
+                            print(warning_msg)
+                            self.add_output_text(f"[color=ffaa44]{warning_msg}[/color]")
+                            return
+                        else:
+                            # Old trigger file - remove it
+                            debug_logger.info(f"Removing stale trigger file (age: {trigger_age:.1f}s)")
+                            trigger_file.unlink()
+                    except Exception as e:
+                        debug_logger.warning(f"Error checking existing trigger file: {e}")
+                        # Try to remove it anyway
+                        try:
+                            trigger_file.unlink()
+                        except Exception:
+                            pass
+                
                 # Atomic trigger file creation with exclusive lock
                 trigger_created = False
                 try:
@@ -1390,6 +1413,26 @@ class AufnahmePopup(FloatLayout):
                     if "WORKFLOW_COMPLETE" in content or "WORKFLOW_ERROR" in content:
                         Clock.unschedule(self.check_workflow_status)
                         self.workflow_status_checker = None  # Clear reference
+                        
+                        # Clean up trigger file after workflow completion
+                        trigger_file = APP_DIR / "workflow_trigger.txt"
+                        if trigger_file.exists():
+                            try:
+                                trigger_file.unlink()
+                                cleanup_msg = "Workflow-Trigger-Datei nach Abschluss gelöscht"
+                                debug_logger.info(cleanup_msg)
+                                print(cleanup_msg)
+                                self.add_output_text(f"[color=44ff44]{cleanup_msg}[/color]")
+                            except Exception as cleanup_err:
+                                cleanup_warning = f"Warnung: Trigger-Datei konnte nicht gelöscht werden: {cleanup_err}"
+                                debug_logger.warning(cleanup_warning)
+                                print(cleanup_warning)
+                                self.add_output_text(f"[color=ffaa44]{cleanup_warning}[/color]")
+                        
+                        # Reset workflow triggered flag for next recording
+                        self.workflow_triggered = False
+                        debug_logger.info("Reset workflow state for next recording")
+                        
                         workflow_complete_msg = "Workflow abgeschlossen"
                         print(workflow_complete_msg)
                         self.add_output_text(f"[color=44ff44]{workflow_complete_msg}[/color]")
@@ -1534,7 +1577,7 @@ class ImageTile(BoxLayout):
             self.sel_color=Color(0,0.7,0,0)
             self.sel_line=Line(rectangle=(self.x,self.y,self.width,self.height),width=2)
         self.bind(pos=self._upd,size=self._upd)
-        self.img=Image(source=path,size_hint=(1,None),height=THUMB_SIZE,allow_stretch=True,keep_ratio=True)
+        self.img=Image(source=path,size_hint=(1,None),height=THUMB_SIZE)
         self.add_widget(self.img)
         name=os.path.basename(path)
         self.lbl=Label(text=self._short(name),size_hint=(1,None),height=dp(26),
@@ -1973,8 +2016,8 @@ class Slideshow(FloatLayout):
         self.bind(pos=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)),
                   size=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)))
 
-        self.img_a = Image(allow_stretch=True, keep_ratio=True, opacity=1, color=(1,1,1,1))
-        self.img_b = Image(allow_stretch=True, keep_ratio=True, opacity=0, color=(1,1,1,1))
+        self.img_a = Image(opacity=1, color=(1,1,1,1))
+        self.img_b = Image(opacity=0, color=(1,1,1,1))
         self.active_img = self.img_a
         self.back_img = self.img_b
         self.add_widget(self.img_a)
@@ -2042,9 +2085,9 @@ class Slideshow(FloatLayout):
         tex_w,tex_h=img_widget.texture.size
         if tex_w==0 or tex_h==0: return
         if IMAGE_SCALE_MODE=="stretch":
-            img_widget.keep_ratio=False
+            # For stretch mode, fill entire window
             img_widget.size=(win_w,win_h); img_widget.pos=(0,0); return
-        img_widget.keep_ratio=False
+        # For other modes, calculate manual scaling
         ratio_w=win_w/tex_w; ratio_h=win_h/tex_h
         scale=max(ratio_w,ratio_h) if IMAGE_SCALE_MODE=="cover" else min(ratio_w,ratio_h)
         new_w=tex_w*scale; new_h=tex_h*scale
