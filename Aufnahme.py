@@ -95,7 +95,7 @@ frame_count = 0
 try:
     while True:
         time.sleep(1)
-        frame_count += 44100 * 2  # Simulate 1 second of 44.1kHz stereo audio
+        frame_count += 44100 * 1  # Simulate 1 second of 44.1kHz mono audio
         print(f"Frames processed: {{frame_count}}")
         # Simulate file growth
         with open('{self.output_file}', 'ab') as f:
@@ -177,11 +177,11 @@ except KeyboardInterrupt:
             print(f"Estimated frames recorded: {self.frame_count:,}")
             
             if file_created_successfully:
-                print("✓ Audio file successfully created")
+                print("[SUCCESS] Audio file successfully created")
             else:
-                print("⚠ Warning: Audio file is very small, may be incomplete")
+                print("[WARNING] Warning: Audio file is very small, may be incomplete")
         else:
-            print("✗ Error: Recording file was not created or is missing")
+            print("[ERROR] Error: Recording file was not created or is missing")
             
         # Enhanced error reporting based on file creation success
         if process_exit_code is not None and process_exit_code != 0:
@@ -192,9 +192,9 @@ except KeyboardInterrupt:
                 print("This is normal when stopping recording tools via signal")
             else:
                 # Exit code != 0 AND no valid file created - this is a real error
-                print(f"✗ Error: Recording process ended with error code {process_exit_code} and no valid audio file was created")
+                print(f"[ERROR] Error: Recording process ended with error code {process_exit_code} and no valid audio file was created")
         elif file_created_successfully:
-            print("✓ Recording completed successfully")
+            print("[SUCCESS] Recording completed successfully")
             
         self.recording_started = False
         
@@ -217,7 +217,8 @@ except KeyboardInterrupt:
             # Note: We handle exit codes in stop_recording() method with file validation
                 
         except KeyboardInterrupt:
-            print("Interrupted by user")
+            print("[INTERRUPT] Recording interrupted by user (KeyboardInterrupt)")
+            print("[STATUS] Gracefully stopping recording process...")
         finally:
             self.stop_recording()
 
@@ -226,10 +227,18 @@ def main():
     print("Aufnahme.py - Audio Recording Script")
     print("Press Ctrl+C or send SIGTERM to stop recording")
     
-    recorder = AudioRecorder()
-    recorder.run()
-    
-    print("Recording session completed.")
+    try:
+        recorder = AudioRecorder()
+        recorder.run()
+        print("Recording session completed.")
+    except KeyboardInterrupt:
+        print("\n[INTERRUPT] Main process interrupted by KeyboardInterrupt")
+        print("[STATUS] Audio recording script shutting down gracefully")
+    except Exception as e:
+        try:
+            print(f"[ERROR] Unexpected error in main: {e}")
+        except Exception:
+            print("[ERROR] Unexpected error occurred but could not be displayed due to encoding issues")
 
 if __name__ == "__main__":
     main()
