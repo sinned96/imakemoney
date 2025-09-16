@@ -95,7 +95,7 @@ frame_count = 0
 try:
     while True:
         time.sleep(1)
-        frame_count += 44100 * 2  # Simulate 1 second of 44.1kHz stereo audio
+        frame_count += 44100 * 1  # Simulate 1 second of 44.1kHz mono audio
         print(f"Frames processed: {{frame_count}}")
         # Simulate file growth
         with open('{self.output_file}', 'ab') as f:

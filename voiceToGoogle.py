@@ -492,7 +492,29 @@ def main():
     
     speech_logger.info(f"Processing audio file: {os.path.basename(audio_file)}")
     
-    # Perform speech recognition - PRIORITIZE REAL GOOGLE API
+    # STEP 1: Always validate and ensure mono format (regardless of processing method)
+    speech_logger.info("=== Pre-processing: Audio Format Validation ===")
+    validated_audio_file = audio_file
+    
+    # Check if audio file needs mono conversion (safety check even if recorded as mono)
+    format_info = check_audio_format(audio_file)
+    if format_info:
+        speech_logger.info(f"Audio format: {format_info['channels']} channels, {format_info['sample_rate']} Hz, {format_info['sample_width']*8}-bit")
+        
+        if not format_info['is_mono']:
+            speech_logger.warning(f"Audio has {format_info['channels']} channels - converting to mono for consistency")
+            mono_path = convert_to_mono(audio_file)
+            if mono_path:
+                validated_audio_file = mono_path
+                speech_logger.info("[SUCCESS] Audio converted to mono format")
+            else:
+                speech_logger.error("Failed to convert audio to mono - proceeding with original file")
+        else:
+            speech_logger.info("[SUCCESS] Audio is already in mono format")
+    else:
+        speech_logger.warning("Could not analyze audio format - proceeding with original file")
+    
+    # STEP 2: Perform speech recognition - PRIORITIZE REAL GOOGLE API
     try:
         recognized_text = None
         processing_method = None
@@ -500,7 +522,8 @@ def main():
         # Always try real Google Speech-to-Text first if available
         if GOOGLE_SPEECH_AVAILABLE:
             speech_logger.info("Attempting real Google Speech-to-Text recognition...")
-            recognized_text = real_google_speech_recognition(audio_file)
+            # Use validated (potentially mono-converted) audio file
+            recognized_text = real_google_speech_recognition(validated_audio_file)
             
             if recognized_text:
                 processing_method = "google_speech_api"
@@ -518,7 +541,7 @@ def main():
             speech_logger.info("1. Google Cloud Speech library is installed: pip install google-cloud-speech")
             speech_logger.info("2. Credentials are configured: GOOGLE_APPLICATION_CREDENTIALS environment variable")
             speech_logger.info("3. Audio is in mono format (automatic conversion attempted)")
-            recognized_text = simulate_speech_recognition(audio_file)
+            recognized_text = simulate_speech_recognition(validated_audio_file)
         
         if recognized_text:
             speech_logger.info("--- Recognition Result ---")
@@ -528,15 +551,47 @@ def main():
             # Save transcript with processing method info
             if save_transcript(recognized_text, processing_method=processing_method):
                 speech_logger.info("[SUCCESS] Speech recognition completed successfully")
+                
+                # Clean up temporary mono file if it was created
+                if validated_audio_file != audio_file and os.path.exists(validated_audio_file):
+                    try:
+                        os.remove(validated_audio_file)
+                        speech_logger.info(f"Cleaned up temporary mono file: {validated_audio_file}")
+                    except Exception as e:
+                        speech_logger.warning(f"Could not clean up temporary file: {e}")
+                
                 return True
             else:
                 speech_logger.error("[FAIL] Failed to save transcript")
+                
+                # Clean up temporary mono file if it was created
+                if validated_audio_file != audio_file and os.path.exists(validated_audio_file):
+                    try:
+                        os.remove(validated_audio_file)
+                    except Exception:
+                        pass
+                
                 return False
         else:
             speech_logger.error("[FAIL] Speech recognition failed - no text detected")
+            
+            # Clean up temporary mono file if it was created
+            if validated_audio_file != audio_file and os.path.exists(validated_audio_file):
+                try:
+                    os.remove(validated_audio_file)
+                except Exception:
+                    pass
+            
             return False
             
     except Exception as e:
+        # Clean up temporary mono file if it was created
+        if 'validated_audio_file' in locals() and validated_audio_file != audio_file and os.path.exists(validated_audio_file):
+            try:
+                os.remove(validated_audio_file)
+            except Exception:
+                pass
+        
         try:
             speech_logger.error(f"[FAIL] Speech recognition error: {e}")
             speech_logger.error(f"Error type: {type(e).__name__}")
