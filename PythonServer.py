@@ -100,9 +100,9 @@ class AsyncWorkflowManager:
                     
                     # Log credential file status
                     if os.path.exists(GOOGLE_SPEECH_CREDENTIALS):
-                        print(f"✓ Google credentials file found: {GOOGLE_SPEECH_CREDENTIALS}")
+                        print(f"[SUCCESS] Google credentials file found: {GOOGLE_SPEECH_CREDENTIALS}")
                     else:
-                        print(f"⚠ Google credentials file not found: {GOOGLE_SPEECH_CREDENTIALS}")
+                        print(f"[WARNING] Google credentials file not found: {GOOGLE_SPEECH_CREDENTIALS}")
                         print("Speech recognition will use simulation mode")
                 
                 result = subprocess.run(
@@ -291,10 +291,15 @@ class AsyncWorkflowManager:
                 time.sleep(0.1)
                 
         except KeyboardInterrupt:
-            print("\nKeyboard Interrupt empfangen")
+            print("\n[INTERRUPT] Keyboard Interrupt empfangen")
+            print("[STATUS] Gracefully shutting down workflow manager...")
             self.should_stop = True
         except Exception as e:
-            print(f"Fehler beim Warten auf Stop-Signal: {e}")
+            try:
+                print(f"Fehler beim Warten auf Stop-Signal: {e}")
+            except Exception:
+                # Fallback if even basic printing fails
+                print("Fehler beim Warten auf Stop-Signal (encoding error)")
             self.should_stop = True
         finally:
             # Restore original signal handlers
@@ -358,7 +363,7 @@ class WorkflowFileWatcher:
             self.log_status(f"Fehler beim Freigeben des Service-Locks: {e}", "WARNING")
         
     def log_status(self, message, level="INFO"):
-        """Log status message to log file"""
+        """Log status message to log file with robust Unicode handling"""
         try:
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
             log_line = f"[{timestamp}] {level}: {message}\n"
@@ -369,7 +374,19 @@ class WorkflowFileWatcher:
             print(f"[{level}] {message}")
             
         except Exception as e:
-            print(f"Logging error: {e}")
+            # Fallback to ASCII-safe logging if Unicode fails
+            try:
+                safe_message = str(message).encode('ascii', 'replace').decode('ascii')
+                timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+                log_line = f"[{timestamp}] {level}: {safe_message}\n"
+                
+                with open(self.status_log, "a", encoding="utf-8") as f:
+                    f.write(log_line)
+                    
+                print(f"[{level}] {safe_message}")
+            except Exception:
+                # Ultimate fallback - just print basic error
+                print(f"[ERROR] Logging failed - message could not be encoded safely")
     
     def clear_status_log(self):
         """Clear the status log file"""
@@ -408,7 +425,7 @@ class WorkflowFileWatcher:
             audio_file_path = Path(AUDIO_FILE)
             
             if not audio_file_path.exists():
-                self.log_status(f"✗ Audio file not found: {AUDIO_FILE}", "ERROR")
+                self.log_status(f"[ERROR] Audio file not found: {AUDIO_FILE}", "ERROR")
                 self.log_status("This indicates the recording was not completed properly", "ERROR")
                 self.log_status("WORKFLOW_ERROR: Recording incomplete - aborting transcription", "ERROR")
                 return
@@ -416,7 +433,7 @@ class WorkflowFileWatcher:
             # Check file size and stability
             file_size = audio_file_path.stat().st_size
             if file_size < 1024:
-                self.log_status(f"✗ Audio file too small: {file_size} bytes", "ERROR")
+                self.log_status(f"[ERROR] Audio file too small: {file_size} bytes", "ERROR")
                 self.log_status("This indicates incomplete or failed recording", "ERROR")
                 self.log_status("WORKFLOW_ERROR: Invalid audio file - aborting transcription", "ERROR")
                 return
@@ -428,7 +445,7 @@ class WorkflowFileWatcher:
             current_size = audio_file_path.stat().st_size
             
             if initial_size != current_size:
-                self.log_status(f"✗ Audio file still changing: {initial_size} -> {current_size} bytes", "WARNING")
+                self.log_status(f"[WARNING] Audio file still changing: {initial_size} -> {current_size} bytes", "WARNING")
                 self.log_status("File appears to be still in use - waiting and retrying...", "INFO")
                 time.sleep(0.5)  # Wait longer
                 current_size = audio_file_path.stat().st_size
@@ -436,7 +453,7 @@ class WorkflowFileWatcher:
                     self.log_status("WORKFLOW_ERROR: Audio file unstable - aborting to prevent race condition", "ERROR")
                     return
             
-            self.log_status(f"✓ Audio file validated and stable: {file_size:,} bytes", "INFO")
+            self.log_status(f"[SUCCESS] Audio file validated and stable: {file_size:,} bytes", "INFO")
             self.log_status("✅ RACE CONDITION PREVENTION: Audio file ready for safe transcription", "INFO")
             
             # Step 1: Voice recognition (Transcription)
@@ -446,7 +463,7 @@ class WorkflowFileWatcher:
             manager = AsyncWorkflowManager()
             if manager.run_script_sync(str(self.work_dir / "voiceToGoogle.py"), "Spracherkennung"):
                 success_count += 1
-                self.log_status("✓ Spracherkennung erfolgreich")
+                self.log_status("[SUCCESS] Spracherkennung erfolgreich")
                 
                 # Check if transcript files were created in standardized location
                 transcript_txt = Path(TRANSKRIPT_PATH)
@@ -461,11 +478,11 @@ class WorkflowFileWatcher:
                         self.log_status(f"Transcript-Datei konnte nicht gelesen werden: {e}", "WARNING")
                         
                 if transcript_json.exists():
-                    self.log_status(f"✓ JSON-Transcript für AI-Integration erstellt: {transcript_json}")
+                    self.log_status(f"[SUCCESS] JSON-Transcript für AI-Integration erstellt: {transcript_json}")
                 else:
                     self.log_status("JSON-Transcript wurde nicht erstellt", "WARNING")
             else:
-                self.log_status("✗ Spracherkennung fehlgeschlagen", "WARNING")
+                self.log_status("[WARNING] Spracherkennung fehlgeschlagen", "WARNING")
                 self.log_status("Mögliche Ursachen:", "INFO")
                 self.log_status(f"- GOOGLE_APPLICATION_CREDENTIALS not set or file missing: {GOOGLE_SPEECH_CREDENTIALS}", "INFO")
                 self.log_status("- google-cloud-speech library not installed", "INFO") 
@@ -502,18 +519,18 @@ class WorkflowFileWatcher:
                     
                     if image_paths:
                         success_count += 1
-                        self.log_status("✓ Vertex AI Bildgenerierung erfolgreich abgeschlossen")
+                        self.log_status("[SUCCESS] Vertex AI Bildgenerierung erfolgreich abgeschlossen")
                         for img_path in image_paths:
-                            self.log_status(f"✓ Bild gespeichert: {img_path}")
+                            self.log_status(f"[SUCCESS] Bild gespeichert: {img_path}")
                     else:
-                        self.log_status("✗ Vertex AI Bildgenerierung: Keine Bilder erhalten", "WARNING")
+                        self.log_status("[WARNING] Vertex AI Bildgenerierung: Keine Bilder erhalten", "WARNING")
                         
                 except Exception as e:
-                    self.log_status(f"✗ Vertex AI Bildgenerierung fehlgeschlagen: {e}", "ERROR")
+                    self.log_status(f"[ERROR] Vertex AI Bildgenerierung fehlgeschlagen: {e}", "ERROR")
                     import traceback
                     self.log_status(f"Error details: {traceback.format_exc()}", "ERROR")
             else:
-                self.log_status("✗ Kein Transcript für Vertex AI Bildgenerierung gefunden", "WARNING")
+                self.log_status("[WARNING] Kein Transcript für Vertex AI Bildgenerierung gefunden", "WARNING")
                 self.log_status("Mögliche Ursachen:", "INFO")
                 self.log_status(f"- Transcript-Datei fehlt: {TRANSKRIPT_PATH}", "INFO")
                 self.log_status(f"- JSON-Transcript fehlt: {TRANSKRIPT_JSON_PATH}", "INFO")
@@ -522,7 +539,7 @@ class WorkflowFileWatcher:
             # Final status
             if success_count == total_steps:
                 self.log_status("WORKFLOW_COMPLETE: Alle Schritte erfolgreich abgeschlossen")
-                self.log_status(f"✓ Streamlined workflow: Speech Recognition → Vertex AI → BilderVertex completed")
+                self.log_status(f"[SUCCESS] Streamlined workflow: Speech Recognition -> Vertex AI -> BilderVertex completed")
             else:
                 self.log_status(f"WORKFLOW_COMPLETE: {success_count}/{total_steps} Schritte erfolgreich", "WARNING")
                 self.log_status("Workflow partially completed - check individual step logs")
@@ -643,7 +660,7 @@ class WorkflowFileWatcher:
                     
                     # Warn if this is simulation data
                     if not is_real:
-                        self.log_status("⚠ Warning: Using simulated transcript data (not real speech)", "WARNING")
+                        self.log_status("[WARNING] Warning: Using simulated transcript data (not real speech)", "WARNING")
                         self.log_status("For real AI image generation, ensure Google Speech-to-Text is working", "WARNING")
                     
                     return transcript_text
@@ -800,7 +817,7 @@ def generate_image_imagen4(prompt, image_count=1, bilder_dir=BILDER_DIR, output_
         auth_req = GoogleAuthRequest()
         credentials.refresh(auth_req)
         token = credentials.token
-        log("✓ Authentication successful")
+        log("[SUCCESS] Authentication successful")
 
         # Prepare API request
         headers = {
@@ -841,7 +858,7 @@ def generate_image_imagen4(prompt, image_count=1, bilder_dir=BILDER_DIR, output_
             
             return _create_demo_images(bilder_dir, output_prefix, image_count, logger)
         
-        log("✓ Received response from Vertex AI API")
+        log("[SUCCESS] Received response from Vertex AI API")
         result = response.json()
         
         if "predictions" not in result or not result["predictions"]:
@@ -866,14 +883,14 @@ def generate_image_imagen4(prompt, image_count=1, bilder_dir=BILDER_DIR, output_
                     f.write(img_data)
                 
                 file_size = len(img_data)
-                log(f"✓ Image {i+1} saved: {fname} ({file_size:,} bytes)")
+                log(f"[SUCCESS] Image {i+1} saved: {fname} ({file_size:,} bytes)")
                 generated_files.append(fname)
                 
             except Exception as e:
                 log(f"Failed to save image {i+1}: {e}", "ERROR")
         
         if generated_files:
-            log(f"✓ Vertex AI image generation completed: {len(generated_files)} images saved")
+            log(f"[SUCCESS] Vertex AI image generation completed: {len(generated_files)} images saved")
             return generated_files
         else:
             log("No images could be saved", "ERROR")
@@ -923,7 +940,7 @@ def _create_demo_images(bilder_dir, output_prefix, image_count, logger=None):
             with open(fname, "wb") as f:
                 f.write(minimal_png)
             
-            log(f"✓ Demo image created: {fname}")
+            log(f"[SUCCESS] Demo image created: {fname}")
             generated_files.append(fname)
         
         return generated_files
@@ -1052,8 +1069,10 @@ def run_background_service():
         return True
         
     except KeyboardInterrupt:
-        print("\nService wird beendet...")
+        print("\n[INTERRUPT] Service wird beendet durch KeyboardInterrupt...")
+        print("[STATUS] Cleaning up workflow service...")
         watcher.stop_watching()
+        print("[STATUS] Workflow service gracefully stopped")
         return False
     finally:
         # Ensure cleanup even if something goes wrong

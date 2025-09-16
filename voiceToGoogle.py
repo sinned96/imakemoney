@@ -204,29 +204,29 @@ def convert_to_mono(input_path, output_path=None):
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         
         if result.returncode == 0:
-            speech_logger.info("✓ Audio successfully converted to mono format")
+            speech_logger.info("[SUCCESS] Audio successfully converted to mono format")
             
             # Verify the conversion worked
             format_info = check_audio_format(str(output_path))
             if format_info and format_info['is_mono']:
-                speech_logger.info("✓ Mono conversion verified successfully")
+                speech_logger.info("[SUCCESS] Mono conversion verified successfully")
                 return str(output_path)
             else:
-                speech_logger.error("✗ Mono conversion verification failed")
+                speech_logger.error("[FAIL] Mono conversion verification failed")
                 return None
         else:
-            speech_logger.error("✗ ffmpeg conversion failed")
+            speech_logger.error("[FAIL] ffmpeg conversion failed")
             speech_logger.error(f"Error output: {result.stderr}")
             return None
             
     except subprocess.TimeoutExpired:
-        speech_logger.error("✗ Audio conversion timed out (>60s)")
+        speech_logger.error("[FAIL] Audio conversion timed out (>60s)")
         return None
     except FileNotFoundError:
-        speech_logger.error("✗ ffmpeg not found - please install ffmpeg")
+        speech_logger.error("[FAIL] ffmpeg not found - please install ffmpeg")
         return None
     except Exception as e:
-        speech_logger.error(f"✗ Audio conversion error: {e}")
+        speech_logger.error(f"[FAIL] Audio conversion error: {e}")
         return None
 
 def ensure_mono_audio(audio_file_path):
@@ -240,11 +240,11 @@ def ensure_mono_audio(audio_file_path):
         return None
     
     if format_info['is_mono']:
-        speech_logger.info("✓ Audio is already in mono format - no conversion needed")
+        speech_logger.info("[SUCCESS] Audio is already in mono format - no conversion needed")
         return audio_file_path
     
     if format_info['channels'] == 2:
-        speech_logger.warning("⚠ Audio is in stereo format - Google Speech-to-Text requires mono")
+        speech_logger.warning("[WARNING] Audio is in stereo format - Google Speech-to-Text requires mono")
         speech_logger.info("Converting to mono format automatically...")
         
         mono_path = convert_to_mono(audio_file_path)
@@ -363,21 +363,30 @@ def real_google_speech_recognition(audio_file_path):
         return transcript
         
     except Exception as e:
-        speech_logger.error(f"Google Speech-to-Text API error: {e}")
-        speech_logger.error(f"Error type: {type(e).__name__}")
-        
-        # Log specific error types for mono audio issues
-        if "INVALID_ARGUMENT" in str(e):
-            speech_logger.error("Invalid argument - this may be related to audio format")
-            speech_logger.error("Ensure audio is mono (1 channel), 16-bit PCM, WAV format")
-        elif "UNAUTHENTICATED" in str(e):
-            speech_logger.error("Authentication failed - check GOOGLE_APPLICATION_CREDENTIALS")
-        elif "PERMISSION_DENIED" in str(e):
-            speech_logger.error("Permission denied - check service account permissions")
-        elif "QUOTA_EXCEEDED" in str(e):
-            speech_logger.error("API quota exceeded - check your Google Cloud billing")
-        elif "UNAVAILABLE" in str(e):
-            speech_logger.error("Service unavailable - network or Google Cloud issue")
+        try:
+            speech_logger.error(f"Google Speech-to-Text API error: {e}")
+            speech_logger.error(f"Error type: {type(e).__name__}")
+            
+            # Log specific error types for mono audio issues
+            error_str = str(e)
+            if "INVALID_ARGUMENT" in error_str:
+                speech_logger.error("Invalid argument - this may be related to audio format")
+                speech_logger.error("Ensure audio is mono (1 channel), 16-bit PCM, WAV format")
+            elif "UNAUTHENTICATED" in error_str:
+                speech_logger.error("Authentication failed - check GOOGLE_APPLICATION_CREDENTIALS")
+            elif "PERMISSION_DENIED" in error_str:
+                speech_logger.error("Permission denied - check service account permissions")
+            elif "QUOTA_EXCEEDED" in error_str:
+                speech_logger.error("API quota exceeded - check your Google Cloud billing")
+            elif "UNAVAILABLE" in error_str:
+                speech_logger.error("Service unavailable - network or Google Cloud issue")
+        except Exception:
+            # Fallback to basic print if logging fails due to encoding issues
+            try:
+                print(f"Google Speech-to-Text API error: {str(e).encode('ascii', 'replace').decode('ascii')}")
+                print(f"Error type: {type(e).__name__}")
+            except Exception:
+                print("Google Speech-to-Text API error occurred but could not be displayed due to encoding issues")
         
         return None
 
@@ -426,15 +435,22 @@ def save_transcript(text, output_file=None, processing_method=None):
         speech_logger.info(f"Transcript metadata saved to: {json_file}")
         
         if processing_method == "google_speech_api":
-            speech_logger.info("✓ Real Google Speech Recognition - transcript contains actual speech content")
+            speech_logger.info("[SUCCESS] Real Google Speech Recognition - transcript contains actual speech content")
             speech_logger.info("--- Transcript ready for AI integration (Vertex AI compatible) ---")
         else:
-            speech_logger.warning("⚠ Simulation mode - transcript contains placeholder text, not real speech")
+            speech_logger.warning("[WARNING] Simulation mode - transcript contains placeholder text, not real speech")
             
         return True
         
     except Exception as e:
-        speech_logger.error(f"Error saving transcript: {e}")
+        try:
+            speech_logger.error(f"Error saving transcript: {e}")
+        except Exception:
+            # Fallback to basic print if logging fails due to encoding issues
+            try:
+                print(f"Error saving transcript: {str(e).encode('ascii', 'replace').decode('ascii')}")
+            except Exception:
+                print("Error saving transcript - could not display error due to encoding issues")
         return False
 
 def main():
@@ -468,10 +484,10 @@ def main():
         speech_logger.info("Creating dummy transcript for workflow testing...")
         dummy_text = "Test Audio Aufnahme - Bitte erstelle ein schönes Bild von einer Landschaft mit Bergen und einem See"
         if save_transcript(dummy_text):
-            speech_logger.info("✓ Dummy transcript created successfully")
+            speech_logger.info("[SUCCESS] Dummy transcript created successfully")
             return True
         else:
-            speech_logger.error("✗ Failed to create dummy transcript")
+            speech_logger.error("[FAIL] Failed to create dummy transcript")
             return False
     
     speech_logger.info(f"Processing audio file: {os.path.basename(audio_file)}")
@@ -488,7 +504,7 @@ def main():
             
             if recognized_text:
                 processing_method = "google_speech_api"
-                speech_logger.info("✓ Real Google Speech-to-Text succeeded!")
+                speech_logger.info("[SUCCESS] Real Google Speech-to-Text succeeded!")
             else:
                 speech_logger.warning("Real Google Speech-to-Text failed - check credentials and audio format")
         else:
@@ -511,20 +527,28 @@ def main():
             
             # Save transcript with processing method info
             if save_transcript(recognized_text, processing_method=processing_method):
-                speech_logger.info("✓ Speech recognition completed successfully")
+                speech_logger.info("[SUCCESS] Speech recognition completed successfully")
                 return True
             else:
-                speech_logger.error("✗ Failed to save transcript")
+                speech_logger.error("[FAIL] Failed to save transcript")
                 return False
         else:
-            speech_logger.error("✗ Speech recognition failed - no text detected")
+            speech_logger.error("[FAIL] Speech recognition failed - no text detected")
             return False
             
     except Exception as e:
-        speech_logger.error(f"✗ Speech recognition error: {e}")
-        speech_logger.error(f"Error type: {type(e).__name__}")
-        import traceback
-        speech_logger.error(f"Traceback: {traceback.format_exc()}")
+        try:
+            speech_logger.error(f"[FAIL] Speech recognition error: {e}")
+            speech_logger.error(f"Error type: {type(e).__name__}")
+            import traceback
+            speech_logger.error(f"Traceback: {traceback.format_exc()}")
+        except Exception:
+            # Fallback to basic print if logging fails due to encoding issues
+            try:
+                print(f"[FAIL] Speech recognition error: {str(e).encode('ascii', 'replace').decode('ascii')}")
+                print(f"Error type: {type(e).__name__}")
+            except Exception:
+                print("[FAIL] Speech recognition error occurred but could not be displayed due to encoding issues")
         return False
 
 if __name__ == "__main__":
@@ -537,11 +561,25 @@ if __name__ == "__main__":
             speech_logger.error("Speech recognition workflow failed")
             sys.exit(1)
     except KeyboardInterrupt:
-        speech_logger.warning("Speech recognition interrupted by user")
+        try:
+            speech_logger.warning("Speech recognition interrupted by user (KeyboardInterrupt)")
+            speech_logger.info("Program status: Gracefully shutting down speech recognition")
+        except Exception:
+            # Fallback to basic print if logging fails due to encoding issues
+            print("Speech recognition interrupted by user (KeyboardInterrupt)")
+            print("Program status: Gracefully shutting down speech recognition")
         sys.exit(1)
     except Exception as e:
-        speech_logger.error(f"Unexpected error: {e}")
-        speech_logger.error(f"Error type: {type(e).__name__}")
-        import traceback
-        speech_logger.error(f"Traceback: {traceback.format_exc()}")
+        try:
+            speech_logger.error(f"Unexpected error: {e}")
+            speech_logger.error(f"Error type: {type(e).__name__}")
+            import traceback
+            speech_logger.error(f"Traceback: {traceback.format_exc()}")
+        except Exception:
+            # Fallback to basic print if logging fails due to encoding issues
+            try:
+                print(f"Unexpected error: {str(e).encode('ascii', 'replace').decode('ascii')}")
+                print(f"Error type: {type(e).__name__}")
+            except Exception:
+                print("Unexpected error occurred but could not be displayed due to encoding issues")
         sys.exit(1)

@@ -937,9 +937,9 @@ class AufnahmePopup(FloatLayout):
                 with open(self.audio_file_path, 'rb') as f:
                     header = f.read(12)
                     if len(header) >= 12 and b'RIFF' in header and b'WAVE' in header:
-                        return True, status_msg + " ✓ Gültiges WAV-Format", "success"
+                        return True, status_msg + " [SUCCESS] Gültiges WAV-Format", "success"
                     else:
-                        return True, status_msg + " ⚠ Format unbekannt, aber Datei vorhanden", "info"
+                        return True, status_msg + " [WARNING] Format unbekannt, aber Datei vorhanden", "info"
             except Exception:
                 # Even if we can't read the header, if file exists and has size, consider it valid
                 return True, status_msg, "success"
@@ -1019,7 +1019,7 @@ class AufnahmePopup(FloatLayout):
             
             # All checks passed
             debug_logger.info("File stability check completed successfully")
-            return True, basic_msg + " ✓ Datei stabil und bereit für Verarbeitung", "success"
+            return True, basic_msg + " [SUCCESS] Datei stabil und bereit für Verarbeitung", "success"
             
         except Exception as e:
             debug_logger.error(f"Error during stability validation: {e}")
@@ -1266,8 +1266,8 @@ class AufnahmePopup(FloatLayout):
         if is_valid:
             # Audio file is valid and stable - this is success regardless of exit code
             debug_logger.info("Audio file validation successful - ready for workflow")
-            print(f"✓ {status_message}")
-            self._add_status_message(f"✓ {status_message}", "success")
+            print(f"[SUCCESS] {status_message}")
+            self._add_status_message(f"[SUCCESS] {status_message}", "success")
             
             # Handle exit code information
             if process_exit_code is not None and process_exit_code != 0:
@@ -1280,12 +1280,12 @@ class AufnahmePopup(FloatLayout):
             else:
                 success_msg = "Aufnahme erfolgreich abgeschlossen"
                 debug_logger.info(success_msg)
-                print(f"✓ {success_msg}")
+                print(f"[SUCCESS] {success_msg}")
             
             # CRITICAL FIX: Only create workflow trigger AFTER successful validation and file stability
             if not self.workflow_triggered:
                 debug_logger.info("SAFE TO TRIGGER: Audio file validated and stable - creating workflow trigger")
-                self.add_output_text("[color=44ff44]✓ Audio validiert und stabil - starte Workflow[/color]")
+                self.add_output_text("[color=44ff44][SUCCESS] Audio validiert und stabil - starte Workflow[/color]")
                 self.create_workflow_trigger()
             else:
                 debug_logger.info("Workflow already triggered for this recording, skipping")
@@ -1293,15 +1293,15 @@ class AufnahmePopup(FloatLayout):
         else:
             # Audio file is not valid - DO NOT trigger workflow
             debug_logger.error(f"Audio file validation failed - NOT triggering workflow: {status_message}")
-            print(f"✗ {status_message}")
-            self._add_status_message(f"✗ {status_message}", message_level)
-            self.add_output_text("[color=ff4444]✗ Workflow NICHT gestartet - Audiodatei ungültig[/color]")
+            print(f"[ERROR] {status_message}")
+            self._add_status_message(f"[ERROR] {status_message}", message_level)
+            self.add_output_text("[color=ff4444][ERROR] Workflow NICHT gestartet - Audiodatei ungültig[/color]")
             
             if process_exit_code is not None and process_exit_code != 0:
                 error_detail = f"Zusätzlich: Prozess beendet mit Fehlercode {process_exit_code}"
                 debug_logger.error(error_detail)
-                print(f"✗ {error_detail}")
-                self._add_status_message(f"✗ {error_detail}", "error")
+                print(f"[ERROR] {error_detail}")
+                self._add_status_message(f"[ERROR] {error_detail}", "error")
     
     def start_timer(self):
         """Start the timer display"""
