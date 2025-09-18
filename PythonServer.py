@@ -8,6 +8,35 @@ import time
 import threading
 import select
 import traceback  # Added for better error reporting
+import logging
+
+def setup_projekt_logging():
+    """Setup unified logging for projekt.log and console output"""
+    import logging
+    from pathlib import Path
+    # Use standardized base directory, but fall back to current directory if not accessible
+    try:
+        log_dir = Path("/home/pi/Desktop/v2_Tripple S")
+        log_dir.mkdir(parents=True, exist_ok=True)
+    except (PermissionError, OSError):
+        # Fallback to current working directory for testing/development
+        log_dir = Path.cwd()
+        
+    log_file = log_dir / "projekt.log"
+    
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='[%(asctime)s] %(levelname)s [%(name)s]: %(message)s',
+        handlers=[
+            logging.FileHandler(str(log_file), mode='a', encoding='utf-8'),
+            logging.StreamHandler()
+        ]
+    )
+    return logging.getLogger(__name__)
+
+# Initialize logger
+logger = setup_projekt_logging()
 
 # Handle image processing functionality
 try:
@@ -80,6 +109,9 @@ BILDER_DIR = str(BASE_DIR / "BilderVertex")
 
 # Print environment info on startup
 if __name__ == "__main__":
+    logger.info(f"PythonServer starting - Environment: {'Raspberry Pi' if IS_RASPBERRY_PI else 'Desktop'}")
+    logger.info(f"Display: {'Headless' if IS_HEADLESS else 'GUI Available'}")
+    logger.info(f"Script Directory: {SCRIPT_DIR}")
     print(f"Environment: {'Raspberry Pi' if IS_RASPBERRY_PI else 'Desktop'}")
     print(f"Display: {'Headless' if IS_HEADLESS else 'GUI Available'}")
     print(f"Script Directory: {SCRIPT_DIR}")
@@ -96,6 +128,7 @@ class AsyncWorkflowManager:
     def run_script_sync(self, script_path, beschreibung):
         """Run a script synchronously with output collection"""
         if os.path.exists(script_path):
+            logger.info(f"Starting {beschreibung}: {script_path}")
             print(f"Starte {beschreibung}: {script_path}")
             try:
                 # Setup environment variables for the script
@@ -104,12 +137,15 @@ class AsyncWorkflowManager:
                 # Set GOOGLE_APPLICATION_CREDENTIALS for speech-to-text
                 if "voiceToGoogle.py" in script_path:
                     env['GOOGLE_APPLICATION_CREDENTIALS'] = GOOGLE_SPEECH_CREDENTIALS
+                    logger.info(f"Setting GOOGLE_APPLICATION_CREDENTIALS to: {GOOGLE_SPEECH_CREDENTIALS}")
                     print(f"Setting GOOGLE_APPLICATION_CREDENTIALS to: {GOOGLE_SPEECH_CREDENTIALS}")
                     
                     # Log credential file status
                     if os.path.exists(GOOGLE_SPEECH_CREDENTIALS):
+                        logger.info(f"Google credentials file found: {GOOGLE_SPEECH_CREDENTIALS}")
                         print(f"[SUCCESS] Google credentials file found: {GOOGLE_SPEECH_CREDENTIALS}")
                     else:
+                        logger.warning(f"Google credentials file not found: {GOOGLE_SPEECH_CREDENTIALS}")
                         print(f"[WARNING] Google credentials file not found: {GOOGLE_SPEECH_CREDENTIALS}")
                         print("Speech recognition will use simulation mode")
                 
@@ -122,27 +158,34 @@ class AsyncWorkflowManager:
                 )
                 
                 if result.stdout:
+                    logger.info(f"{beschreibung} stdout: {result.stdout}")
                     print("--- STDOUT ---")
                     print(result.stdout)
                     
                 if result.stderr:
+                    logger.warning(f"{beschreibung} stderr: {result.stderr}")
                     print("--- STDERR ---") 
                     print(result.stderr)
                     
                 if result.returncode != 0:
+                    logger.error(f"Error running {os.path.basename(script_path)} (Exit Code: {result.returncode})")
                     print(f"Fehler beim Starten von {os.path.basename(script_path)} (Exit Code: {result.returncode})")
                 else:
+                    logger.info(f"{beschreibung} completed successfully")
                     print(f"{beschreibung} abgeschlossen!")
                     
                 return result.returncode == 0
                 
             except subprocess.TimeoutExpired:
+                logger.error(f"Timeout in {beschreibung} after 5 minutes")
                 print(f"Timeout bei {beschreibung} nach 5 Minuten")
                 return False
             except Exception as e:
+                logger.error(f"Error executing {beschreibung}: {e}")
                 print(f"Fehler beim Ausführen von {beschreibung}: {e}")
                 return False
         else:
+            logger.error(f"{os.path.basename(script_path)} not found!")
             print(f"{os.path.basename(script_path)} nicht gefunden!")
             return False
 
@@ -371,8 +414,19 @@ class WorkflowFileWatcher:
             self.log_status(f"Fehler beim Freigeben des Service-Locks: {e}", "WARNING")
         
     def log_status(self, message, level="INFO"):
-        """Log status message to log file with robust Unicode handling"""
+        """Log status message to both unified projekt.log and workflow status log"""
         try:
+            # Log to unified projekt.log using standard logging
+            if level.upper() == "ERROR":
+                logger.error(message)
+            elif level.upper() == "WARNING":
+                logger.warning(message)
+            elif level.upper() == "DEBUG":
+                logger.debug(message)
+            else:
+                logger.info(message)
+            
+            # Also maintain compatibility with existing workflow_status.log
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
             log_line = f"[{timestamp}] {level}: {message}\n"
             
@@ -385,6 +439,8 @@ class WorkflowFileWatcher:
             # Fallback to ASCII-safe logging if Unicode fails
             try:
                 safe_message = str(message).encode('ascii', 'replace').decode('ascii')
+                logger.error(f"Logging fallback for message: {safe_message}")
+                
                 timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
                 log_line = f"[{timestamp}] {level}: {safe_message}\n"
                 
@@ -394,6 +450,7 @@ class WorkflowFileWatcher:
                 print(f"[{level}] {safe_message}")
             except Exception:
                 # Ultimate fallback - just print basic error
+                logger.error("Logging failed - message could not be encoded safely")
                 print(f"[ERROR] Logging failed - message could not be encoded safely")
     
     def clear_status_log(self):
@@ -1043,6 +1100,7 @@ def main():
     3. Continue with synchronous processing steps
     4. Collect and display all subprocess output
     """
+    logger.info("=== PythonServer Main Workflow Started ===")
     print("=== Audio Recording & AI Image Generation Workflow ===")
     print("Dieses Programm führt folgende Schritte aus:")
     print("1. Aufnahme (asynchron, manuell stoppbar)")  
@@ -1052,14 +1110,18 @@ def main():
     print("=" * 60)
     
     # Initialize workflow manager
+    logger.info("Initializing AsyncWorkflowManager")
     workflow = AsyncWorkflowManager()
     
     # Step 1: Start recording asynchronously
+    logger.info("Starting asynchronous recording")
     if not workflow.start_recording_async(AUFNAHME_SCRIPT):
+        logger.error("Failed to start recording - workflow aborted")
         print("Fehler beim Starten der Aufnahme - Workflow abgebrochen")
         return False
     
     # Wait for recording to be stopped (manually or by signal)
+    logger.info("Waiting for stop signal")
     print("Warte auf Stop-Signal...")
     print("Optionen zum Stoppen:")
     print("- Drücke Enter")
@@ -1070,8 +1132,10 @@ def main():
     
     # Stop recording if still running
     if workflow.is_recording:
+        logger.info("Stopping recording")
         workflow.stop_recording()
     
+    logger.info("Recording completed, continuing with further steps")
     print("\n" + "=" * 60)
     print("Aufnahme abgeschlossen, fahre mit weiteren Schritten fort...")
     print("=" * 60)
