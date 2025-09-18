@@ -59,12 +59,13 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.image import Image
 from kivy.uix.scrollview import ScrollView
-from kivy.graphics import Color, Rectangle, Line
+from kivy.graphics import Color, Rectangle, Line, Rotate, PushMatrix, PopMatrix
 from kivy.uix.button import Button
 from kivy.uix.togglebutton import ToggleButton
 from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
 from kivy.uix.slider import Slider
+from kivy.uix.widget import Widget
 from kivy.app import App
 from kivy.core.window import Window
 
@@ -800,10 +801,56 @@ class SettingsRootPopup(FloatLayout):
         if self.parent: self.parent.remove_widget(self)
         if self.slideshow.current_overlay is self:
             self.slideshow.current_overlay=None
-class AufnahmePopup(FloatLayout):
-    """Popup window for recording functionality with improved error handling"""
+
+class LoadingSpinner(Widget):
+    """A circular loading spinner widget"""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.angle = 0
+        self.animation = None
+        
+        with self.canvas:
+            PushMatrix()
+            self.rotate = Rotate()
+            self.rotate.angle = 0
+            self.rotate.origin = (0, 0)
+            Color(0.3, 0.7, 1.0, 1.0)  # Blue color
+            self.circle = Line(circle=(0, 0, dp(20)), width=dp(3), cap='round')
+            self.circle.dash_offset = 10
+            self.circle.dash_length = 15
+            PopMatrix()
+        
+        self.bind(pos=self.update_graphics, size=self.update_graphics)
+        
+    def update_graphics(self, *args):
+        self.rotate.origin = (self.center_x, self.center_y)
+        self.circle.circle = (self.center_x, self.center_y, dp(20))
+        
+    def start_spinning(self):
+        """Start the spinning animation"""
+        if self.animation:
+            self.animation.cancel(self)
+        
+        def update_angle(widget, value):
+            self.rotate.angle = value
+            
+        self.animation = Animation(angle=360, duration=1.5)
+        self.animation.bind(on_progress=lambda anim, widget, progress: 
+                          setattr(self.rotate, 'angle', progress * 360))
+        self.animation.repeat = True
+        self.animation.start(self)
+        
+    def stop_spinning(self):
+        """Stop the spinning animation"""
+        if self.animation:
+            self.animation.cancel(self)
+            self.animation = None
+
+class AufnahmePopup(FloatLayout):
+    """Popup window for recording functionality with improved error handling"""
+    def __init__(self, slideshow=None, **kwargs):
+        super().__init__(**kwargs)
+        self.slideshow = slideshow  # Reference to parent slideshow for gallery navigation
         self.process = None
         self.is_running = False
         self.start_time = None
@@ -812,6 +859,10 @@ class AufnahmePopup(FloatLayout):
         self.workflow_status_checker = None  # Track status checker
         self.workflow_lock_file = None  # NEW: Track workflow lockfile
         self.trigger_creation_lock = threading.Lock()  # NEW: Thread-safe trigger creation
+        
+        # UI State management for new behavior
+        self.ui_state = "ready"  # ready, recording, processing, completed
+        self.interaction_blocked = False
         
         # Audio file path for validation (standardized location)
         self.audio_file_path = Path("/home/pi/Desktop/v2_Tripple S/aufnahme.wav")
@@ -823,7 +874,7 @@ class AufnahmePopup(FloatLayout):
         self.bind(pos=self._update_bg, size=self._update_bg)
         
         # Main panel - make it larger to accommodate output display
-        panel = BoxLayout(
+        self.panel = BoxLayout(
             orientation='vertical',
             size_hint=(None, None),
             size=(dp(600), dp(500)),
@@ -832,21 +883,21 @@ class AufnahmePopup(FloatLayout):
             spacing=dp(15)
         )
         
-        with panel.canvas.before:
+        with self.panel.canvas.before:
             Color(0.16, 0.16, 0.20, 0.95)
-            panel._bg = Rectangle(pos=panel.pos, size=panel.size)
-        panel.bind(pos=lambda *a: setattr(panel._bg, 'pos', panel.pos),
-                  size=lambda *a: setattr(panel._bg, 'size', panel.size))
+            self.panel._bg = Rectangle(pos=self.panel.pos, size=self.panel.size)
+        self.panel.bind(pos=lambda *a: setattr(self.panel._bg, 'pos', self.panel.pos),
+                       size=lambda *a: setattr(self.panel._bg, 'size', self.panel.size))
         
         # Title
-        title = Label(
+        self.title = Label(
             text="Aufnahme",
             size_hint_y=None,
             height=dp(40),
             font_size=dp(28),
             color=(1, 1, 1, 1)
         )
-        panel.add_widget(title)
+        self.panel.add_widget(self.title)
         
         # Timer display
         self.timer_label = Label(
@@ -856,7 +907,7 @@ class AufnahmePopup(FloatLayout):
             font_size=dp(32),
             color=(0.8, 0.9, 1, 1)
         )
-        panel.add_widget(self.timer_label)
+        self.panel.add_widget(self.timer_label)
         
         # Start/Stop button
         self.button = Button(
@@ -869,9 +920,11 @@ class AufnahmePopup(FloatLayout):
             font_size=dp(24)
         )
         self.button.bind(on_press=self.toggle_recording)
-        panel.add_widget(self.button)
+        self.panel.add_widget(self.button)
         
-        # Output display area
+        # Output display area - wrapped in a container for easy hide/show
+        self.output_section = BoxLayout(orientation='vertical', size_hint=(1, 0.5))
+        
         output_label = Label(
             text="Ausgabe:",
             size_hint_y=None,
@@ -881,11 +934,11 @@ class AufnahmePopup(FloatLayout):
             halign='left'
         )
         output_label.bind(size=lambda inst, *args: setattr(inst, 'text_size', inst.size))
-        panel.add_widget(output_label)
+        self.output_section.add_widget(output_label)
         
         # Scrollable output text area
         from kivy.uix.scrollview import ScrollView
-        scroll = ScrollView(size_hint=(1, 0.5))
+        scroll = ScrollView(size_hint=(1, 1))
         self.output_text = Label(
             text="Bereit für Aufnahme...",
             text_size=(None, None),
@@ -896,10 +949,23 @@ class AufnahmePopup(FloatLayout):
             markup=True
         )
         scroll.add_widget(self.output_text)
-        panel.add_widget(scroll)
+        self.output_section.add_widget(scroll)
+        
+        self.panel.add_widget(self.output_section)
+        
+        # Loading spinner container (initially hidden)
+        self.spinner_container = FloatLayout(size_hint=(1, 0.5))
+        self.loading_spinner = LoadingSpinner(
+            size_hint=(None, None),
+            size=(dp(50), dp(50)),
+            pos_hint={'center_x': 0.5, 'center_y': 0.5}
+        )
+        self.spinner_container.add_widget(self.loading_spinner)
+        self.spinner_container.opacity = 0  # Initially hidden
+        self.panel.add_widget(self.spinner_container)
         
         # Close button
-        close_button = Button(
+        self.close_button = Button(
             text="Schließen",
             size_hint_y=None,
             height=dp(50),
@@ -908,10 +974,10 @@ class AufnahmePopup(FloatLayout):
             color=(1, 1, 1, 1),
             font_size=dp(20)
         )
-        close_button.bind(on_press=self.close_popup)
-        panel.add_widget(close_button)
+        self.close_button.bind(on_press=self.close_popup)
+        self.panel.add_widget(self.close_button)
         
-        self.add_widget(panel)
+        self.add_widget(self.panel)
     
     def _validate_audio_file(self):
         """
@@ -1069,12 +1135,57 @@ class AufnahmePopup(FloatLayout):
     
     def toggle_recording(self, instance):
         """Toggle recording start/stop as requested"""
+        if self.interaction_blocked:
+            return  # Ignore clicks when interaction is blocked
+            
         debug_logger.info(f"toggle_recording called - current state: is_running={self.is_running}, process={self.process is not None}")
         
         if not self.is_running:
             self.start_recording()
         else:
             self.stop_recording()
+    
+    def set_ui_state(self, state):
+        """Manage UI state transitions based on the requirements"""
+        debug_logger.info(f"Setting UI state to: {state}")
+        self.ui_state = state
+        
+        if state == "ready":
+            # Initial state - everything visible and interactive
+            self.output_section.opacity = 1
+            self.spinner_container.opacity = 0
+            self.loading_spinner.stop_spinning()
+            self.button.opacity = 1
+            self.close_button.disabled = False
+            self.interaction_blocked = False
+            
+        elif state == "recording":
+            # After Start click - hide status/process textbox, keep timer running
+            self.output_section.opacity = 0
+            self.spinner_container.opacity = 0
+            self.loading_spinner.stop_spinning()
+            self.button.opacity = 1
+            self.close_button.disabled = False
+            self.interaction_blocked = False
+            
+        elif state == "processing":
+            # After Stop click - button disappears, show spinner, block interaction
+            self.output_section.opacity = 0
+            self.button.opacity = 0
+            self.spinner_container.opacity = 1
+            self.loading_spinner.start_spinning()
+            self.close_button.disabled = True
+            self.interaction_blocked = True
+            
+        elif state == "completed":
+            # All processes completed - prepare to close and switch to gallery
+            self.output_section.opacity = 0
+            self.spinner_container.opacity = 0
+            self.loading_spinner.stop_spinning()
+            self.button.opacity = 0
+            self.close_button.disabled = True
+            self.interaction_blocked = True
+            # Gallery switch will be handled separately
     
     def start_recording(self):
         """Start Aufnahme.py as subprocess"""
@@ -1121,13 +1232,15 @@ class AufnahmePopup(FloatLayout):
             self.start_time = time.time()
             self.start_timer()
             
+            # Set UI state to recording - hide output section per requirements
+            self.set_ui_state("recording")
+            
             # Schedule output reading
             Clock.schedule_interval(self.read_process_output, 0.1)
             
             success_msg = f"Aufnahme gestartet (PID: {self.process.pid})"
             debug_logger.info(success_msg)
             print(success_msg)
-            self.add_output_text(f"[color=44ff44]{success_msg}[/color]")
             
         except Exception as e:
             error_msg = f"Fehler beim Starten der Aufnahme: {e}"
@@ -1138,6 +1251,7 @@ class AufnahmePopup(FloatLayout):
             self.is_running = False
             self.button.text = "Start"
             self.button.background_color = (0.25, 0.55, 0.25, 1)
+            self.set_ui_state("ready")  # Reset UI state on error
     
     def read_process_output(self, dt):
         """Read output from the recording process with improved termination handling"""
@@ -1149,8 +1263,12 @@ class AufnahmePopup(FloatLayout):
             if self.process.poll() is not None:
                 # Process ended, read final output
                 final_output = self.process.stdout.read()
-                if final_output:
+                if final_output and self.ui_state != "recording":
+                    # Only show final output if not in recording state
                     self.add_output_text(final_output.strip())
+                elif final_output:
+                    # Still log for debugging
+                    debug_logger.debug(f"Final recording output: {final_output.strip()}")
                 
                 # Process ended - handle this gracefully without showing automatic error
                 debug_logger.info(f"Recording process ended naturally with exit code: {self.process.returncode}")
@@ -1173,13 +1291,23 @@ class AufnahmePopup(FloatLayout):
                 if ready:
                     line = self.process.stdout.readline()
                     if line:
-                        self.add_output_text(line.strip())
+                        # Only show output if not in recording state (per requirements)
+                        if self.ui_state != "recording":
+                            self.add_output_text(line.strip())
+                        else:
+                            # Still log for debugging purposes
+                            debug_logger.debug(f"Recording output: {line.strip()}")
             else:
                 # Fallback for systems without select
                 try:
                     line = self.process.stdout.readline()
                     if line:
-                        self.add_output_text(line.strip())
+                        # Only show output if not in recording state (per requirements)
+                        if self.ui_state != "recording":
+                            self.add_output_text(line.strip())
+                        else:
+                            # Still log for debugging purposes
+                            debug_logger.debug(f"Recording output: {line.strip()}")
                 except:
                     pass  # No output available
                     
@@ -1196,11 +1324,11 @@ class AufnahmePopup(FloatLayout):
         # Validate recording state BEFORE attempting to stop
         if not self.is_running:
             debug_logger.warning("stop_recording called but no recording is running")
-            self.add_output_text("[color=ffaa44]Warnung: Keine Aufnahme läuft[/color]")
             # Ensure UI state is correct
             self.button.text = "Start"
             self.button.background_color = (0.25, 0.55, 0.25, 1)
             self.stop_timer()
+            self.set_ui_state("ready")
             return
             
         if not self.process:
@@ -1210,13 +1338,16 @@ class AufnahmePopup(FloatLayout):
             self.button.text = "Start"
             self.button.background_color = (0.25, 0.55, 0.25, 1)
             self.stop_timer()
+            self.set_ui_state("ready")  # Reset to ready state
             self.add_output_text("[color=ffaa44]Warnung: Inkonsistenter Zustand korrigiert[/color]")
             return
+        
+        # Immediately set processing state when stop is clicked
+        self.set_ui_state("processing")
         
         stop_msg_starting = f"Stoppe Aufnahme (PID: {self.process.pid})..."
         debug_logger.info(stop_msg_starting)
         print(stop_msg_starting)
-        self.add_output_text(f"[color=ffff44]{stop_msg_starting}[/color]")
         
         process_exit_code = None
         try:
@@ -1533,13 +1664,35 @@ class AufnahmePopup(FloatLayout):
                         
                         workflow_complete_msg = "Workflow abgeschlossen"
                         print(workflow_complete_msg)
-                        self.add_output_text(f"[color=44ff44]{workflow_complete_msg}[/color]")
+                        
+                        # Set completed state and automatically close popup + switch to gallery
+                        self.set_ui_state("completed")
+                        
+                        # Schedule automatic close and gallery switch
+                        Clock.schedule_once(self.auto_close_and_switch_to_gallery, 0.5)
+                        
                         return False  # Stop scheduling
                         
         except Exception as e:
             print(f"Fehler beim Lesen der Workflow-Status: {e}")
             
         return True  # Continue scheduling
+    
+    def auto_close_and_switch_to_gallery(self, dt):
+        """Automatically close popup and switch to gallery after workflow completion"""
+        debug_logger.info("Auto-closing popup and switching to gallery")
+        
+        # Close this popup
+        if self.parent:
+            self.parent.remove_widget(self)
+            debug_logger.info("Removed popup from parent widget")
+        
+        # Switch to gallery if slideshow reference is available
+        if self.slideshow:
+            self.slideshow.open_gallery()
+            debug_logger.info("Switched to gallery")
+        else:
+            debug_logger.warning("No slideshow reference available for gallery switch")
     
     def close_popup(self, instance):
         """Close the popup window"""
@@ -2241,7 +2394,7 @@ class Slideshow(FloatLayout):
     def open_gallery(self): self.open_single(GalleryEditor(self))
     def open_schedule_editor(self): self.open_single(ScheduleEditor(self))
     def open_settings_root(self): self.open_single(SettingsRootPopup(self))
-    def open_aufnahme_popup(self): self.open_single(AufnahmePopup())
+    def open_aufnahme_popup(self): self.open_single(AufnahmePopup(slideshow=self))
 
     def force_reschedule(self):
         scheduled=self.mode_manager.scheduled_mode()
