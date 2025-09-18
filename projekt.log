@@ -29,3 +29,13 @@
 [2025-09-18 14:51:29,461] INFO [__main__]: Service-Lock freigegeben
 [2025-09-18 14:51:29,461] INFO [__main__]: Workflow-Manager gestoppt
 [2025-09-18 14:51:29,597] INFO [__main__]: Workflow-Manager gestoppt
+[2025-09-18 15:53:19,936] INFO [Aufnahme]: Signal handlers configured for clean shutdown
+[2025-09-18 15:53:19,936] INFO [Aufnahme]: AudioRecorder initialized
+[2025-09-18 15:53:20,438] INFO [Aufnahme]: Stopping recording process...
+[2025-09-18 15:53:20,438] INFO [Aufnahme]: Sent SIGINT to recording process
+[2025-09-18 15:53:20,442] INFO [Aufnahme]: Recording duration: 0.50 seconds
+[2025-09-18 15:53:20,443] INFO [Aufnahme]: Recording saved to: /tmp/tmpjp6p7it9/test_aufnahme.wav
+[2025-09-18 15:53:20,443] INFO [Aufnahme]: File size: 10,000 bytes (0.01 MB)
+[2025-09-18 15:53:20,443] INFO [Aufnahme]: Estimated frames recorded: 22,263
+[2025-09-18 15:53:20,443] INFO [Aufnahme]: Audio file successfully created
+[2025-09-18 15:53:20,443] INFO [Aufnahme]: Recording process ended with exit code 1, but audio file was saved successfully
