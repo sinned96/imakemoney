@@ -20,13 +20,23 @@ except ImportError:
 # Setup debug logging for recording workflow
 def setup_debug_logging():
     """Setup debug logging for recording workflow"""
-    log_dir = Path(__file__).parent
-    log_file = log_dir / "recording_debug.log"
+    import logging
+    from pathlib import Path
+    # Use standardized base directory, but fall back to current directory if not accessible
+    try:
+        log_dir = Path("/home/pi/Desktop/v2_Tripple S")
+        log_dir.mkdir(parents=True, exist_ok=True)
+    except (PermissionError, OSError):
+        # Fallback to current working directory for testing/development
+        log_dir = Path(__file__).parent
+        
+    # Use unified projekt.log instead of separate recording_debug.log
+    log_file = log_dir / "projekt.log"
     
     # Configure logging
     logging.basicConfig(
         level=logging.DEBUG,
-        format='[%(asctime)s] %(levelname)s: %(message)s',
+        format='[%(asctime)s] %(levelname)s [%(name)s]: %(message)s',
         handlers=[
             logging.FileHandler(str(log_file), mode='a', encoding='utf-8'),
             logging.StreamHandler()

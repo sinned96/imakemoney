@@ -1,0 +1,3 @@
+[2025-09-18 14:49:27,660] WARNING [voiceToGoogle]: Google Cloud Speech-to-Text library not available: No module named 'google'
+[2025-09-18 14:49:27,660] INFO [voiceToGoogle]: Fallback mode will be used when Google API is not available or fails
+[2025-09-18 14:49:36,009] INFO [Aufnahme]: Test log message from Aufnahme.py

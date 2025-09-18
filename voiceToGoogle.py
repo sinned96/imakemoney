@@ -36,6 +36,8 @@ from pathlib import Path
 # Setup logging for speech-to-text processing
 def setup_speech_logging():
     """Setup logging for speech recognition with both file and console output"""
+    import logging
+    from pathlib import Path
     # Use standardized base directory, but fall back to current directory if not accessible
     try:
         log_dir = Path("/home/pi/Desktop/v2_Tripple S")
@@ -44,12 +46,13 @@ def setup_speech_logging():
         # Fallback to current working directory for testing/development
         log_dir = Path.cwd()
         
-    log_file = log_dir / "speech_recognition.log"
+    # Use unified projekt.log instead of separate speech_recognition.log
+    log_file = log_dir / "projekt.log"
     
     # Configure logging
     logging.basicConfig(
         level=logging.INFO,
-        format='[%(asctime)s] %(levelname)s: %(message)s',
+        format='[%(asctime)s] %(levelname)s [%(name)s]: %(message)s',
         handlers=[
             logging.FileHandler(str(log_file), mode='a', encoding='utf-8'),
             logging.StreamHandler()
