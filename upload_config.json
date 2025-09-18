@@ -1,0 +1,10 @@
+{
+  "server_host": "example.com",
+  "server_port": 22,
+  "username": "user",
+  "upload_path": "/home/user/uploads/",
+  "use_ssh_key": true,
+  "ssh_key_path": "~/.ssh/id_rsa",
+  "timeout": 30,
+  "retry_count": 3
+}

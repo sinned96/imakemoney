@@ -9,33 +9,19 @@ from random import shuffle, choice, uniform, random
 import types
 import threading
 import signal
-import logging
 import fcntl
+from logging_config import setup_project_logging, log_function_entry, log_function_exit, log_exception
+
+# Setup project logging (replaces the old debug logging)
+logger = setup_project_logging("main")
+
 try:
     from tkinter import Tk, Button, Label
     TKINTER_AVAILABLE = True
+    logger.info("tkinter available for GUI fallback")
 except ImportError:
     TKINTER_AVAILABLE = False
-
-# Setup debug logging for recording workflow
-def setup_debug_logging():
-    """Setup debug logging for recording workflow"""
-    log_dir = Path(__file__).parent
-    log_file = log_dir / "recording_debug.log"
-    
-    # Configure logging
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format='[%(asctime)s] %(levelname)s: %(message)s',
-        handlers=[
-            logging.FileHandler(str(log_file), mode='a', encoding='utf-8'),
-            logging.StreamHandler()
-        ]
-    )
-    return logging.getLogger(__name__)
-
-# Initialize debug logger
-debug_logger = setup_debug_logging()
+    logger.warning("tkinter not available - GUI fallback disabled")
 
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
@@ -967,7 +953,7 @@ class AufnahmePopup(FloatLayout):
             if not is_basic_valid:
                 return is_basic_valid, basic_msg, basic_level
             
-            debug_logger.info("Basic validation passed, checking file stability...")
+            logger.info("Basic validation passed, checking file stability...")
             
             # File stability check: ensure file size is not changing
             initial_size = self.audio_file_path.stat().st_size
@@ -976,10 +962,10 @@ class AufnahmePopup(FloatLayout):
             try:
                 final_size = self.audio_file_path.stat().st_size
                 if initial_size != final_size:
-                    debug_logger.warning(f"File size changed during stability check: {initial_size} -> {final_size}")
+                    logger.warning(f"File size changed during stability check: {initial_size} -> {final_size}")
                     return False, f"Audiodatei noch nicht stabil (Größe ändert sich: {initial_size} -> {final_size} Bytes)", "warning"
             except Exception as e:
-                debug_logger.warning(f"Error during stability check: {e}")
+                logger.warning(f"Error during stability check: {e}")
                 return False, f"Fehler bei Stabilitätsprüfung: {e}", "error"
             
             # Try to open the file exclusively to ensure no other process is writing to it
@@ -990,13 +976,13 @@ class AufnahmePopup(FloatLayout):
                         import fcntl
                         fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                         fcntl.flock(f.fileno(), fcntl.LOCK_UN)  # Immediately release the lock
-                        debug_logger.info("File lock test passed - file not being written")
+                        logger.info("File lock test passed - file not being written")
                     except ImportError:
                         # fcntl not available on all systems, skip lock test
-                        debug_logger.info("fcntl not available, skipping lock test")
+                        logger.info("fcntl not available, skipping lock test")
                         pass
                     except OSError:
-                        debug_logger.warning("File appears to be locked by another process")
+                        logger.warning("File appears to be locked by another process")
                         return False, "Audiodatei wird noch von anderem Prozess verwendet", "warning"
                     
                     # Try to read the beginning and end of the file to ensure it's complete
@@ -1010,19 +996,19 @@ class AufnahmePopup(FloatLayout):
                     if not header or len(header) < 12:
                         return False, "Audiodatei-Header unvollständig", "warning"
                         
-                    debug_logger.info(f"File stability check passed: header={len(header)} bytes, trailer={len(trailer)} bytes")
+                    logger.info(f"File stability check passed: header={len(header)} bytes, trailer={len(trailer)} bytes")
                     
             except Exception as e:
-                debug_logger.warning(f"Error during file access check: {e}")
+                logger.warning(f"Error during file access check: {e}")
                 # Don't fail validation just because we can't do advanced checks
                 pass
             
             # All checks passed
-            debug_logger.info("File stability check completed successfully")
+            logger.info("File stability check completed successfully")
             return True, basic_msg + " [SUCCESS] Datei stabil und bereit für Verarbeitung", "success"
             
         except Exception as e:
-            debug_logger.error(f"Error during stability validation: {e}")
+            logger.error(f"Error during stability validation: {e}")
             return False, f"Fehler bei der erweiterten Dateivalidierung: {e}", "error"
     
     def _add_status_message(self, message, level="info"):
@@ -1059,7 +1045,7 @@ class AufnahmePopup(FloatLayout):
     
     def toggle_recording(self, instance):
         """Toggle recording start/stop as requested"""
-        debug_logger.info(f"toggle_recording called - current state: is_running={self.is_running}, process={self.process is not None}")
+        logger.info(f"toggle_recording called - current state: is_running={self.is_running}, process={self.process is not None}")
         
         if not self.is_running:
             self.start_recording()
@@ -1068,10 +1054,10 @@ class AufnahmePopup(FloatLayout):
     
     def start_recording(self):
         """Start Aufnahme.py as subprocess"""
-        debug_logger.info("start_recording called")
+        logger.info("start_recording called")
         
         if self.is_running:
-            debug_logger.warning("start_recording called but recording already running")
+            logger.warning("start_recording called but recording already running")
             self.add_output_text("[color=ffaa44]Warnung: Aufnahme läuft bereits[/color]")
             return
             
@@ -1081,19 +1067,19 @@ class AufnahmePopup(FloatLayout):
             if self.workflow_status_checker:
                 Clock.unschedule(self.workflow_status_checker)
                 self.workflow_status_checker = None
-            debug_logger.info("Reset workflow state for new recording")
+            logger.info("Reset workflow state for new recording")
             
             aufnahme_path = APP_DIR / "Aufnahme.py"
             if not aufnahme_path.exists():
                 error_msg = f"Fehler: Aufnahme.py nicht gefunden bei {aufnahme_path}"
-                debug_logger.error(error_msg)
+                logger.error(error_msg)
                 print(error_msg)
                 self.add_output_text(f"[color=ff4444]{error_msg}[/color]")
                 return
             
             # Clear previous output
             self.output_text.text = "Starte Aufnahme..."
-            debug_logger.info(f"Starting recording process with script: {aufnahme_path}")
+            logger.info(f"Starting recording process with script: {aufnahme_path}")
             
             # Start the subprocess with output capture
             self.process = subprocess.Popen(
@@ -1115,13 +1101,13 @@ class AufnahmePopup(FloatLayout):
             Clock.schedule_interval(self.read_process_output, 0.1)
             
             success_msg = f"Aufnahme gestartet (PID: {self.process.pid})"
-            debug_logger.info(success_msg)
+            logger.info(success_msg)
             print(success_msg)
             self.add_output_text(f"[color=44ff44]{success_msg}[/color]")
             
         except Exception as e:
             error_msg = f"Fehler beim Starten der Aufnahme: {e}"
-            debug_logger.error(error_msg, exc_info=True)
+            logger.error(error_msg, exc_info=True)
             print(error_msg)
             self.add_output_text(f"[color=ff4444]{error_msg}[/color]")
             # Reset state on error
@@ -1143,7 +1129,7 @@ class AufnahmePopup(FloatLayout):
                     self.add_output_text(final_output.strip())
                 
                 # Process ended - handle this gracefully without showing automatic error
-                debug_logger.info(f"Recording process ended naturally with exit code: {self.process.returncode}")
+                logger.info(f"Recording process ended naturally with exit code: {self.process.returncode}")
                 
                 # Don't show error message here - let stop_recording handle the validation
                 self.is_running = False
@@ -1174,18 +1160,18 @@ class AufnahmePopup(FloatLayout):
                     pass  # No output available
                     
         except Exception as e:
-            debug_logger.error(f"Error reading process output: {e}")
+            logger.error(f"Error reading process output: {e}")
             return False
         
         return True  # Continue scheduling
     
     def stop_recording(self):
         """Stop Aufnahme.py subprocess cleanly using SIGTERM with improved error handling"""
-        debug_logger.info(f"stop_recording called - is_running: {self.is_running}, process: {self.process is not None}")
+        logger.info(f"stop_recording called - is_running: {self.is_running}, process: {self.process is not None}")
         
         # Validate recording state BEFORE attempting to stop
         if not self.is_running:
-            debug_logger.warning("stop_recording called but no recording is running")
+            logger.warning("stop_recording called but no recording is running")
             self.add_output_text("[color=ffaa44]Warnung: Keine Aufnahme läuft[/color]")
             # Ensure UI state is correct
             self.button.text = "Start"
@@ -1194,7 +1180,7 @@ class AufnahmePopup(FloatLayout):
             return
             
         if not self.process:
-            debug_logger.warning("stop_recording: is_running=True but process is None")
+            logger.warning("stop_recording: is_running=True but process is None")
             # Reset inconsistent state
             self.is_running = False
             self.button.text = "Start"
@@ -1204,14 +1190,14 @@ class AufnahmePopup(FloatLayout):
             return
         
         stop_msg_starting = f"Stoppe Aufnahme (PID: {self.process.pid})..."
-        debug_logger.info(stop_msg_starting)
+        logger.info(stop_msg_starting)
         print(stop_msg_starting)
         self.add_output_text(f"[color=ffff44]{stop_msg_starting}[/color]")
         
         process_exit_code = None
         try:
             # Send SIGTERM for graceful shutdown as required
-            debug_logger.info(f"Sending SIGTERM to process {self.process.pid}")
+            logger.info(f"Sending SIGTERM to process {self.process.pid}")
             self.process.terminate()
             
             # Wait for the process and capture final output
@@ -1220,16 +1206,16 @@ class AufnahmePopup(FloatLayout):
                 process_exit_code = self.process.returncode
                 
                 if stdout:
-                    debug_logger.debug(f"Recording stdout: {stdout[:200]}...")
+                    logger.debug(f"Recording stdout: {stdout[:200]}...")
                     self.add_output_text(stdout.strip())
                 if stderr:
-                    debug_logger.warning(f"Recording stderr: {stderr}")
+                    logger.warning(f"Recording stderr: {stderr}")
                     self.add_output_text(f"[color=ffaa44]Warnung: {stderr.strip()}[/color]")
                     
             except subprocess.TimeoutExpired:
                 # Force kill if terminate doesn't work within timeout
                 timeout_msg = "Erzwinge Beendigung (Timeout)"
-                debug_logger.warning(timeout_msg)
+                logger.warning(timeout_msg)
                 print(timeout_msg)
                 self.add_output_text(f"[color=ff4444]{timeout_msg}[/color]")
                 self.process.kill()
@@ -1238,7 +1224,7 @@ class AufnahmePopup(FloatLayout):
                 
         except Exception as e:
             error_msg = f"Fehler beim Stoppen: {e}"
-            debug_logger.error(error_msg, exc_info=True)
+            logger.error(error_msg, exc_info=True)
             print(error_msg)
             self.add_output_text(f"[color=ff4444]{error_msg}[/color]")
         finally:
@@ -1252,7 +1238,7 @@ class AufnahmePopup(FloatLayout):
         self.stop_timer()
         
         # CRITICAL FIX: Wait for recording process to fully complete and ensure file stability
-        debug_logger.info("Waiting for recording process to fully complete and file to be stable...")
+        logger.info("Waiting for recording process to fully complete and file to be stable...")
         self.add_output_text("[color=4499ff]Warte auf vollständige Aufnahme-Beendigung...[/color]")
         
         # Wait a short time to ensure all file operations are complete
@@ -1260,12 +1246,12 @@ class AufnahmePopup(FloatLayout):
         time.sleep(0.5)  # Give the recording process time to fully close files
         
         # Validate audio file and ensure it's stable before triggering workflow
-        debug_logger.info("Validating recorded audio file after completion wait...")
+        logger.info("Validating recorded audio file after completion wait...")
         is_valid, status_message, message_level = self._validate_audio_file_with_stability_check()
         
         if is_valid:
             # Audio file is valid and stable - this is success regardless of exit code
-            debug_logger.info("Audio file validation successful - ready for workflow")
+            logger.info("Audio file validation successful - ready for workflow")
             print(f"[SUCCESS] {status_message}")
             self._add_status_message(f"[SUCCESS] {status_message}", "success")
             
@@ -1273,33 +1259,33 @@ class AufnahmePopup(FloatLayout):
             if process_exit_code is not None and process_exit_code != 0:
                 # Exit code != 0 but file is valid - this is normal for recording tools stopped via signal
                 info_msg = f"Hinweis: Prozess beendet mit Code {process_exit_code}, Audio jedoch erfolgreich gespeichert"
-                debug_logger.info(info_msg)
+                logger.info(info_msg)
                 print(f"ℹ {info_msg}")
                 self._add_status_message(f"ℹ {info_msg}", "info")
                 self.add_output_text("[color=4499ff]Dies ist normal beim Stoppen von Aufnahme-Tools[/color]")
             else:
                 success_msg = "Aufnahme erfolgreich abgeschlossen"
-                debug_logger.info(success_msg)
+                logger.info(success_msg)
                 print(f"[SUCCESS] {success_msg}")
             
             # CRITICAL FIX: Only create workflow trigger AFTER successful validation and file stability
             if not self.workflow_triggered:
-                debug_logger.info("SAFE TO TRIGGER: Audio file validated and stable - creating workflow trigger")
+                logger.info("SAFE TO TRIGGER: Audio file validated and stable - creating workflow trigger")
                 self.add_output_text("[color=44ff44][SUCCESS] Audio validiert und stabil - starte Workflow[/color]")
                 self.create_workflow_trigger()
             else:
-                debug_logger.info("Workflow already triggered for this recording, skipping")
+                logger.info("Workflow already triggered for this recording, skipping")
                 
         else:
             # Audio file is not valid - DO NOT trigger workflow
-            debug_logger.error(f"Audio file validation failed - NOT triggering workflow: {status_message}")
+            logger.error(f"Audio file validation failed - NOT triggering workflow: {status_message}")
             print(f"[ERROR] {status_message}")
             self._add_status_message(f"[ERROR] {status_message}", message_level)
             self.add_output_text("[color=ff4444][ERROR] Workflow NICHT gestartet - Audiodatei ungültig[/color]")
             
             if process_exit_code is not None and process_exit_code != 0:
                 error_detail = f"Zusätzlich: Prozess beendet mit Fehlercode {process_exit_code}"
-                debug_logger.error(error_detail)
+                logger.error(error_detail)
                 print(f"[ERROR] {error_detail}")
                 self._add_status_message(f"[ERROR] {error_detail}", "error")
     
@@ -1327,7 +1313,7 @@ class AufnahmePopup(FloatLayout):
         with self.trigger_creation_lock:
             if self.workflow_triggered:
                 warning_msg = "Workflow-Trigger bereits erstellt, überspringe"
-                debug_logger.warning(warning_msg)
+                logger.warning(warning_msg)
                 print(warning_msg)
                 self.add_output_text(f"[color=ffaa44]{warning_msg}[/color]")
                 return
@@ -1336,7 +1322,7 @@ class AufnahmePopup(FloatLayout):
                 trigger_file = APP_DIR / "workflow_trigger.txt"
                 lockfile_path = APP_DIR / "workflow_service.lock"
                 
-                debug_logger.info(f"Attempting to create trigger file: {trigger_file}")
+                logger.info(f"Attempting to create trigger file: {trigger_file}")
                 
                 # Check if workflow service is already running via lockfile
                 if lockfile_path.exists():
@@ -1345,15 +1331,15 @@ class AufnahmePopup(FloatLayout):
                         lock_age = time.time() - lock_stat.st_mtime
                         if lock_age < 300:  # Less than 5 minutes old
                             warning_msg = "Workflow-Service läuft bereits (Lockfile aktiv)"
-                            debug_logger.warning(f"{warning_msg}, lock age: {lock_age:.1f}s")
+                            logger.warning(f"{warning_msg}, lock age: {lock_age:.1f}s")
                             print(warning_msg)
                             self.add_output_text(f"[color=ffaa44]{warning_msg}[/color]")
                             return
                         else:
-                            debug_logger.info(f"Removing stale lockfile (age: {lock_age:.1f}s)")
+                            logger.info(f"Removing stale lockfile (age: {lock_age:.1f}s)")
                             lockfile_path.unlink()
                     except Exception as e:
-                        debug_logger.warning(f"Error checking lockfile: {e}")
+                        logger.warning(f"Error checking lockfile: {e}")
                 
                 # Check if trigger file already exists and handle appropriately
                 if trigger_file.exists():
@@ -1362,16 +1348,16 @@ class AufnahmePopup(FloatLayout):
                         trigger_age = time.time() - trigger_stat.st_mtime
                         if trigger_age < 60:  # Less than 1 minute old - probably still processing
                             warning_msg = "Workflow-Trigger-Datei existiert bereits und ist aktuell"
-                            debug_logger.warning(f"{warning_msg}, age: {trigger_age:.1f}s")
+                            logger.warning(f"{warning_msg}, age: {trigger_age:.1f}s")
                             print(warning_msg)
                             self.add_output_text(f"[color=ffaa44]{warning_msg}[/color]")
                             return
                         else:
                             # Old trigger file - remove it
-                            debug_logger.info(f"Removing stale trigger file (age: {trigger_age:.1f}s)")
+                            logger.info(f"Removing stale trigger file (age: {trigger_age:.1f}s)")
                             trigger_file.unlink()
                     except Exception as e:
-                        debug_logger.warning(f"Error checking existing trigger file: {e}")
+                        logger.warning(f"Error checking existing trigger file: {e}")
                         # Try to remove it anyway
                         try:
                             trigger_file.unlink()
@@ -1390,9 +1376,9 @@ class AufnahmePopup(FloatLayout):
                             f.flush()
                             os.fsync(f.fileno())  # Ensure data is written to disk
                             trigger_created = True
-                            debug_logger.info("Trigger file created atomically with lock")
+                            logger.info("Trigger file created atomically with lock")
                         except (OSError, IOError) as lock_err:
-                            debug_logger.error(f"Failed to lock trigger file: {lock_err}")
+                            logger.error(f"Failed to lock trigger file: {lock_err}")
                             raise
                         finally:
                             # Lock is automatically released when file is closed
@@ -1400,7 +1386,7 @@ class AufnahmePopup(FloatLayout):
                             
                 except FileExistsError:
                     warning_msg = "Workflow-Trigger-Datei existiert bereits (von anderem Prozess erstellt)"
-                    debug_logger.warning(warning_msg)
+                    logger.warning(warning_msg)
                     print(warning_msg)
                     self.add_output_text(f"[color=ffaa44]{warning_msg}[/color]")
                     return
@@ -1412,7 +1398,7 @@ class AufnahmePopup(FloatLayout):
                 self.workflow_triggered = True
                 
                 trigger_msg = "Workflow-Trigger erstellt"
-                debug_logger.info(trigger_msg)
+                logger.info(trigger_msg)
                 print(trigger_msg)
                 self.add_output_text(f"[color=44ff44]{trigger_msg}[/color]")
                 
@@ -1424,11 +1410,11 @@ class AufnahmePopup(FloatLayout):
                     Clock.unschedule(self.workflow_status_checker)
                 
                 self.workflow_status_checker = Clock.schedule_interval(self.check_workflow_status, 2.0)
-                debug_logger.info("Started workflow status checking")
+                logger.info("Started workflow status checking")
                 
             except Exception as e:
                 error_msg = f"Fehler beim Erstellen des Workflow-Triggers: {e}"
-                debug_logger.error(error_msg, exc_info=True)
+                logger.error(error_msg, exc_info=True)
                 print(error_msg)
                 self.add_output_text(f"[color=ff4444]{error_msg}[/color]")
                 # Reset trigger state on error
@@ -1439,10 +1425,10 @@ class AufnahmePopup(FloatLayout):
         try:
             service_script = APP_DIR / "start_workflow_service.py"
             if not service_script.exists():
-                debug_logger.error(f"Workflow service script not found: {service_script}")
+                logger.error(f"Workflow service script not found: {service_script}")
                 return
             
-            debug_logger.info("Starting workflow service via start_workflow_service.py")
+            logger.info("Starting workflow service via start_workflow_service.py")
             
             # Start the service script with --auto flag for non-interactive mode
             service_process = subprocess.Popen(
@@ -1458,12 +1444,12 @@ class AufnahmePopup(FloatLayout):
                 stdout, stderr = service_process.communicate(timeout=5)
                 if service_process.returncode == 0:
                     service_msg = "Workflow-Service erfolgreich gestartet"
-                    debug_logger.info(service_msg)
+                    logger.info(service_msg)
                     print(service_msg)
                     self.add_output_text(f"[color=44ff44]{service_msg}[/color]")
                 else:
                     error_msg = f"Workflow-Service Start-Fehler (Code: {service_process.returncode})"
-                    debug_logger.warning(f"{error_msg}\nSTDOUT: {stdout}\nSTDERR: {stderr}")
+                    logger.warning(f"{error_msg}\nSTDOUT: {stdout}\nSTDERR: {stderr}")
                     print(error_msg)
                     self.add_output_text(f"[color=ffaa44]{error_msg}[/color]")
                     if stdout:
@@ -1471,13 +1457,13 @@ class AufnahmePopup(FloatLayout):
             except subprocess.TimeoutExpired:
                 # Service is still running, which is normal
                 service_msg = f"Workflow-Service gestartet (läuft im Hintergrund)"
-                debug_logger.info(service_msg)
+                logger.info(service_msg)
                 print(service_msg)
                 self.add_output_text(f"[color=44ff44]{service_msg}[/color]")
             
         except Exception as e:
             error_msg = f"Fehler beim Starten des Workflow-Service: {e}"
-            debug_logger.error(error_msg, exc_info=True)
+            logger.error(error_msg, exc_info=True)
             print(error_msg)
             self.add_output_text(f"[color=ff4444]{error_msg}[/color]")
     
@@ -1508,18 +1494,18 @@ class AufnahmePopup(FloatLayout):
                             try:
                                 trigger_file.unlink()
                                 cleanup_msg = "Workflow-Trigger-Datei nach Abschluss gelöscht"
-                                debug_logger.info(cleanup_msg)
+                                logger.info(cleanup_msg)
                                 print(cleanup_msg)
                                 self.add_output_text(f"[color=44ff44]{cleanup_msg}[/color]")
                             except Exception as cleanup_err:
                                 cleanup_warning = f"Warnung: Trigger-Datei konnte nicht gelöscht werden: {cleanup_err}"
-                                debug_logger.warning(cleanup_warning)
+                                logger.warning(cleanup_warning)
                                 print(cleanup_warning)
                                 self.add_output_text(f"[color=ffaa44]{cleanup_warning}[/color]")
                         
                         # Reset workflow triggered flag for next recording
                         self.workflow_triggered = False
-                        debug_logger.info("Reset workflow state for next recording")
+                        logger.info("Reset workflow state for next recording")
                         
                         workflow_complete_msg = "Workflow abgeschlossen"
                         print(workflow_complete_msg)
@@ -1533,23 +1519,23 @@ class AufnahmePopup(FloatLayout):
     
     def close_popup(self, instance):
         """Close the popup window"""
-        debug_logger.info("close_popup called")
+        logger.info("close_popup called")
         
         # Stop recording if running
         if self.is_running:
-            debug_logger.info("Stopping recording before closing popup")
+            logger.info("Stopping recording before closing popup")
             self.stop_recording()
         
         # Stop status checking
         if self.workflow_status_checker:
             Clock.unschedule(self.workflow_status_checker)
             self.workflow_status_checker = None
-            debug_logger.info("Stopped workflow status checking")
+            logger.info("Stopped workflow status checking")
         
         # Remove from parent
         if self.parent:
             self.parent.remove_widget(self)
-            debug_logger.info("Removed popup from parent widget")
+            logger.info("Removed popup from parent widget")
 class GeneralSettingsPopup(FloatLayout):
     def __init__(self, slideshow, **kw):
         super().__init__(**kw)
@@ -2561,7 +2547,7 @@ class Slideshow(FloatLayout):
 
     def cleanup_on_exit(self):
         """Clean up resources when app is closing to fix recording restart issue"""
-        debug_logger.info("Slideshow cleanup: stopping timers and processes")
+        logger.info("Slideshow cleanup: stopping timers and processes")
         
         # Stop all timers
         if self.event: 
@@ -2580,11 +2566,11 @@ class Slideshow(FloatLayout):
         # Stop any active recording processes
         for child in self.children[:]:  # Copy list to avoid modification during iteration
             if hasattr(child, 'is_running') and child.is_running:
-                debug_logger.info("Found running recording, stopping it")
+                logger.info("Found running recording, stopping it")
                 if hasattr(child, 'stop_recording'):
                     child.stop_recording()
                     
-        debug_logger.info("Slideshow cleanup completed")
+        logger.info("Slideshow cleanup completed")
 
 # ---- App Klassen ----
 if KIVYMD_OK:
@@ -2608,7 +2594,7 @@ if KIVYMD_OK:
             self.root_widget.add_widget(self.slideshow)
         def on_stop(self):
             """Clean up resources when app is closing to fix recording restart issue"""
-            debug_logger.info("App is stopping - performing cleanup")
+            logger.info("App is stopping - performing cleanup")
             if self.slideshow:
                 self.slideshow.cleanup_on_exit()
             return True
@@ -2631,7 +2617,7 @@ else:
             self.root_widget.add_widget(self.slideshow)
         def on_stop(self):
             """Clean up resources when app is closing to fix recording restart issue"""
-            debug_logger.info("App is stopping - performing cleanup")
+            logger.info("App is stopping - performing cleanup")
             if self.slideshow:
                 self.slideshow.cleanup_on_exit()
             return True
