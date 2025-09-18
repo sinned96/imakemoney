@@ -9,6 +9,14 @@ import threading
 import select
 import traceback  # Added for better error reporting
 
+# Handle image processing functionality
+try:
+    from PIL import Image, ImageOps
+    PILLOW_AVAILABLE = True
+except ImportError:
+    PILLOW_AVAILABLE = False
+    print("Warning: Pillow not available, image scaling disabled")
+
 # Handle clipboard functionality (optional in headless environments)
 try:
     import pyperclip
@@ -728,6 +736,57 @@ def get_next_index(directory, prefix):
             continue
     return max(nums) + 1 if nums else 1
 
+def scale_image_to_1920x1080(image_path, preserve_aspect_ratio=True, logger=None):
+    """
+    Scale an image to 1920x1080 pixels using Pillow with LANCZOS resampling.
+    
+    Args:
+        image_path (str): Path to the image file
+        preserve_aspect_ratio (bool): If True, uses ImageOps.fit to preserve aspect ratio.
+                                    If False, uses resize which may distort the image.
+        logger (callable): Optional logging function for status updates
+    
+    Returns:
+        bool: True if scaling was successful, False otherwise
+    """
+    def log(message, level="INFO"):
+        if logger:
+            logger(message, level)
+        else:
+            print(f"[{level}] {message}")
+    
+    if not PILLOW_AVAILABLE:
+        log("Pillow not available - image scaling skipped", "WARNING")
+        return False
+        
+    try:
+        with Image.open(image_path) as img:
+            original_size = img.size
+            target_size = (1920, 1080)
+            
+            # Skip scaling if already the correct size
+            if original_size == target_size:
+                log(f"Image already 1920x1080, skipping scaling: {image_path}")
+                return True
+            
+            if preserve_aspect_ratio:
+                # Use ImageOps.fit to maintain aspect ratio and fill the target size
+                scaled_img = ImageOps.fit(img, target_size, Image.Resampling.LANCZOS)
+                log(f"Image scaled to 1920x1080 with aspect ratio preserved: {original_size} -> {target_size}")
+            else:
+                # Use resize to stretch to exact dimensions
+                scaled_img = img.resize(target_size, Image.Resampling.LANCZOS)
+                log(f"Image resized to 1920x1080 (stretched): {original_size} -> {target_size}")
+            
+            # Save the scaled image back to the same path
+            scaled_img.save(image_path, "PNG")
+            log(f"Scaled image saved: {image_path}")
+            return True
+            
+    except Exception as e:
+        log(f"Error scaling image {image_path}: {e}", "ERROR")
+        return False
+
 def generate_image_imagen4(prompt, image_count=1, bilder_dir=BILDER_DIR, output_prefix="bild", logger=None):
     """
     Generate images using Google's Vertex AI Imagen 4.0 API
@@ -884,6 +943,13 @@ def generate_image_imagen4(prompt, image_count=1, bilder_dir=BILDER_DIR, output_
                 
                 file_size = len(img_data)
                 log(f"[SUCCESS] Image {i+1} saved: {fname} ({file_size:,} bytes)")
+                
+                # Scale the image to 1920x1080 to fill screen completely
+                if scale_image_to_1920x1080(fname, preserve_aspect_ratio=True, logger=logger):
+                    log(f"[SUCCESS] Image {i+1} scaled to 1920x1080 to eliminate black bars")
+                else:
+                    log(f"[WARNING] Image {i+1} could not be scaled - black bars may appear", "WARNING")
+                
                 generated_files.append(fname)
                 
             except Exception as e:
@@ -930,18 +996,36 @@ def _create_demo_images(bilder_dir, output_prefix, image_count, logger=None):
         generated_files = []
         start_idx = get_next_index(bilder_dir, output_prefix)
         
-        # Create a minimal PNG file as placeholder
-        minimal_png = base64.b64decode(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-        )
-        
-        for i in range(image_count):
-            fname = f"{bilder_dir}/{output_prefix}_{start_idx + i}.png"
-            with open(fname, "wb") as f:
-                f.write(minimal_png)
+        # Create a proper demo image instead of minimal 1x1 pixel PNG
+        if PILLOW_AVAILABLE:
+            # Create a colored demo image with some content
+            for i in range(image_count):
+                fname = f"{bilder_dir}/{output_prefix}_{start_idx + i}.png"
+                
+                # Create a demo image with gradient colors
+                demo_img = Image.new('RGB', (800, 600), color=(70 + i*30, 130 + i*20, 180 + i*10))
+                demo_img.save(fname, "PNG")
+                
+                log(f"[SUCCESS] Demo image created: {fname}")
+                
+                # Scale the demo image to 1920x1080
+                if scale_image_to_1920x1080(fname, preserve_aspect_ratio=True, logger=logger):
+                    log(f"[SUCCESS] Demo image scaled to 1920x1080")
+                
+                generated_files.append(fname)
+        else:
+            # Fallback to minimal PNG if Pillow not available
+            minimal_png = base64.b64decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+            )
             
-            log(f"[SUCCESS] Demo image created: {fname}")
-            generated_files.append(fname)
+            for i in range(image_count):
+                fname = f"{bilder_dir}/{output_prefix}_{start_idx + i}.png"
+                with open(fname, "wb") as f:
+                    f.write(minimal_png)
+                
+                log(f"[SUCCESS] Demo image created: {fname} (minimal - Pillow not available)")
+                generated_files.append(fname)
         
         return generated_files
         
