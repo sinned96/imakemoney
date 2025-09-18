@@ -1,3 +1,31 @@
 [2025-09-18 14:49:27,660] WARNING [voiceToGoogle]: Google Cloud Speech-to-Text library not available: No module named 'google'
 [2025-09-18 14:49:27,660] INFO [voiceToGoogle]: Fallback mode will be used when Google API is not available or fails
 [2025-09-18 14:49:36,009] INFO [Aufnahme]: Test log message from Aufnahme.py
+[2025-09-18 14:50:30,479] INFO [start_workflow_service]: Test INFO message
+[2025-09-18 14:50:30,480] WARNING [start_workflow_service]: Test WARNING message
+[2025-09-18 14:50:30,480] ERROR [start_workflow_service]: Test ERROR message
+[2025-09-18 14:50:43,554] INFO [vertex_ai_image_workflow]: === Vertex AI Image Workflow Started ===
+[2025-09-18 14:50:43,554] ERROR [vertex_ai_image_workflow]: Transcript not found: non_existent_file.txt
+[2025-09-18 14:50:52,296] INFO [vertex_ai_image_workflow]: === Vertex AI Image Workflow Started ===
+[2025-09-18 14:50:52,296] INFO [vertex_ai_image_workflow]: Transcript loaded: 0 characters
+[2025-09-18 14:50:52,296] WARNING [vertex_ai_image_workflow]: Transcript is empty
+[2025-09-18 14:51:19,388] INFO [__main__]: === Aufnahme.py - Audio Recording Script Started ===
+[2025-09-18 14:51:19,388] INFO [__main__]: Signal handlers configured for clean shutdown
+[2025-09-18 14:51:19,388] INFO [__main__]: AudioRecorder initialized
+[2025-09-18 14:51:19,388] INFO [__main__]: Audio recorder starting...
+[2025-09-18 14:51:19,388] ERROR [__main__]: Failed to create recording directory: [Errno 13] Permission denied: '/home/pi'
+[2025-09-18 14:51:19,388] ERROR [__main__]: Failed to start recording
+[2025-09-18 14:51:27,495] INFO [__main__]: === Workflow Service Starter Started ===
+[2025-09-18 14:51:27,495] INFO [__main__]: Checking if workflow service is already running
+[2025-09-18 14:51:27,495] INFO [__main__]: Starting workflow service
+[2025-09-18 14:51:27,495] INFO [__main__]: Starting workflow manager service: /home/runner/work/imakemoney/imakemoney/PythonServer.py
+[2025-09-18 14:51:27,596] INFO [__main__]: PythonServer starting - Environment: Desktop
+[2025-09-18 14:51:27,596] INFO [__main__]: Display: Headless
+[2025-09-18 14:51:27,596] INFO [__main__]: Script Directory: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:51:27,596] INFO [__main__]: Service-Lock erworben (PID: 3631)
+[2025-09-18 14:51:27,596] INFO [__main__]: Workflow-Manager gestartet
+[2025-09-18 14:51:27,597] INFO [__main__]: Überwache Verzeichnis: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:51:27,597] INFO [__main__]: Trigger-Datei: /home/runner/work/imakemoney/imakemoney/workflow_trigger.txt
+[2025-09-18 14:51:29,461] INFO [__main__]: Service-Lock freigegeben
+[2025-09-18 14:51:29,461] INFO [__main__]: Workflow-Manager gestoppt
+[2025-09-18 14:51:29,597] INFO [__main__]: Workflow-Manager gestoppt
