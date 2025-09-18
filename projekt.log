@@ -1,0 +1,413 @@
+[2025-09-18 14:15:59] logging_config_test - INFO: === LOGGING_CONFIG_TEST STARTED ===
+[2025-09-18 14:15:59] logging_config_test - INFO: Log file: /home/runner/work/imakemoney/imakemoney/projekt.log
+[2025-09-18 14:15:59] logging_config_test - INFO: Working directory: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:15:59] logging_config_test - INFO: Script path: /home/runner/work/imakemoney/imakemoney/logging_config.py
+[2025-09-18 14:15:59] logging_config_test - INFO: This is an info message
+[2025-09-18 14:15:59] logging_config_test - WARNING: This is a warning message
+[2025-09-18 14:15:59] logging_config_test - ERROR: This is an error message
+[2025-09-18 14:15:59] logging_config_test - ERROR: Exception in test_function: Test exception
+Traceback (most recent call last):
+  File "/home/runner/work/imakemoney/imakemoney/logging_config.py", line 154, in <module>
+    raise ValueError("Test exception")
+ValueError: Test exception
+[2025-09-18 14:15:59] logging_config_test - INFO: Logging configuration test completed
+[2025-09-18 14:18:36] Aufnahme - INFO: === AUFNAHME STARTED ===
+[2025-09-18 14:18:36] Aufnahme - INFO: Log file: /home/runner/work/imakemoney/imakemoney/projekt.log
+[2025-09-18 14:18:36] Aufnahme - INFO: Working directory: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:18:36] Aufnahme - INFO: Script path: /home/runner/work/imakemoney/imakemoney/Aufnahme.py
+[2025-09-18 14:18:36] Aufnahme - INFO: Aufnahme.py - Audio Recording Script starting
+[2025-09-18 14:18:36] Aufnahme - INFO: Signal handlers configured successfully
+[2025-09-18 14:18:36] Aufnahme - INFO: AudioRecorder initialized successfully
+[2025-09-18 14:18:36] Aufnahme - INFO: Audio recorder starting...
+[2025-09-18 14:18:36] Aufnahme - ERROR: Error starting recording: [Errno 13] Permission denied: '/home/pi'
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/pathlib.py", line 1313, in mkdir
+    os.mkdir(self, mode)
+FileNotFoundError: [Errno 2] No such file or directory: '/home/pi/Desktop/v2_Tripple S'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/pathlib.py", line 1313, in mkdir
+    os.mkdir(self, mode)
+FileNotFoundError: [Errno 2] No such file or directory: '/home/pi/Desktop'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/runner/work/imakemoney/imakemoney/Aufnahme.py", line 67, in start_recording
+    recordings_dir.mkdir(parents=True, exist_ok=True)
+  File "/usr/lib/python3.12/pathlib.py", line 1317, in mkdir
+    self.parent.mkdir(parents=True, exist_ok=True)
+  File "/usr/lib/python3.12/pathlib.py", line 1317, in mkdir
+    self.parent.mkdir(parents=True, exist_ok=True)
+  File "/usr/lib/python3.12/pathlib.py", line 1313, in mkdir
+    os.mkdir(self, mode)
+PermissionError: [Errno 13] Permission denied: '/home/pi'
+[2025-09-18 14:18:36] Aufnahme - ERROR: Exiting start_recording with error: [Errno 13] Permission denied: '/home/pi'
+[2025-09-18 14:18:57] Aufnahme - INFO: === AUFNAHME STARTED ===
+[2025-09-18 14:18:57] Aufnahme - INFO: Log file: /home/runner/work/imakemoney/imakemoney/projekt.log
+[2025-09-18 14:18:57] Aufnahme - INFO: Working directory: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:18:57] Aufnahme - INFO: Script path: /home/runner/work/imakemoney/imakemoney/Aufnahme.py
+[2025-09-18 14:18:57] Aufnahme - INFO: Aufnahme.py - Audio Recording Script starting
+[2025-09-18 14:18:57] Aufnahme - INFO: Signal handlers configured successfully
+[2025-09-18 14:18:57] Aufnahme - INFO: AudioRecorder initialized successfully
+[2025-09-18 14:18:57] Aufnahme - INFO: Audio recorder starting...
+[2025-09-18 14:18:57] Aufnahme - WARNING: Cannot create target directory /home/pi/Desktop/v2_Tripple S, falling back to current directory
+[2025-09-18 14:18:57] Aufnahme - INFO: Output file set to: /home/runner/work/imakemoney/imakemoney/aufnahme.wav
+[2025-09-18 14:18:57] Aufnahme - WARNING: No audio recording tools found (arecord, parecord, ffmpeg)
+[2025-09-18 14:18:57] Aufnahme - INFO: Starting simulation mode for testing...
+[2025-09-18 14:18:57] Aufnahme - INFO: Starting recording process with command: python3 -c...
+[2025-09-18 14:18:57] Aufnahme - INFO: Recording started successfully (PID: 3473)
+[2025-09-18 14:18:57] Aufnahme - INFO: Entering recording loop, waiting for process to finish or signals...
+[2025-09-18 14:19:00] Aufnahme - WARNING: Received signal 15, stopping recording gracefully...
+[2025-09-18 14:19:00] Aufnahme - INFO: Recording process terminated with exit code: 0
+[2025-09-18 14:19:00] Aufnahme - INFO: Recording duration: 2.97 seconds
+[2025-09-18 14:19:00] Aufnahme - INFO: Recording file: /home/runner/work/imakemoney/imakemoney/aufnahme.wav
+[2025-09-18 14:19:00] Aufnahme - INFO: File size: 2,000 bytes (0.00 MB)
+[2025-09-18 14:19:00] Aufnahme - INFO: Estimated frames recorded: 130,954
+[2025-09-18 14:19:00] Aufnahme - INFO: SUCCESS: Audio file successfully created
+[2025-09-18 14:19:00] Aufnahme - INFO: Recording completed successfully
+[2025-09-18 14:19:00] Aufnahme - INFO: Recording process ended naturally
+[2025-09-18 14:19:00] Aufnahme - INFO: Cleaning up recording resources...
+[2025-09-18 14:19:00] Aufnahme - WARNING: No recording to stop - recording not started or process not available
+[2025-09-18 14:19:00] Aufnahme - INFO: Recording session completed
+[2025-09-18 14:19:00] Aufnahme - INFO: Recording session completed successfully
+[2025-09-18 14:23:36] vertex_ai_image_workflow - INFO: === VERTEX_AI_IMAGE_WORKFLOW STARTED ===
+[2025-09-18 14:23:36] vertex_ai_image_workflow - INFO: Log file: /home/runner/work/imakemoney/imakemoney/projekt.log
+[2025-09-18 14:23:36] vertex_ai_image_workflow - INFO: Working directory: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:23:36] vertex_ai_image_workflow - INFO: Script path: /home/runner/work/imakemoney/imakemoney/vertex_ai_image_workflow.py
+[2025-09-18 14:23:36] vertex_ai_image_workflow - INFO: Starting Vertex AI image workflow
+[2025-09-18 14:23:36] vertex_ai_image_workflow - WARNING: Standard path not accessible: /home/pi/Desktop/v2_Tripple S/transkript.txt
+[2025-09-18 14:23:36] vertex_ai_image_workflow - INFO: Using fallback paths for development/testing environment
+[2025-09-18 14:23:36] vertex_ai_image_workflow - INFO: Using transcript path: transkript.txt
+[2025-09-18 14:23:36] vertex_ai_image_workflow - INFO: Using images directory: BilderVertex
+[2025-09-18 14:23:36] vertex_ai_image_workflow - INFO: Reading transcript file...
+[2025-09-18 14:23:36] vertex_ai_image_workflow - INFO: Original prompt length: 99 characters
+[2025-09-18 14:23:36] vertex_ai_image_workflow - INFO: Enhanced prompt with German language specification
+[2025-09-18 14:23:36] vertex_ai_image_workflow - INFO: Preparing request to Vertex AI Imagen API...
+[2025-09-18 14:23:36] vertex_ai_image_workflow - ERROR: Unexpected error in main: HTTPSConnectionPool(host='vertex.googleapis.com', port=443): Max retries exceeded with url: /v1/your-endpoint (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x7fb00a396720>: Failed to resolve 'vertex.googleapis.com' ([Errno -5] No address associated with hostname)"))
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/urllib3/connection.py", line 203, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/urllib3/util/connection.py", line 60, in create_connection
+    for res in socket.getaddrinfo(host, port, family, socket.SOCK_STREAM):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/socket.py", line 963, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -5] No address associated with hostname
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/urllib3/connectionpool.py", line 791, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/urllib3/connectionpool.py", line 492, in _make_request
+    raise new_e
+  File "/usr/lib/python3/dist-packages/urllib3/connectionpool.py", line 468, in _make_request
+    self._validate_conn(conn)
+  File "/usr/lib/python3/dist-packages/urllib3/connectionpool.py", line 1097, in _validate_conn
+    conn.connect()
+  File "/usr/lib/python3/dist-packages/urllib3/connection.py", line 611, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/urllib3/connection.py", line 210, in _new_conn
+    raise NameResolutionError(self.host, self, e) from e
+urllib3.exceptions.NameResolutionError: <urllib3.connection.HTTPSConnection object at 0x7fb00a396720>: Failed to resolve 'vertex.googleapis.com' ([Errno -5] No address associated with hostname)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/requests/adapters.py", line 486, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/urllib3/connectionpool.py", line 845, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/urllib3/util/retry.py", line 517, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.MaxRetryError: HTTPSConnectionPool(host='vertex.googleapis.com', port=443): Max retries exceeded with url: /v1/your-endpoint (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x7fb00a396720>: Failed to resolve 'vertex.googleapis.com' ([Errno -5] No address associated with hostname)"))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/runner/work/imakemoney/imakemoney/vertex_ai_image_workflow.py", line 111, in main
+    response = requests.post(
+               ^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/requests/api.py", line 115, in post
+    return request("post", url, data=data, json=json, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/requests/sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/requests/adapters.py", line 519, in send
+    raise ConnectionError(e, request=request)
+requests.exceptions.ConnectionError: HTTPSConnectionPool(host='vertex.googleapis.com', port=443): Max retries exceeded with url: /v1/your-endpoint (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x7fb00a396720>: Failed to resolve 'vertex.googleapis.com' ([Errno -5] No address associated with hostname)"))
+[2025-09-18 14:23:36] vertex_ai_image_workflow - ERROR: Exiting main with error: HTTPSConnectionPool(host='vertex.googleapis.com', port=443): Max retries exceeded with url: /v1/your-endpoint (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x7fb00a396720>: Failed to resolve 'vertex.googleapis.com' ([Errno -5] No address associated with hostname)"))
+[2025-09-18 14:23:45] dateiKopieren - INFO: === DATEIKOPIEREN STARTED ===
+[2025-09-18 14:23:45] dateiKopieren - INFO: Log file: /home/runner/work/imakemoney/imakemoney/projekt.log
+[2025-09-18 14:23:45] dateiKopieren - INFO: Working directory: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:23:45] dateiKopieren - INFO: Script path: /home/runner/work/imakemoney/imakemoney/dateiKopieren.py
+[2025-09-18 14:23:45] dateiKopieren - INFO: Starting file operations workflow
+[2025-09-18 14:23:45] dateiKopieren - WARNING: Using fallback directory: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:23:45] dateiKopieren - INFO: Step 1: Organizing transcript files...
+[2025-09-18 14:23:45] dateiKopieren - INFO: Organizing transcript files in: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:23:45] dateiKopieren - INFO: Found transcript TXT file: /home/runner/work/imakemoney/imakemoney/transkript.txt
+[2025-09-18 14:23:45] dateiKopieren - WARNING: Transcript JSON file not found: /home/runner/work/imakemoney/imakemoney/transkript.json
+[2025-09-18 14:23:45] dateiKopieren - INFO: Transcript files found, organization successful
+[2025-09-18 14:23:45] dateiKopieren - INFO: Transcript files organized successfully
+[2025-09-18 14:23:45] dateiKopieren - INFO: TXT file: /home/runner/work/imakemoney/imakemoney/transkript.txt
+[2025-09-18 14:23:45] dateiKopieren - INFO: Step 2: Testing clipboard functionality...
+[2025-09-18 14:23:45] dateiKopieren - INFO: Attempting to read clipboard content...
+[2025-09-18 14:23:45] dateiKopieren - INFO: Read content from transcript file: 99 characters
+[2025-09-18 14:23:45] dateiKopieren - INFO: Clipboard content available: 99 characters
+[2025-09-18 14:23:45] dateiKopieren - INFO: File operations workflow completed
+[2025-09-18 14:23:51] programmSendFile - INFO: === PROGRAMMSENDFILE STARTED ===
+[2025-09-18 14:23:51] programmSendFile - INFO: Log file: /home/runner/work/imakemoney/imakemoney/projekt.log
+[2025-09-18 14:23:51] programmSendFile - INFO: Working directory: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:23:51] programmSendFile - INFO: Script path: /home/runner/work/imakemoney/imakemoney/programmSendFile.py
+[2025-09-18 14:23:51] programmSendFile - INFO: Starting file upload workflow
+[2025-09-18 14:23:51] programmSendFile - INFO: Step 1: Loading upload configuration...
+[2025-09-18 14:23:51] programmSendFile - WARNING: Config file not found: /home/runner/work/imakemoney/imakemoney/upload_config.json, using defaults
+[2025-09-18 14:23:51] programmSendFile - INFO: Creating default config file...
+[2025-09-18 14:23:51] programmSendFile - INFO: Saving upload configuration to: /home/runner/work/imakemoney/imakemoney/upload_config.json
+[2025-09-18 14:23:51] programmSendFile - INFO: Upload configuration saved successfully
+[2025-09-18 14:23:51] programmSendFile - INFO: Step 2: Testing server connection...
+[2025-09-18 14:23:51] programmSendFile - INFO: Testing connection to example.com:22
+[2025-09-18 14:23:51] programmSendFile - ERROR: Connection test failed: Warning: Identity file /home/runner/.ssh/id_rsa not accessible: No such file or directory.
+ssh: Could not resolve hostname example.com: No address associated with hostname
+
+[2025-09-18 14:23:51] programmSendFile - ERROR: Exiting check_connection with error: Warning: Identity file /home/runner/.ssh/id_rsa not accessible: No such file or directory.
+ssh: Could not resolve hostname example.com: No address associated with hostname
+
+[2025-09-18 14:23:51] programmSendFile - WARNING: ⚠ Server connection failed - uploads may not work
+[2025-09-18 14:23:51] programmSendFile - INFO: Step 3: Uploading transcript files...
+[2025-09-18 14:23:51] programmSendFile - INFO: Looking for transcript files in: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:23:51] programmSendFile - INFO: Uploading: transkript.txt
+[2025-09-18 14:23:51] programmSendFile - INFO: Uploading file: /home/runner/work/imakemoney/imakemoney/transkript.txt (100 bytes)
+[2025-09-18 14:23:51] programmSendFile - INFO: Running SCP command: scp -i /home/runner/.ssh/id_rsa [credentials hidden]
+[2025-09-18 14:23:51] programmSendFile - INFO: Upload attempt 1/3
+[2025-09-18 14:23:52] programmSendFile - WARNING: Attempt 1 failed: SCP failed (exit code 255): Warning: Identity file /home/runner/.ssh/id_rsa not accessible: No such file or directory.
+ssh: Could not resolve hostname example.com: No address associated with hostname
+scp: Connection closed
+
+[2025-09-18 14:23:52] programmSendFile - INFO: Waiting 2 seconds before retry...
+[2025-09-18 14:23:54] programmSendFile - INFO: Upload attempt 2/3
+[2025-09-18 14:23:54] programmSendFile - WARNING: Attempt 2 failed: SCP failed (exit code 255): Warning: Identity file /home/runner/.ssh/id_rsa not accessible: No such file or directory.
+ssh: Could not resolve hostname example.com: No address associated with hostname
+scp: Connection closed
+
+[2025-09-18 14:23:54] programmSendFile - INFO: Waiting 4 seconds before retry...
+[2025-09-18 14:23:58] programmSendFile - INFO: Upload attempt 3/3
+[2025-09-18 14:23:58] programmSendFile - WARNING: Attempt 3 failed: SCP failed (exit code 255): Warning: Identity file /home/runner/.ssh/id_rsa not accessible: No such file or directory.
+ssh: Could not resolve hostname example.com: No address associated with hostname
+scp: Connection closed
+
+[2025-09-18 14:23:58] programmSendFile - ERROR: Upload failed after 3 attempts. Last error: SCP failed (exit code 255): Warning: Identity file /home/runner/.ssh/id_rsa not accessible: No such file or directory.
+ssh: Could not resolve hostname example.com: No address associated with hostname
+scp: Connection closed
+
+[2025-09-18 14:23:58] programmSendFile - ERROR: Exiting upload_file_ssh with error: Upload failed after 3 attempts. Last error: SCP failed (exit code 255): Warning: Identity file /home/runner/.ssh/id_rsa not accessible: No such file or directory.
+ssh: Could not resolve hostname example.com: No address associated with hostname
+scp: Connection closed
+
+[2025-09-18 14:23:58] programmSendFile - ERROR: ✗ transkript.txt upload failed: Upload failed after 3 attempts. Last error: SCP failed (exit code 255): Warning: Identity file /home/runner/.ssh/id_rsa not accessible: No such file or directory.
+ssh: Could not resolve hostname example.com: No address associated with hostname
+scp: Connection closed
+
+[2025-09-18 14:23:58] programmSendFile - WARNING: File not found, skipping: transkript.json
+[2025-09-18 14:23:58] programmSendFile - INFO: Upload summary: 0 successful, 1 failed
+[2025-09-18 14:23:58] programmSendFile - INFO: File upload workflow completed
+[2025-09-18 14:24:40] main - INFO: === MAIN STARTED ===
+[2025-09-18 14:24:40] main - INFO: Log file: /home/runner/work/imakemoney/imakemoney/projekt.log
+[2025-09-18 14:24:40] main - INFO: Working directory: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:24:40] main - INFO: Script path: /home/runner/work/imakemoney/imakemoney/-c
+[2025-09-18 14:24:40] main - WARNING: tkinter not available - GUI fallback disabled
+[2025-09-18 14:29:11] voiceToGoogle - INFO: === VOICETOGOOGLE STARTED ===
+[2025-09-18 14:29:11] voiceToGoogle - INFO: Log file: /home/runner/work/imakemoney/imakemoney/projekt.log
+[2025-09-18 14:29:11] voiceToGoogle - INFO: Working directory: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:29:11] voiceToGoogle - INFO: Script path: /home/runner/work/imakemoney/imakemoney/voiceToGoogle.py
+[2025-09-18 14:29:11] voiceToGoogle - WARNING: Google Cloud Speech-to-Text library not available: No module named 'google'
+[2025-09-18 14:29:11] voiceToGoogle - INFO: Fallback mode will be used when Google API is not available or fails
+[2025-09-18 14:29:11] voiceToGoogle - INFO: === Voice to Google Speech Recognition ===
+[2025-09-18 14:29:11] voiceToGoogle - INFO: Starting speech-to-text processing...
+[2025-09-18 14:29:11] voiceToGoogle - INFO: Found audio file at: aufnahme.wav
+[2025-09-18 14:29:11] voiceToGoogle - INFO: Processing audio file: aufnahme.wav
+[2025-09-18 14:29:11] voiceToGoogle - INFO: === Pre-processing: Audio Format Validation ===
+[2025-09-18 14:29:11] voiceToGoogle - ERROR: Error analyzing audio format: file does not start with RIFF id
+[2025-09-18 14:29:11] voiceToGoogle - WARNING: Could not analyze audio format - proceeding with original file
+[2025-09-18 14:29:11] voiceToGoogle - WARNING: Google Cloud Speech library not available
+[2025-09-18 14:29:11] voiceToGoogle - WARNING: Falling back to local processing (fallback mode active)
+[2025-09-18 14:29:11] voiceToGoogle - INFO: For real speech recognition, ensure:
+[2025-09-18 14:29:11] voiceToGoogle - INFO: 1. Google Cloud Speech library is installed: pip install google-cloud-speech
+[2025-09-18 14:29:11] voiceToGoogle - INFO: 2. Credentials are configured: GOOGLE_APPLICATION_CREDENTIALS environment variable
+[2025-09-18 14:29:11] voiceToGoogle - INFO: 3. Audio is in mono format (automatic conversion attempted)
+[2025-09-18 14:29:11] voiceToGoogle - INFO: Using fallback mode for speech recognition
+[2025-09-18 14:29:11] voiceToGoogle - INFO: Processing audio file: aufnahme.wav
+[2025-09-18 14:29:11] voiceToGoogle - INFO: Audio file size: 2,000 bytes
+[2025-09-18 14:29:11] voiceToGoogle - INFO: Analyzing audio content... (estimated 1.0s)
+[2025-09-18 14:29:11] voiceToGoogle - INFO:   Processing... 1/1
+[2025-09-18 14:29:12] voiceToGoogle - INFO: --- Recognition Result ---
+[2025-09-18 14:29:12] voiceToGoogle - INFO: "Kurze Aufnahme erkannt"
+[2025-09-18 14:29:12] voiceToGoogle - INFO: --- End Result ---
+[2025-09-18 14:29:12] voiceToGoogle - INFO: Transcript saved to: /home/runner/work/imakemoney/imakemoney/transkript.txt
+[2025-09-18 14:29:12] voiceToGoogle - INFO: Transcript content: 'Kurze Aufnahme erkannt'
+[2025-09-18 14:29:12] voiceToGoogle - INFO: Processing method: fallback
+[2025-09-18 14:29:12] voiceToGoogle - INFO: Found audio file at: aufnahme.wav
+[2025-09-18 14:29:12] voiceToGoogle - INFO: Transcript metadata saved to: /home/runner/work/imakemoney/imakemoney/transkript.json
+[2025-09-18 14:29:12] voiceToGoogle - WARNING: [WARNING] Simulation mode - transcript contains placeholder text, not real speech
+[2025-09-18 14:29:12] voiceToGoogle - INFO: [SUCCESS] Speech recognition completed successfully
+[2025-09-18 14:29:12] voiceToGoogle - INFO: Speech recognition workflow completed successfully
+[2025-09-18 14:29:19] start_workflow_service - INFO: === START_WORKFLOW_SERVICE STARTED ===
+[2025-09-18 14:29:19] start_workflow_service - INFO: Log file: /home/runner/work/imakemoney/imakemoney/projekt.log
+[2025-09-18 14:29:19] start_workflow_service - INFO: Working directory: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:29:19] start_workflow_service - INFO: Script path: /home/runner/work/imakemoney/imakemoney/start_workflow_service.py
+[2025-09-18 14:29:19] start_workflow_service - INFO: Starting Workflow Service Starter
+[2025-09-18 14:29:19] start_workflow_service - INFO: Arguments: auto=True
+[2025-09-18 14:29:19] start_workflow_service - INFO: No running service detected
+[2025-09-18 14:29:19] start_workflow_service - INFO: Starting workflow service...
+[2025-09-18 14:29:19] start_workflow_service - INFO: Starting Workflow Manager Service...
+[2025-09-18 14:29:19] start_workflow_service - INFO: Script: /home/runner/work/imakemoney/imakemoney/PythonServer.py
+[2025-09-18 14:29:21] start_workflow_service - ERROR: Service could not be started
+[2025-09-18 14:29:21] start_workflow_service - ERROR: Failed service stderr:   File "/home/runner/work/imakemoney/imakemoney/PythonServer.py", line 1087
+    print("Fehler beim Starten der Aufnahme - Workflow abgebrochen")
+    ^
+IndentationError: expected an indented block after 'if' statement on line 1086
+
+[2025-09-18 14:29:21] start_workflow_service - ERROR: Exiting start_service with error: Service startup failed
+[2025-09-18 14:29:21] start_workflow_service - ERROR: Service could not be started
+[2025-09-18 14:29:21] start_workflow_service - ERROR: Exiting main with error: Service startup failed
+[2025-09-18 14:31:18] start_workflow_service - INFO: === START_WORKFLOW_SERVICE STARTED ===
+[2025-09-18 14:31:18] start_workflow_service - INFO: Log file: /home/runner/work/imakemoney/imakemoney/projekt.log
+[2025-09-18 14:31:18] start_workflow_service - INFO: Working directory: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:31:18] start_workflow_service - INFO: Script path: /home/runner/work/imakemoney/imakemoney/start_workflow_service.py
+[2025-09-18 14:31:18] start_workflow_service - INFO: Starting Workflow Service Starter
+[2025-09-18 14:31:18] start_workflow_service - INFO: Arguments: auto=True
+[2025-09-18 14:31:18] start_workflow_service - INFO: No running service detected
+[2025-09-18 14:31:18] start_workflow_service - INFO: Starting workflow service...
+[2025-09-18 14:31:18] start_workflow_service - INFO: Starting Workflow Manager Service...
+[2025-09-18 14:31:18] start_workflow_service - INFO: Script: /home/runner/work/imakemoney/imakemoney/PythonServer.py
+[2025-09-18 14:31:18] PythonServer - INFO: === PYTHONSERVER STARTED ===
+[2025-09-18 14:31:18] PythonServer - INFO: Log file: /home/runner/work/imakemoney/imakemoney/projekt.log
+[2025-09-18 14:31:18] PythonServer - INFO: Working directory: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:31:18] PythonServer - INFO: Script path: /home/runner/work/imakemoney/imakemoney/PythonServer.py
+[2025-09-18 14:31:18] PythonServer - INFO: Pillow (PIL) library available for image processing
+[2025-09-18 14:31:18] PythonServer - WARNING: pyperclip not available, clipboard operations disabled
+[2025-09-18 14:31:18] PythonServer - INFO: requests library available for API calls
+[2025-09-18 14:31:18] PythonServer - WARNING: Google Cloud libraries not available - using demo mode for image generation
+[2025-09-18 14:31:18] PythonServer - INFO: Environment: Desktop
+[2025-09-18 14:31:18] PythonServer - INFO: Display: Headless
+[2025-09-18 14:31:18] PythonServer - INFO: Script Directory: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:31:18] PythonServer - INFO: Service-Lock erworben (PID: 3692)
+[2025-09-18 14:31:18] PythonServer - INFO: Workflow-Manager gestartet
+[2025-09-18 14:31:18] PythonServer - INFO: Überwache Verzeichnis: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:31:18] PythonServer - INFO: Trigger-Datei: /home/runner/work/imakemoney/imakemoney/workflow_trigger.txt
+[2025-09-18 14:31:20] start_workflow_service - INFO: Workflow Manager Service started successfully (PID: 3692)
+[2025-09-18 14:31:20] start_workflow_service - INFO: Monitoring service for 10 seconds...
+[2025-09-18 14:31:21] PythonServer - INFO: Service-Lock freigegeben
+[2025-09-18 14:31:21] PythonServer - INFO: Workflow-Manager gestoppt
+[2025-09-18 14:31:21] PythonServer - INFO: Workflow-Manager gestoppt
+[2025-09-18 14:31:58] vertex_ai_image_workflow - INFO: === VERTEX_AI_IMAGE_WORKFLOW STARTED ===
+[2025-09-18 14:31:58] vertex_ai_image_workflow - INFO: Log file: /home/runner/work/imakemoney/imakemoney/projekt.log
+[2025-09-18 14:31:58] vertex_ai_image_workflow - INFO: Working directory: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:31:58] vertex_ai_image_workflow - INFO: Script path: /home/runner/work/imakemoney/imakemoney/vertex_ai_image_workflow.py
+[2025-09-18 14:31:58] vertex_ai_image_workflow - INFO: Starting Vertex AI image workflow
+[2025-09-18 14:31:58] vertex_ai_image_workflow - WARNING: Standard path not accessible: /home/pi/Desktop/v2_Tripple S/transkript.txt
+[2025-09-18 14:31:58] vertex_ai_image_workflow - INFO: Using fallback paths for development/testing environment
+[2025-09-18 14:31:58] vertex_ai_image_workflow - INFO: Using transcript path: transkript.txt
+[2025-09-18 14:31:58] vertex_ai_image_workflow - INFO: Using images directory: BilderVertex
+[2025-09-18 14:31:58] vertex_ai_image_workflow - INFO: Reading transcript file...
+[2025-09-18 14:31:58] vertex_ai_image_workflow - INFO: Original prompt length: 51 characters
+[2025-09-18 14:31:58] vertex_ai_image_workflow - INFO: Enhanced prompt with German language specification
+[2025-09-18 14:31:58] vertex_ai_image_workflow - INFO: Preparing request to Vertex AI Imagen API...
+[2025-09-18 14:31:58] vertex_ai_image_workflow - ERROR: Unexpected error in main: HTTPSConnectionPool(host='vertex.googleapis.com', port=443): Max retries exceeded with url: /v1/your-endpoint (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x7fc10d776a20>: Failed to resolve 'vertex.googleapis.com' ([Errno -5] No address associated with hostname)"))
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/urllib3/connection.py", line 203, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/urllib3/util/connection.py", line 60, in create_connection
+    for res in socket.getaddrinfo(host, port, family, socket.SOCK_STREAM):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/socket.py", line 963, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -5] No address associated with hostname
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/urllib3/connectionpool.py", line 791, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/urllib3/connectionpool.py", line 492, in _make_request
+    raise new_e
+  File "/usr/lib/python3/dist-packages/urllib3/connectionpool.py", line 468, in _make_request
+    self._validate_conn(conn)
+  File "/usr/lib/python3/dist-packages/urllib3/connectionpool.py", line 1097, in _validate_conn
+    conn.connect()
+  File "/usr/lib/python3/dist-packages/urllib3/connection.py", line 611, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/urllib3/connection.py", line 210, in _new_conn
+    raise NameResolutionError(self.host, self, e) from e
+urllib3.exceptions.NameResolutionError: <urllib3.connection.HTTPSConnection object at 0x7fc10d776a20>: Failed to resolve 'vertex.googleapis.com' ([Errno -5] No address associated with hostname)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/requests/adapters.py", line 486, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/urllib3/connectionpool.py", line 845, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/urllib3/util/retry.py", line 517, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.MaxRetryError: HTTPSConnectionPool(host='vertex.googleapis.com', port=443): Max retries exceeded with url: /v1/your-endpoint (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x7fc10d776a20>: Failed to resolve 'vertex.googleapis.com' ([Errno -5] No address associated with hostname)"))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/runner/work/imakemoney/imakemoney/vertex_ai_image_workflow.py", line 111, in main
+    response = requests.post(
+               ^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/requests/api.py", line 115, in post
+    return request("post", url, data=data, json=json, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/requests/sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/requests/adapters.py", line 519, in send
+    raise ConnectionError(e, request=request)
+requests.exceptions.ConnectionError: HTTPSConnectionPool(host='vertex.googleapis.com', port=443): Max retries exceeded with url: /v1/your-endpoint (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x7fc10d776a20>: Failed to resolve 'vertex.googleapis.com' ([Errno -5] No address associated with hostname)"))
+[2025-09-18 14:31:58] vertex_ai_image_workflow - ERROR: Exiting main with error: HTTPSConnectionPool(host='vertex.googleapis.com', port=443): Max retries exceeded with url: /v1/your-endpoint (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x7fc10d776a20>: Failed to resolve 'vertex.googleapis.com' ([Errno -5] No address associated with hostname)"))
+[2025-09-18 14:32:13] test - INFO: === TEST STARTED ===
+[2025-09-18 14:32:13] test - INFO: Log file: /home/runner/work/imakemoney/imakemoney/projekt.log
+[2025-09-18 14:32:13] test - INFO: Working directory: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:32:13] test - INFO: Script path: /home/runner/work/imakemoney/imakemoney/-c
+[2025-09-18 14:32:13] test - INFO: Testing debug mode
+[2025-09-18 14:32:32] german_prompt_demo - INFO: === GERMAN_PROMPT_DEMO STARTED ===
+[2025-09-18 14:32:32] german_prompt_demo - INFO: Log file: /home/runner/work/imakemoney/imakemoney/projekt.log
+[2025-09-18 14:32:32] german_prompt_demo - INFO: Working directory: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:32:32] german_prompt_demo - INFO: Script path: /home/runner/work/imakemoney/imakemoney/demo_german_prompt.py
+[2025-09-18 14:32:32] german_prompt_demo - INFO: Original prompt: 'Erstelle ein schönes Bild von einem Berg mit einem See'
+[2025-09-18 14:32:32] german_prompt_demo - INFO: Enhanced prompt: 'Sprache: Deutsch
+Erstelle ein schönes Bild von einem Berg mit einem See'
+[2025-09-18 14:32:32] german_prompt_demo - INFO: ✓ German language specification successfully prepended to prompt
