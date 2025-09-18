@@ -909,6 +909,20 @@ class AufnahmePopup(FloatLayout):
         )
         self.panel.add_widget(self.timer_label)
         
+        # Loading spinner container (initially hidden) - positioned centrally under timer
+        self.spinner_container = FloatLayout(
+            size_hint=(1, None),
+            height=dp(80)  # Fixed height for consistent positioning
+        )
+        self.loading_spinner = LoadingSpinner(
+            size_hint=(None, None),
+            size=(dp(50), dp(50)),
+            pos_hint={'center_x': 0.5, 'center_y': 0.5}
+        )
+        self.spinner_container.add_widget(self.loading_spinner)
+        self.spinner_container.opacity = 0  # Initially hidden
+        self.panel.add_widget(self.spinner_container)
+        
         # Start/Stop button
         self.button = Button(
             text="Start",
@@ -952,17 +966,6 @@ class AufnahmePopup(FloatLayout):
         self.output_section.add_widget(scroll)
         
         self.panel.add_widget(self.output_section)
-        
-        # Loading spinner container (initially hidden)
-        self.spinner_container = FloatLayout(size_hint=(1, 0.5))
-        self.loading_spinner = LoadingSpinner(
-            size_hint=(None, None),
-            size=(dp(50), dp(50)),
-            pos_hint={'center_x': 0.5, 'center_y': 0.5}
-        )
-        self.spinner_container.add_widget(self.loading_spinner)
-        self.spinner_container.opacity = 0  # Initially hidden
-        self.panel.add_widget(self.spinner_container)
         
         # Close button
         self.close_button = Button(
