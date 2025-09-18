@@ -34,31 +34,11 @@ import subprocess
 from pathlib import Path
 
 # Setup logging for speech-to-text processing
-def setup_speech_logging():
-    """Setup logging for speech recognition with both file and console output"""
-    # Use standardized base directory, but fall back to current directory if not accessible
-    try:
-        log_dir = Path("/home/pi/Desktop/v2_Tripple S")
-        log_dir.mkdir(parents=True, exist_ok=True)
-    except (PermissionError, OSError):
-        # Fallback to current working directory for testing/development
-        log_dir = Path.cwd()
-        
-    log_file = log_dir / "speech_recognition.log"
-    
-    # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='[%(asctime)s] %(levelname)s: %(message)s',
-        handlers=[
-            logging.FileHandler(str(log_file), mode='a', encoding='utf-8'),
-            logging.StreamHandler()
-        ]
-    )
-    return logging.getLogger(__name__)
+# Import unified logging system
+from logging_config import setup_project_logging
 
-# Initialize logger
-speech_logger = setup_speech_logging()
+# Initialize unified project logger (replaces setup_speech_logging)
+speech_logger = setup_project_logging("voiceToGoogle")
 
 # Try to import Google Cloud Speech-to-Text
 try:

@@ -8,29 +8,39 @@ import time
 import threading
 import select
 import traceback  # Added for better error reporting
+from logging_config import setup_project_logging, log_function_entry, log_function_exit, log_exception
+
+# Setup project logging
+logger = setup_project_logging("PythonServer")
 
 # Handle image processing functionality
 try:
     from PIL import Image, ImageOps
     PILLOW_AVAILABLE = True
+    logger.info("Pillow (PIL) library available for image processing")
 except ImportError:
     PILLOW_AVAILABLE = False
+    logger.warning("Pillow not available, image scaling disabled")
     print("Warning: Pillow not available, image scaling disabled")
 
 # Handle clipboard functionality (optional in headless environments)
 try:
     import pyperclip
     CLIPBOARD_AVAILABLE = True
+    logger.info("pyperclip library available for clipboard operations")
 except ImportError:
     CLIPBOARD_AVAILABLE = False
+    logger.warning("pyperclip not available, clipboard operations disabled")
     print("Warning: pyperclip not available, clipboard operations disabled")
 
 # Handle requests for API calls
 try:
     import requests
     REQUESTS_AVAILABLE = True
+    logger.info("requests library available for API calls")
 except ImportError:
     REQUESTS_AVAILABLE = False
+    logger.warning("requests library not available, API calls disabled")
     print("Warning: requests library not available, API calls disabled")
 
 # Optional Google Cloud dependencies
@@ -39,10 +49,12 @@ try:
     from google.auth.transport.requests import Request as GoogleAuthRequest
     GOOGLE_CLOUD_AVAILABLE = True
     service_account = service_account  # Make sure it's available in the module scope
+    logger.info("Google Cloud libraries available for Vertex AI integration")
 except ImportError:
     GOOGLE_CLOUD_AVAILABLE = False
     service_account = None
     GoogleAuthRequest = None
+    logger.warning("Google Cloud libraries not available - using demo mode for image generation")
     print("Google Cloud libraries not available - using demo mode for image generation")
 
 # Configuration for different environments
@@ -78,8 +90,11 @@ TRANSKRIPT_PATH = str(BASE_DIR / "transkript.txt")
 TRANSKRIPT_JSON_PATH = str(BASE_DIR / "transkript.json")
 BILDER_DIR = str(BASE_DIR / "BilderVertex")
 
-# Print environment info on startup
+# Log environment info on startup
 if __name__ == "__main__":
+    logger.info(f"Environment: {'Raspberry Pi' if IS_RASPBERRY_PI else 'Desktop'}")
+    logger.info(f"Display: {'Headless' if IS_HEADLESS else 'GUI Available'}")
+    logger.info(f"Script Directory: {SCRIPT_DIR}")
     print(f"Environment: {'Raspberry Pi' if IS_RASPBERRY_PI else 'Desktop'}")
     print(f"Display: {'Headless' if IS_HEADLESS else 'GUI Available'}")
     print(f"Script Directory: {SCRIPT_DIR}")
@@ -371,30 +386,37 @@ class WorkflowFileWatcher:
             self.log_status(f"Fehler beim Freigeben des Service-Locks: {e}", "WARNING")
         
     def log_status(self, message, level="INFO"):
-        """Log status message to log file with robust Unicode handling"""
+        """
+        Log status message using unified project logging system.
+        This method maintains backward compatibility while using the new logging infrastructure.
+        """
+        # Map level strings to logging levels
+        level_map = {
+            "DEBUG": logger.debug,
+            "INFO": logger.info,
+            "WARNING": logger.warning,
+            "ERROR": logger.error,
+            "CRITICAL": logger.critical
+        }
+        
+        # Get the appropriate logging function
+        log_func = level_map.get(level.upper(), logger.info)
+        
+        # Log using the unified system
+        log_func(message)
+        
+        # Also maintain the old file-based logging for compatibility if needed
         try:
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
             log_line = f"[{timestamp}] {level}: {message}\n"
             
+            # Also write to the old status log for any existing monitoring systems
             with open(self.status_log, "a", encoding="utf-8") as f:
                 f.write(log_line)
                 
-            print(f"[{level}] {message}")
-            
         except Exception as e:
-            # Fallback to ASCII-safe logging if Unicode fails
-            try:
-                safe_message = str(message).encode('ascii', 'replace').decode('ascii')
-                timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-                log_line = f"[{timestamp}] {level}: {safe_message}\n"
-                
-                with open(self.status_log, "a", encoding="utf-8") as f:
-                    f.write(log_line)
-                    
-                print(f"[{level}] {safe_message}")
-            except Exception:
-                # Ultimate fallback - just print basic error
-                print(f"[ERROR] Logging failed - message could not be encoded safely")
+            logger.error(f"Failed to write to status log file: {e}")
+            # Don't fall back to print since unified logging already handles console output
     
     def clear_status_log(self):
         """Clear the status log file"""
@@ -1043,6 +1065,9 @@ def main():
     3. Continue with synchronous processing steps
     4. Collect and display all subprocess output
     """
+    log_function_entry(logger, "main")
+    logger.info("Starting Audio Recording & AI Image Generation Workflow")
+    
     print("=== Audio Recording & AI Image Generation Workflow ===")
     print("Dieses Programm führt folgende Schritte aus:")
     print("1. Aufnahme (asynchron, manuell stoppbar)")  
@@ -1051,56 +1076,87 @@ def main():
     print("4. Bild generieren")
     print("=" * 60)
     
-    # Initialize workflow manager
-    workflow = AsyncWorkflowManager()
+    try:
+        # Initialize workflow manager
+        logger.info("Initializing workflow manager...")
+        workflow = AsyncWorkflowManager()
+        
+        # Step 1: Start recording asynchronously
+        logger.info("Step 1: Starting asynchronous recording...")
+        if not workflow.start_recording_async(AUFNAHME_SCRIPT):
+            logger.error("Failed to start recording - aborting workflow")
+            print("Fehler beim Starten der Aufnahme - Workflow abgebrochen")
+            log_function_exit(logger, "main", error="Failed to start recording")
+            return False
     
-    # Step 1: Start recording asynchronously
-    if not workflow.start_recording_async(AUFNAHME_SCRIPT):
-        print("Fehler beim Starten der Aufnahme - Workflow abgebrochen")
+        # Wait for recording to be stopped (manually or by signal)
+        logger.info("Waiting for stop signal...")
+        print("Warte auf Stop-Signal...")
+        print("Optionen zum Stoppen:")
+        print("- Drücke Enter")
+        print("- Sende SIGTERM an diesen Prozess")
+        print("- Drücke Ctrl+C")
+        
+        workflow.wait_for_stop_signal()
+        
+        # Stop recording if still running
+        if workflow.is_recording:
+            logger.info("Stopping recording...")
+            workflow.stop_recording()
+        
+        logger.info("Recording completed, continuing with next steps...")
+        print("\n" + "=" * 60)
+        print("Aufnahme abgeschlossen, fahre mit weiteren Schritten fort...")
+        print("=" * 60)
+        
+        # Step 2: Voice recognition
+        logger.info("Step 2: Starting voice recognition...")
+        if not workflow.run_script_sync(VOICE_SCRIPT, "Spracherkennung"):
+            logger.warning("Voice recognition failed, continuing anyway...")
+            print("Warnung: Spracherkennung fehlgeschlagen, fahre trotzdem fort...")
+        
+        # Step 3: Copy files  
+        logger.info("Step 3: Starting file copy operations...")
+        if not workflow.run_script_sync(COPY_SCRIPT, "Kopiervorgang"):
+            logger.warning("File copy operations failed, continuing anyway...")
+            print("Warnung: Kopiervorgang fehlgeschlagen, fahre trotzdem fort...")
+        
+        logger.info("Clipboard operations completed")
+        print("Inhalt von transkript.txt wurde ins Clipboard kopiert!")
+        
+        # Step 4: Generate image
+        logger.info("Step 4: Starting image generation...")
+        prompt_text = get_copied_content()
+        if not prompt_text.strip():
+            logger.warning("No text found for image generation - skipping")
+            print("Kein Text zum Senden gefunden – Bild-Generierung übersprungen.")
+        else:
+            logger.info("Sending text as prompt to Vertex AI Imagen 4...")
+            print("Sende Text als Prompt an Vertex AI Imagen 4 ...")
+            try:
+                generate_image_imagen4(prompt_text, image_count=1, bilder_dir=BILDER_DIR, output_prefix="bild")
+                logger.info("Image generation completed successfully")
+            except Exception as e:
+                logger.error(f"Error during image generation: {e}")
+                print(f"Fehler bei Bild-Generierung: {e}")
+    
+        logger.info("Workflow vollständig abgeschlossen!")
+        print("\n" + "=" * 60)
+        print("Workflow vollständig abgeschlossen!")
+        print("=" * 60)
+        log_function_exit(logger, "main", result=True)
+        return True
+        
+    except KeyboardInterrupt:
+        logger.warning("Main workflow interrupted by user")
+        print("\n[INTERRUPT] Workflow unterbrochen")
+        log_function_exit(logger, "main", error="KeyboardInterrupt")
         return False
-    
-    # Wait for recording to be stopped (manually or by signal)
-    print("Warte auf Stop-Signal...")
-    print("Optionen zum Stoppen:")
-    print("- Drücke Enter")
-    print("- Sende SIGTERM an diesen Prozess")
-    print("- Drücke Ctrl+C")
-    
-    workflow.wait_for_stop_signal()
-    
-    # Stop recording if still running
-    if workflow.is_recording:
-        workflow.stop_recording()
-    
-    print("\n" + "=" * 60)
-    print("Aufnahme abgeschlossen, fahre mit weiteren Schritten fort...")
-    print("=" * 60)
-    
-    # Step 2: Voice recognition
-    if not workflow.run_script_sync(VOICE_SCRIPT, "Spracherkennung"):
-        print("Warnung: Spracherkennung fehlgeschlagen, fahre trotzdem fort...")
-    
-    # Step 3: Copy files  
-    if not workflow.run_script_sync(COPY_SCRIPT, "Kopiervorgang"):
-        print("Warnung: Kopiervorgang fehlgeschlagen, fahre trotzdem fort...")
-    
-    print("Inhalt von transkript.txt wurde ins Clipboard kopiert!")
-    
-    # Step 4: Generate image
-    prompt_text = get_copied_content()
-    if not prompt_text.strip():
-        print("Kein Text zum Senden gefunden – Bild-Generierung übersprungen.")
-    else:
-        print("Sende Text als Prompt an Vertex AI Imagen 4 ...")
-        try:
-            generate_image_imagen4(prompt_text, image_count=1, bilder_dir=BILDER_DIR, output_prefix="bild")
-        except Exception as e:
-            print(f"Fehler bei Bild-Generierung: {e}")
-    
-    print("\n" + "=" * 60)
-    print("Workflow vollständig abgeschlossen!")
-    print("=" * 60)
-    return True
+    except Exception as e:
+        logger.error(f"Unexpected error in main workflow: {e}", exc_info=True)
+        print(f"[ERROR] Unerwarteter Fehler im Workflow: {e}")
+        log_function_exit(logger, "main", error=e)
+        return False
 
 # --- Original Workflow (kept for backwards compatibility) ---
 def run_original_workflow():

@@ -233,3 +233,87 @@ scp: Connection closed
 [2025-09-18 14:24:40] main - INFO: Working directory: /home/runner/work/imakemoney/imakemoney
 [2025-09-18 14:24:40] main - INFO: Script path: /home/runner/work/imakemoney/imakemoney/-c
 [2025-09-18 14:24:40] main - WARNING: tkinter not available - GUI fallback disabled
+[2025-09-18 14:29:11] voiceToGoogle - INFO: === VOICETOGOOGLE STARTED ===
+[2025-09-18 14:29:11] voiceToGoogle - INFO: Log file: /home/runner/work/imakemoney/imakemoney/projekt.log
+[2025-09-18 14:29:11] voiceToGoogle - INFO: Working directory: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:29:11] voiceToGoogle - INFO: Script path: /home/runner/work/imakemoney/imakemoney/voiceToGoogle.py
+[2025-09-18 14:29:11] voiceToGoogle - WARNING: Google Cloud Speech-to-Text library not available: No module named 'google'
+[2025-09-18 14:29:11] voiceToGoogle - INFO: Fallback mode will be used when Google API is not available or fails
+[2025-09-18 14:29:11] voiceToGoogle - INFO: === Voice to Google Speech Recognition ===
+[2025-09-18 14:29:11] voiceToGoogle - INFO: Starting speech-to-text processing...
+[2025-09-18 14:29:11] voiceToGoogle - INFO: Found audio file at: aufnahme.wav
+[2025-09-18 14:29:11] voiceToGoogle - INFO: Processing audio file: aufnahme.wav
+[2025-09-18 14:29:11] voiceToGoogle - INFO: === Pre-processing: Audio Format Validation ===
+[2025-09-18 14:29:11] voiceToGoogle - ERROR: Error analyzing audio format: file does not start with RIFF id
+[2025-09-18 14:29:11] voiceToGoogle - WARNING: Could not analyze audio format - proceeding with original file
+[2025-09-18 14:29:11] voiceToGoogle - WARNING: Google Cloud Speech library not available
+[2025-09-18 14:29:11] voiceToGoogle - WARNING: Falling back to local processing (fallback mode active)
+[2025-09-18 14:29:11] voiceToGoogle - INFO: For real speech recognition, ensure:
+[2025-09-18 14:29:11] voiceToGoogle - INFO: 1. Google Cloud Speech library is installed: pip install google-cloud-speech
+[2025-09-18 14:29:11] voiceToGoogle - INFO: 2. Credentials are configured: GOOGLE_APPLICATION_CREDENTIALS environment variable
+[2025-09-18 14:29:11] voiceToGoogle - INFO: 3. Audio is in mono format (automatic conversion attempted)
+[2025-09-18 14:29:11] voiceToGoogle - INFO: Using fallback mode for speech recognition
+[2025-09-18 14:29:11] voiceToGoogle - INFO: Processing audio file: aufnahme.wav
+[2025-09-18 14:29:11] voiceToGoogle - INFO: Audio file size: 2,000 bytes
+[2025-09-18 14:29:11] voiceToGoogle - INFO: Analyzing audio content... (estimated 1.0s)
+[2025-09-18 14:29:11] voiceToGoogle - INFO:   Processing... 1/1
+[2025-09-18 14:29:12] voiceToGoogle - INFO: --- Recognition Result ---
+[2025-09-18 14:29:12] voiceToGoogle - INFO: "Kurze Aufnahme erkannt"
+[2025-09-18 14:29:12] voiceToGoogle - INFO: --- End Result ---
+[2025-09-18 14:29:12] voiceToGoogle - INFO: Transcript saved to: /home/runner/work/imakemoney/imakemoney/transkript.txt
+[2025-09-18 14:29:12] voiceToGoogle - INFO: Transcript content: 'Kurze Aufnahme erkannt'
+[2025-09-18 14:29:12] voiceToGoogle - INFO: Processing method: fallback
+[2025-09-18 14:29:12] voiceToGoogle - INFO: Found audio file at: aufnahme.wav
+[2025-09-18 14:29:12] voiceToGoogle - INFO: Transcript metadata saved to: /home/runner/work/imakemoney/imakemoney/transkript.json
+[2025-09-18 14:29:12] voiceToGoogle - WARNING: [WARNING] Simulation mode - transcript contains placeholder text, not real speech
+[2025-09-18 14:29:12] voiceToGoogle - INFO: [SUCCESS] Speech recognition completed successfully
+[2025-09-18 14:29:12] voiceToGoogle - INFO: Speech recognition workflow completed successfully
+[2025-09-18 14:29:19] start_workflow_service - INFO: === START_WORKFLOW_SERVICE STARTED ===
+[2025-09-18 14:29:19] start_workflow_service - INFO: Log file: /home/runner/work/imakemoney/imakemoney/projekt.log
+[2025-09-18 14:29:19] start_workflow_service - INFO: Working directory: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:29:19] start_workflow_service - INFO: Script path: /home/runner/work/imakemoney/imakemoney/start_workflow_service.py
+[2025-09-18 14:29:19] start_workflow_service - INFO: Starting Workflow Service Starter
+[2025-09-18 14:29:19] start_workflow_service - INFO: Arguments: auto=True
+[2025-09-18 14:29:19] start_workflow_service - INFO: No running service detected
+[2025-09-18 14:29:19] start_workflow_service - INFO: Starting workflow service...
+[2025-09-18 14:29:19] start_workflow_service - INFO: Starting Workflow Manager Service...
+[2025-09-18 14:29:19] start_workflow_service - INFO: Script: /home/runner/work/imakemoney/imakemoney/PythonServer.py
+[2025-09-18 14:29:21] start_workflow_service - ERROR: Service could not be started
+[2025-09-18 14:29:21] start_workflow_service - ERROR: Failed service stderr:   File "/home/runner/work/imakemoney/imakemoney/PythonServer.py", line 1087
+    print("Fehler beim Starten der Aufnahme - Workflow abgebrochen")
+    ^
+IndentationError: expected an indented block after 'if' statement on line 1086
+
+[2025-09-18 14:29:21] start_workflow_service - ERROR: Exiting start_service with error: Service startup failed
+[2025-09-18 14:29:21] start_workflow_service - ERROR: Service could not be started
+[2025-09-18 14:29:21] start_workflow_service - ERROR: Exiting main with error: Service startup failed
+[2025-09-18 14:31:18] start_workflow_service - INFO: === START_WORKFLOW_SERVICE STARTED ===
+[2025-09-18 14:31:18] start_workflow_service - INFO: Log file: /home/runner/work/imakemoney/imakemoney/projekt.log
+[2025-09-18 14:31:18] start_workflow_service - INFO: Working directory: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:31:18] start_workflow_service - INFO: Script path: /home/runner/work/imakemoney/imakemoney/start_workflow_service.py
+[2025-09-18 14:31:18] start_workflow_service - INFO: Starting Workflow Service Starter
+[2025-09-18 14:31:18] start_workflow_service - INFO: Arguments: auto=True
+[2025-09-18 14:31:18] start_workflow_service - INFO: No running service detected
+[2025-09-18 14:31:18] start_workflow_service - INFO: Starting workflow service...
+[2025-09-18 14:31:18] start_workflow_service - INFO: Starting Workflow Manager Service...
+[2025-09-18 14:31:18] start_workflow_service - INFO: Script: /home/runner/work/imakemoney/imakemoney/PythonServer.py
+[2025-09-18 14:31:18] PythonServer - INFO: === PYTHONSERVER STARTED ===
+[2025-09-18 14:31:18] PythonServer - INFO: Log file: /home/runner/work/imakemoney/imakemoney/projekt.log
+[2025-09-18 14:31:18] PythonServer - INFO: Working directory: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:31:18] PythonServer - INFO: Script path: /home/runner/work/imakemoney/imakemoney/PythonServer.py
+[2025-09-18 14:31:18] PythonServer - INFO: Pillow (PIL) library available for image processing
+[2025-09-18 14:31:18] PythonServer - WARNING: pyperclip not available, clipboard operations disabled
+[2025-09-18 14:31:18] PythonServer - INFO: requests library available for API calls
+[2025-09-18 14:31:18] PythonServer - WARNING: Google Cloud libraries not available - using demo mode for image generation
+[2025-09-18 14:31:18] PythonServer - INFO: Environment: Desktop
+[2025-09-18 14:31:18] PythonServer - INFO: Display: Headless
+[2025-09-18 14:31:18] PythonServer - INFO: Script Directory: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:31:18] PythonServer - INFO: Service-Lock erworben (PID: 3692)
+[2025-09-18 14:31:18] PythonServer - INFO: Workflow-Manager gestartet
+[2025-09-18 14:31:18] PythonServer - INFO: Überwache Verzeichnis: /home/runner/work/imakemoney/imakemoney
+[2025-09-18 14:31:18] PythonServer - INFO: Trigger-Datei: /home/runner/work/imakemoney/imakemoney/workflow_trigger.txt
+[2025-09-18 14:31:20] start_workflow_service - INFO: Workflow Manager Service started successfully (PID: 3692)
+[2025-09-18 14:31:20] start_workflow_service - INFO: Monitoring service for 10 seconds...
+[2025-09-18 14:31:21] PythonServer - INFO: Service-Lock freigegeben
+[2025-09-18 14:31:21] PythonServer - INFO: Workflow-Manager gestoppt
+[2025-09-18 14:31:21] PythonServer - INFO: Workflow-Manager gestoppt
