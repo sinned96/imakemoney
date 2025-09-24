@@ -961,10 +961,10 @@ class AufnahmePopup(FloatLayout):
         
         # Title
         self.title = Label(
-            text="Aufnahme",
+            text="Audio-Aufnahme + Bild",
             size_hint_y=None,
             height=dp(40),
-            font_size=dp(28),
+            font_size=dp(26),
             color=(1, 1, 1, 1)
         )
         self.panel.add_widget(self.title)
@@ -1018,6 +1018,19 @@ class AufnahmePopup(FloatLayout):
         )
         self.image_button.bind(on_press=self.open_image_selection)
         self.panel.add_widget(self.image_button)
+        
+        # QR code button for mobile upload
+        self.qr_button = Button(
+            text="📱 QR-Code für Mobile Upload",
+            size_hint_y=None,
+            height=dp(50),
+            background_normal='',
+            background_color=(0.45, 0.35, 0.55, 1),
+            color=(1, 1, 1, 1),
+            font_size=dp(18)
+        )
+        self.qr_button.bind(on_press=self.show_qr_code)
+        self.panel.add_widget(self.qr_button)
         
         # Selected image info
         self.image_info_label = Label(
@@ -1939,182 +1952,6 @@ class AufnahmePopup(FloatLayout):
         self.image_button.background_color = (0.35, 0.35, 0.55, 1)
         debug_logger.info("Selected image cleared")
     
-    def close_popup(self, instance):
-        """Close the popup window"""
-        debug_logger.info("close_popup called")
-        
-        # Stop recording if running
-        if self.is_running:
-            debug_logger.info("Stopping recording before closing popup")
-            self.stop_recording()
-        
-        # Stop status checking
-        if self.workflow_status_checker:
-            Clock.unschedule(self.workflow_status_checker)
-            self.workflow_status_checker = None
-            debug_logger.info("Stopped workflow status checking")
-        
-        # Remove from parent
-        if self.parent:
-            self.parent.remove_widget(self)
-            debug_logger.info("Removed popup from parent widget")
-
-class ImageSelectionPopup(FloatLayout):
-    """Popup for selecting images via local file chooser or QR code upload"""
-    def __init__(self, slideshow=None, **kwargs):
-        super().__init__(**kwargs)
-        self.slideshow = slideshow
-        
-        # Background
-        with self.canvas.before:
-            Color(0, 0, 0, 0.7)
-            self.bg = Rectangle(pos=self.pos, size=self.size)
-        self.bind(pos=self._update_bg, size=self._update_bg)
-        
-        # Main panel
-        panel = BoxLayout(
-            orientation='vertical',
-            size_hint=(None, None),
-            size=(dp(500), dp(400)),
-            pos_hint={'center_x': 0.5, 'center_y': 0.5},
-            padding=dp(20),
-            spacing=dp(15)
-        )
-        
-        with panel.canvas.before:
-            Color(0.16, 0.16, 0.20, 0.95)
-            panel._bg = Rectangle(pos=panel.pos, size=panel.size)
-        panel.bind(pos=lambda *a: setattr(panel._bg, 'pos', panel.pos),
-                  size=lambda *a: setattr(panel._bg, 'size', panel.size))
-        
-        # Title
-        title = Label(
-            text="Bild auswählen",
-            size_hint_y=None,
-            height=dp(50),
-            font_size=dp(28),
-            color=(1, 1, 1, 1)
-        )
-        panel.add_widget(title)
-        
-        # Description
-        desc = Label(
-            text="Wählen Sie eine Option zum Hinzufügen von Bildern:",
-            size_hint_y=None,
-            height=dp(40),
-            font_size=dp(16),
-            color=(0.9, 0.9, 0.9, 1),
-            text_size=(dp(460), None),
-            halign='center'
-        )
-        panel.add_widget(desc)
-        
-        # Button container
-        button_container = BoxLayout(
-            orientation='vertical',
-            size_hint_y=None,
-            height=dp(160),
-            spacing=dp(15)
-        )
-        
-        # Local file chooser button
-        file_button = Button(
-            text="📁 Lokale Datei wählen",
-            size_hint_y=None,
-            height=dp(60),
-            background_normal='',
-            background_color=(0.25, 0.45, 0.65, 1),
-            color=(1, 1, 1, 1),
-            font_size=dp(20)
-        )
-        file_button.bind(on_press=self.open_file_chooser)
-        button_container.add_widget(file_button)
-        
-        # QR code button
-        qr_button = Button(
-            text="📱 QR-Code für Upload-Link",
-            size_hint_y=None,
-            height=dp(60),
-            background_normal='',
-            background_color=(0.45, 0.25, 0.65, 1),
-            color=(1, 1, 1, 1),
-            font_size=dp(20)
-        )
-        qr_button.bind(on_press=self.show_qr_code)
-        button_container.add_widget(qr_button)
-        
-        panel.add_widget(button_container)
-        
-        # Close button
-        close_button = Button(
-            text="Schließen",
-            size_hint_y=None,
-            height=dp(50),
-            background_normal='',
-            background_color=(0.4, 0.4, 0.5, 1),
-            color=(1, 1, 1, 1),
-            font_size=dp(18)
-        )
-        close_button.bind(on_press=self.close_popup)
-        panel.add_widget(close_button)
-        
-        self.add_widget(panel)
-    
-    def _update_bg(self, *args):
-        self.bg.pos = self.pos
-        self.bg.size = self.size
-    
-    def open_file_chooser(self, instance):
-        """Open file chooser for local image selection"""
-        try:
-            from kivy.uix.filechooser import FileChooserListView
-            from kivy.uix.popup import Popup
-            
-            # Create file chooser popup
-            file_chooser = FileChooserListView(
-                filters=['*.jpg', '*.jpeg', '*.png', '*.bmp', '*.gif'],
-                path=str(IMAGE_DIR) if IMAGE_DIR.exists() else str(Path.home())
-            )
-            
-            # Button layout for file chooser
-            buttons = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
-            
-            select_btn = Button(text="Auswählen", size_hint_x=0.5)
-            cancel_btn = Button(text="Abbrechen", size_hint_x=0.5)
-            
-            def select_file(*args):
-                if file_chooser.selection:
-                    selected_file = file_chooser.selection[0]
-                    self.process_selected_file(selected_file)
-                    popup.dismiss()
-                    self.close_popup(None)
-            
-            def cancel_selection(*args):
-                popup.dismiss()
-            
-            select_btn.bind(on_press=select_file)
-            cancel_btn.bind(on_press=cancel_selection)
-            
-            buttons.add_widget(select_btn)
-            buttons.add_widget(cancel_btn)
-            
-            # File chooser layout
-            content = BoxLayout(orientation='vertical')
-            content.add_widget(file_chooser)
-            content.add_widget(buttons)
-            
-            popup = Popup(
-                title="Bilddatei auswählen",
-                content=content,
-                size_hint=(0.8, 0.8)
-            )
-            popup.open()
-            
-        except Exception as e:
-            debug_logger.error(f"Error opening file chooser: {e}")
-            # Show error message
-            self.show_error_message(f"Fehler beim Öffnen des Datei-Browsers: {e}")
-    
     def show_qr_code(self, instance):
         """Show QR code for upload link"""
         try:
@@ -2230,130 +2067,27 @@ class ImageSelectionPopup(FloatLayout):
             
         except Exception as e:
             debug_logger.error(f"Error showing QR code: {e}")
-            self.show_error_message(f"Fehler beim Anzeigen des QR-Codes: {e}")
-    
-    def process_selected_file(self, file_path):
-        """Process the selected image file"""
-        try:
-            import shutil
-            import base64
-            
-            # Ensure IMAGE_DIR exists
-            IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-            
-            # Copy file to IMAGE_DIR with timestamp to avoid conflicts
-            source_path = Path(file_path)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            new_filename = f"{timestamp}_{source_path.name}"
-            dest_path = IMAGE_DIR / new_filename
-            
-            shutil.copy2(source_path, dest_path)
-            debug_logger.info(f"Copied image file from {file_path} to {dest_path}")
-            
-            # Convert image to base64 and add to transkript.json
-            try:
-                # Validate image file before processing
-                try:
-                    from PIL import Image
-                    with Image.open(file_path) as img:
-                        # Verify it's a valid image and get format info
-                        img.verify()
-                        img_format = img.format.lower() if img.format else 'unknown'
-                        debug_logger.info(f"Image validation passed: {img_format} format")
-                except Exception as e:
-                    debug_logger.error(f"Invalid image file: {e}")
-                    self.show_error_message(f"Ungültige Bilddatei: {e}\n\nBitte wählen Sie eine gültige Bilddatei (PNG, JPG, etc.)")
-                    return
-                
-                # Check file size (limit to reasonable size for base64 encoding)
-                file_size = os.path.getsize(file_path)
-                max_size = 10 * 1024 * 1024  # 10MB limit
-                if file_size > max_size:
-                    debug_logger.error(f"Image file too large: {file_size} bytes (limit: {max_size})")
-                    self.show_error_message(f"Bilddatei zu groß: {file_size/1024/1024:.1f}MB\n\nMaximale Größe: {max_size/1024/1024}MB")
-                    return
-                
-                # Read and encode the image file as base64
-                with open(file_path, 'rb') as img_file:
-                    image_data = img_file.read()
-                    image_base64 = base64.b64encode(image_data).decode('utf-8')
-                
-                # Path to transkript.json (standardized location)
-                transkript_json_path = Path("/home/pi/Desktop/v2_Tripple S/transkript.json")
-                
-                # Read existing transkript.json or create new structure
-                transcript_data = {}
-                if transkript_json_path.exists():
-                    try:
-                        with open(transkript_json_path, 'r', encoding='utf-8') as f:
-                            transcript_data = json.load(f)
-                    except (json.JSONDecodeError, Exception) as e:
-                        debug_logger.warning(f"Could not read existing transkript.json: {e}, creating new")
-                        transcript_data = {}
-                
-                # Add image_base64 field to the transcript data
-                transcript_data['image_base64'] = image_base64
-                transcript_data['image_filename'] = source_path.name
-                transcript_data['image_timestamp'] = timestamp
-                
-                # If no existing transcript, add a placeholder prompt
-                if 'transcript' not in transcript_data:
-                    transcript_data['transcript'] = ""
-                    transcript_data['timestamp'] = time.time()
-                    transcript_data['iso_timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    transcript_data['processing_method'] = "image_upload"
-                    transcript_data['workflow_step'] = "image_added"
-                
-                # Ensure the directory exists
-                transkript_json_path.parent.mkdir(parents=True, exist_ok=True)
-                
-                # Write updated transkript.json
-                with open(transkript_json_path, 'w', encoding='utf-8') as f:
-                    json.dump(transcript_data, f, ensure_ascii=False, indent=2)
-                
-                debug_logger.info(f"Added image base64 data to transkript.json: {len(image_base64)} characters")
-                
-            except Exception as e:
-                debug_logger.error(f"Error adding image to transkript.json: {e}")
-                # Continue with normal processing even if JSON update fails
-            
-            # Show success message
-            self.show_success_message(f"Bild erfolgreich hinzugefügt:\n{new_filename}\n\nBild wurde auch als base64-Daten zu transkript.json hinzugefügt.")
-            
-            # Refresh gallery if slideshow is available
-            if self.slideshow and hasattr(self.slideshow, 'force_reschedule'):
-                self.slideshow.force_reschedule()
-                
-        except Exception as e:
-            debug_logger.error(f"Error processing selected file {file_path}: {e}")
-            self.show_error_message(f"Fehler beim Verarbeiten der Datei: {e}")
-    
-    def show_error_message(self, message):
-        """Show error message popup"""
-        from kivy.uix.popup import Popup
-        popup = Popup(
-            title="Fehler",
-            content=Label(text=message, text_size=(dp(300), None), halign='center'),
-            size_hint=(None, None),
-            size=(dp(400), dp(200))
-        )
-        popup.open()
-    
-    def show_success_message(self, message):
-        """Show success message popup"""
-        from kivy.uix.popup import Popup
-        popup = Popup(
-            title="Erfolg",
-            content=Label(text=message, text_size=(dp(300), None), halign='center'),
-            size_hint=(None, None),
-            size=(dp(400), dp(200))
-        )
-        popup.open()
+            self.add_output_text(f"[color=ff4444]Fehler beim Anzeigen des QR-Codes: {e}[/color]")
     
     def close_popup(self, instance):
         """Close the popup window"""
+        debug_logger.info("close_popup called")
+        
+        # Stop recording if running
+        if self.is_running:
+            debug_logger.info("Stopping recording before closing popup")
+            self.stop_recording()
+        
+        # Stop status checking
+        if self.workflow_status_checker:
+            Clock.unschedule(self.workflow_status_checker)
+            self.workflow_status_checker = None
+            debug_logger.info("Stopped workflow status checking")
+        
+        # Remove from parent
         if self.parent:
             self.parent.remove_widget(self)
+            debug_logger.info("Removed popup from parent widget")
 
 class GeneralSettingsPopup(FloatLayout):
     def __init__(self, slideshow, **kw):
@@ -3011,8 +2745,7 @@ class Slideshow(FloatLayout):
         """Update KivyMD toolbar buttons"""
         bar.right_action_items=[
             ["calendar",lambda x:self.open_schedule_editor()],
-            ["image",lambda x:self.open_image_selection_popup()],
-            ["record",lambda x:self.open_aufnahme_popup()],
+            ["record",lambda x:self.open_aufnahme_popup()],  # Unified: use Aufnahme for all recording including images
             ["image-multiple",lambda x:self.open_gallery()],
             ["cog",lambda x:self.open_settings_root()],
             ["logout",lambda x:self.logout()],
@@ -3023,8 +2756,7 @@ class Slideshow(FloatLayout):
         """Update toolbar buttons"""
         bar.set_right_actions([
             ("Zeiten", self.open_schedule_editor),
-            ("Bild auswählen", self.open_image_selection_popup),
-            ("Aufnahme", self.open_aufnahme_popup),
+            ("Aufnahme", self.open_aufnahme_popup),  # Unified: use Aufnahme for all recording including images
             ("Galerie", self.open_gallery),
             ("Einstellungen", self.open_settings_root),
             ("Logout", self.logout),
@@ -3039,7 +2771,7 @@ class Slideshow(FloatLayout):
     def open_schedule_editor(self): self.open_single(ScheduleEditor(self))
     def open_settings_root(self): self.open_single(SettingsRootPopup(self))
     def open_aufnahme_popup(self): self.open_single(AufnahmePopup(slideshow=self))
-    def open_image_selection_popup(self): self.open_single(ImageSelectionPopup(slideshow=self))
+    # Note: Image selection is now integrated into the Aufnahme popup
 
     def force_reschedule(self):
         scheduled=self.mode_manager.scheduled_mode()

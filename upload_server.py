@@ -188,51 +188,46 @@ class UploadHandler(BaseHTTPRequestHandler):
                 self.send_json_response({"success": False, "error": "No content"}, 400)
                 return
             
-            # Read and parse multipart data
+            # Read post data
             post_data = self.rfile.read(content_length)
             
-            # Simple multipart parsing (basic implementation)
-            boundary = None
-            content_type = self.headers.get('Content-Type', '')
-            if 'boundary=' in content_type:
-                boundary = content_type.split('boundary=')[1].split(';')[0].strip()
-                boundary = boundary.encode()
+            # Use cgi module for multipart parsing
+            import cgi
+            import io
             
-            if not boundary:
-                self.send_json_response({"success": False, "error": "No boundary found"}, 400)
-                return
+            # Create environment for cgi parsing
+            environ = {
+                'REQUEST_METHOD': 'POST',
+                'CONTENT_TYPE': self.headers.get('Content-Type', ''),
+                'CONTENT_LENGTH': str(content_length),
+            }
             
-            # Split by boundary
-            parts = post_data.split(b'--' + boundary)
+            # Create file-like object for post data
+            fp = io.BytesIO(post_data)
             
-            for part in parts:
-                if b'Content-Disposition' in part and b'filename=' in part:
-                    # Extract filename and image data
-                    lines = part.split(b'\r\n')
-                    filename = None
-                    content_start = -1
+            # Parse multipart data
+            form = cgi.FieldStorage(
+                fp=fp,
+                environ=environ,
+                headers=self.headers
+            )
+            
+            # Look for image field
+            if 'image' in form:
+                file_item = form['image']
+                if file_item.filename:
+                    # Get image data and filename
+                    filename = file_item.filename
+                    image_data = file_item.file.read()
                     
-                    for i, line in enumerate(lines):
-                        if b'Content-Disposition' in line and b'filename=' in line:
-                            # Extract filename
-                            filename_part = line.decode().split('filename="')[1].split('"')[0]
-                            filename = filename_part
-                        elif line == b'' and content_start == -1:
-                            content_start = i + 1
-                            break
-                    
-                    if filename and content_start > 0:
-                        # Extract image data
-                        image_data = b'\r\n'.join(lines[content_start:])
-                        # Remove trailing boundary marker
-                        if image_data.endswith(b'\r\n'):
-                            image_data = image_data[:-2]
-                        
-                        # Save uploaded file
-                        success = self.save_uploaded_image(filename, image_data)
-                        if success:
-                            self.send_json_response({"success": True, "filename": filename})
-                            return
+                    # Save uploaded file
+                    success = self.save_uploaded_image(filename, image_data)
+                    if success:
+                        self.send_json_response({"success": True, "filename": filename})
+                        return
+                    else:
+                        self.send_json_response({"success": False, "error": "Failed to save image"}, 500)
+                        return
             
             self.send_json_response({"success": False, "error": "No valid image found"}, 400)
             
