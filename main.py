@@ -1716,6 +1716,275 @@ class AufnahmePopup(FloatLayout):
         if self.parent:
             self.parent.remove_widget(self)
             debug_logger.info("Removed popup from parent widget")
+
+class ImageSelectionPopup(FloatLayout):
+    """Popup for selecting images via local file chooser or QR code upload"""
+    def __init__(self, slideshow=None, **kwargs):
+        super().__init__(**kwargs)
+        self.slideshow = slideshow
+        
+        # Background
+        with self.canvas.before:
+            Color(0, 0, 0, 0.7)
+            self.bg = Rectangle(pos=self.pos, size=self.size)
+        self.bind(pos=self._update_bg, size=self._update_bg)
+        
+        # Main panel
+        panel = BoxLayout(
+            orientation='vertical',
+            size_hint=(None, None),
+            size=(dp(500), dp(400)),
+            pos_hint={'center_x': 0.5, 'center_y': 0.5},
+            padding=dp(20),
+            spacing=dp(15)
+        )
+        
+        with panel.canvas.before:
+            Color(0.16, 0.16, 0.20, 0.95)
+            panel._bg = Rectangle(pos=panel.pos, size=panel.size)
+        panel.bind(pos=lambda *a: setattr(panel._bg, 'pos', panel.pos),
+                  size=lambda *a: setattr(panel._bg, 'size', panel.size))
+        
+        # Title
+        title = Label(
+            text="Bild auswählen",
+            size_hint_y=None,
+            height=dp(50),
+            font_size=dp(28),
+            color=(1, 1, 1, 1)
+        )
+        panel.add_widget(title)
+        
+        # Description
+        desc = Label(
+            text="Wählen Sie eine Option zum Hinzufügen von Bildern:",
+            size_hint_y=None,
+            height=dp(40),
+            font_size=dp(16),
+            color=(0.9, 0.9, 0.9, 1),
+            text_size=(dp(460), None),
+            halign='center'
+        )
+        panel.add_widget(desc)
+        
+        # Button container
+        button_container = BoxLayout(
+            orientation='vertical',
+            size_hint_y=None,
+            height=dp(160),
+            spacing=dp(15)
+        )
+        
+        # Local file chooser button
+        file_button = Button(
+            text="📁 Lokale Datei wählen",
+            size_hint_y=None,
+            height=dp(60),
+            background_normal='',
+            background_color=(0.25, 0.45, 0.65, 1),
+            color=(1, 1, 1, 1),
+            font_size=dp(20)
+        )
+        file_button.bind(on_press=self.open_file_chooser)
+        button_container.add_widget(file_button)
+        
+        # QR code button
+        qr_button = Button(
+            text="📱 QR-Code für Upload-Link",
+            size_hint_y=None,
+            height=dp(60),
+            background_normal='',
+            background_color=(0.45, 0.25, 0.65, 1),
+            color=(1, 1, 1, 1),
+            font_size=dp(20)
+        )
+        qr_button.bind(on_press=self.show_qr_code)
+        button_container.add_widget(qr_button)
+        
+        panel.add_widget(button_container)
+        
+        # Close button
+        close_button = Button(
+            text="Schließen",
+            size_hint_y=None,
+            height=dp(50),
+            background_normal='',
+            background_color=(0.4, 0.4, 0.5, 1),
+            color=(1, 1, 1, 1),
+            font_size=dp(18)
+        )
+        close_button.bind(on_press=self.close_popup)
+        panel.add_widget(close_button)
+        
+        self.add_widget(panel)
+    
+    def _update_bg(self, *args):
+        self.bg.pos = self.pos
+        self.bg.size = self.size
+    
+    def open_file_chooser(self, instance):
+        """Open file chooser for local image selection"""
+        try:
+            from kivy.uix.filechooser import FileChooserListView
+            from kivy.uix.popup import Popup
+            
+            # Create file chooser popup
+            file_chooser = FileChooserListView(
+                filters=['*.jpg', '*.jpeg', '*.png', '*.bmp', '*.gif'],
+                path=str(IMAGE_DIR) if IMAGE_DIR.exists() else str(Path.home())
+            )
+            
+            # Button layout for file chooser
+            buttons = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
+            
+            select_btn = Button(text="Auswählen", size_hint_x=0.5)
+            cancel_btn = Button(text="Abbrechen", size_hint_x=0.5)
+            
+            def select_file(*args):
+                if file_chooser.selection:
+                    selected_file = file_chooser.selection[0]
+                    self.process_selected_file(selected_file)
+                    popup.dismiss()
+                    self.close_popup(None)
+            
+            def cancel_selection(*args):
+                popup.dismiss()
+            
+            select_btn.bind(on_press=select_file)
+            cancel_btn.bind(on_press=cancel_selection)
+            
+            buttons.add_widget(select_btn)
+            buttons.add_widget(cancel_btn)
+            
+            # File chooser layout
+            content = BoxLayout(orientation='vertical')
+            content.add_widget(file_chooser)
+            content.add_widget(buttons)
+            
+            popup = Popup(
+                title="Bilddatei auswählen",
+                content=content,
+                size_hint=(0.8, 0.8)
+            )
+            popup.open()
+            
+        except Exception as e:
+            debug_logger.error(f"Error opening file chooser: {e}")
+            # Show error message
+            self.show_error_message(f"Fehler beim Öffnen des Datei-Browsers: {e}")
+    
+    def show_qr_code(self, instance):
+        """Show QR code for upload link"""
+        try:
+            # Generate upload URL (simple example - in real app this would be a proper upload endpoint)
+            upload_url = "http://localhost:8000/upload"  # Example URL
+            
+            # Create QR code display popup
+            from kivy.uix.popup import Popup
+            
+            qr_content = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(15))
+            
+            # QR code placeholder (in real implementation, generate actual QR code)
+            qr_label = Label(
+                text=f"📱 QR-Code\n\nUpload-Link:\n{upload_url}\n\n(QR-Code würde hier angezeigt)",
+                font_size=dp(16),
+                color=(1, 1, 1, 1),
+                text_size=(dp(300), None),
+                halign='center'
+            )
+            qr_content.add_widget(qr_label)
+            
+            # Instructions
+            instructions = Label(
+                text="Scannen Sie den QR-Code mit Ihrem Smartphone,\num Bilder hochzuladen.",
+                font_size=dp(14),
+                color=(0.9, 0.9, 0.9, 1),
+                text_size=(dp(300), None),
+                halign='center'
+            )
+            qr_content.add_widget(instructions)
+            
+            # Close button for QR popup
+            close_btn = Button(
+                text="Schließen",
+                size_hint_y=None,
+                height=dp(50)
+            )
+            
+            def close_qr(*args):
+                qr_popup.dismiss()
+            
+            close_btn.bind(on_press=close_qr)
+            qr_content.add_widget(close_btn)
+            
+            qr_popup = Popup(
+                title="QR-Code für Bild-Upload",
+                content=qr_content,
+                size_hint=(None, None),
+                size=(dp(400), dp(500))
+            )
+            qr_popup.open()
+            
+        except Exception as e:
+            debug_logger.error(f"Error showing QR code: {e}")
+            self.show_error_message(f"Fehler beim Anzeigen des QR-Codes: {e}")
+    
+    def process_selected_file(self, file_path):
+        """Process the selected image file"""
+        try:
+            import shutil
+            
+            # Ensure IMAGE_DIR exists
+            IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+            
+            # Copy file to IMAGE_DIR with timestamp to avoid conflicts
+            source_path = Path(file_path)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            new_filename = f"{timestamp}_{source_path.name}"
+            dest_path = IMAGE_DIR / new_filename
+            
+            shutil.copy2(source_path, dest_path)
+            
+            debug_logger.info(f"Copied image file from {file_path} to {dest_path}")
+            
+            # Show success message
+            self.show_success_message(f"Bild erfolgreich hinzugefügt:\n{new_filename}")
+            
+            # Refresh gallery if slideshow is available
+            if self.slideshow and hasattr(self.slideshow, 'force_reschedule'):
+                self.slideshow.force_reschedule()
+                
+        except Exception as e:
+            debug_logger.error(f"Error processing selected file {file_path}: {e}")
+            self.show_error_message(f"Fehler beim Verarbeiten der Datei: {e}")
+    
+    def show_error_message(self, message):
+        """Show error message popup"""
+        from kivy.uix.popup import Popup
+        popup = Popup(
+            title="Fehler",
+            content=Label(text=message, text_size=(dp(300), None), halign='center'),
+            size_hint=(None, None),
+            size=(dp(400), dp(200))
+        )
+        popup.open()
+    
+    def show_success_message(self, message):
+        """Show success message popup"""
+        from kivy.uix.popup import Popup
+        popup = Popup(
+            title="Erfolg",
+            content=Label(text=message, text_size=(dp(300), None), halign='center'),
+            size_hint=(None, None),
+            size=(dp(400), dp(200))
+        )
+        popup.open()
+    
+    def close_popup(self, instance):
+        """Close the popup window"""
+        if self.parent:
+            self.parent.remove_widget(self)
+
 class GeneralSettingsPopup(FloatLayout):
     def __init__(self, slideshow, **kw):
         super().__init__(**kw)
@@ -2372,6 +2641,7 @@ class Slideshow(FloatLayout):
         """Update KivyMD toolbar buttons"""
         bar.right_action_items=[
             ["calendar",lambda x:self.open_schedule_editor()],
+            ["image",lambda x:self.open_image_selection_popup()],
             ["record",lambda x:self.open_aufnahme_popup()],
             ["image-multiple",lambda x:self.open_gallery()],
             ["cog",lambda x:self.open_settings_root()],
@@ -2383,6 +2653,7 @@ class Slideshow(FloatLayout):
         """Update toolbar buttons"""
         bar.set_right_actions([
             ("Zeiten", self.open_schedule_editor),
+            ("Bild auswählen", self.open_image_selection_popup),
             ("Aufnahme", self.open_aufnahme_popup),
             ("Galerie", self.open_gallery),
             ("Einstellungen", self.open_settings_root),
@@ -2398,6 +2669,7 @@ class Slideshow(FloatLayout):
     def open_schedule_editor(self): self.open_single(ScheduleEditor(self))
     def open_settings_root(self): self.open_single(SettingsRootPopup(self))
     def open_aufnahme_popup(self): self.open_single(AufnahmePopup(slideshow=self))
+    def open_image_selection_popup(self): self.open_single(ImageSelectionPopup(slideshow=self))
 
     def force_reschedule(self):
         scheduled=self.mode_manager.scheduled_mode()
