@@ -1,3 +1,31 @@
+#!/usr/bin/env python3
+"""
+vertex_ai_image_workflow.py - Enhanced Vertex AI Image Generation with Multimodal Support
+
+This script processes transcripts and generates images using Vertex AI's Imagen API.
+Now supports multimodal requests (text + image) when image_base64 is present in transkript.json.
+
+Multimodal Support:
+- Checks transkript.json for image_base64 field
+- If present: builds Gemini multimodal request with text + image
+- If absent: uses traditional text-only request
+- Automatic fallback to text-only if image is invalid
+
+Requirements:
+- Vertex AI Generative AI API (Gemini) must be activated
+- Valid Google Cloud credentials with Vertex AI permissions
+- PIL library for image validation and processing
+
+File Format Support:
+- transkript.json: JSON format with optional image_base64 field (preferred)  
+- transkript.txt: Plain text format (fallback)
+
+Error Handling:
+- Invalid image data: Falls back to text-only request
+- Missing files: Comprehensive error messages and logging
+- Network errors: Proper timeout and retry logic
+"""
+
 import requests
 import os
 import base64
@@ -150,35 +178,53 @@ def main():
             # Multimodal request (text + image) using Gemini format
             logger.info("Building multimodal request with text and image")
             
-            # Validate base64 image data
+            # Validate and analyze base64 image data
             try:
-                # Quick validation by attempting to decode
-                base64.b64decode(image_base64[:100])  # Just test first 100 chars
-                logger.info("Image base64 data validation passed")
+                # Decode the full image to validate it
+                image_bytes = base64.b64decode(image_base64)
+                logger.info(f"Image base64 data validation passed: {len(image_bytes)} bytes decoded")
+                
+                # Try to detect MIME type by creating a temporary image
+                import io
+                try:
+                    with Image.open(io.BytesIO(image_bytes)) as img:
+                        img_format = img.format.lower() if img.format else 'png'
+                        mime_type = f"image/{img_format}"
+                        logger.info(f"Detected image format: {img_format}")
+                except Exception as img_error:
+                    logger.warning(f"Could not detect image format: {img_error}, defaulting to PNG")
+                    mime_type = "image/png"
+                    
             except Exception as e:
                 logger.error(f"Invalid image base64 data: {e}")
-                print(f"Ungültige Bilddaten: {e}")
-                return
-            
-            request_payload = {
-                "instances": [{
-                    "prompt": enhanced_prompt,
-                    "image": {
-                        "inline_data": {
-                            "mime_type": "image/png",  # Assume PNG, could be enhanced to detect
-                            "data": image_base64
+                print(f"Fehler: Ungültige Bilddaten - {e}")
+                print("Fallback: Fahre nur mit Text fort...")
+                
+                # Fallback to text-only request
+                logger.info("Falling back to text-only request due to invalid image")
+                request_payload = {"prompt": enhanced_prompt}
+                image_base64 = None  # Clear the image flag
+                
+            if image_base64:  # Only build multimodal if image is still valid
+                request_payload = {
+                    "instances": [{
+                        "prompt": enhanced_prompt,
+                        "image": {
+                            "inline_data": {
+                                "mime_type": mime_type,
+                                "data": image_base64
+                            }
                         }
+                    }],
+                    "parameters": {
+                        "sampleCount": 1,
+                        "aspectRatio": "16:9",
+                        "resolution": "2k"
                     }
-                }],
-                "parameters": {
-                    "sampleCount": 1,
-                    "aspectRatio": "16:9",
-                    "resolution": "2k"
                 }
-            }
-            logger.info("Multimodal request payload built (Gemini format)")
+                logger.info(f"Multimodal request payload built (Gemini format, {mime_type})")
             
-        else:
+        if not image_base64:  # This covers both no image initially and fallback cases
             # Text-only request (existing behavior)
             logger.info("Building text-only request")
             request_payload = {"prompt": enhanced_prompt}

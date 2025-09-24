@@ -1949,6 +1949,27 @@ class ImageSelectionPopup(FloatLayout):
             
             # Convert image to base64 and add to transkript.json
             try:
+                # Validate image file before processing
+                try:
+                    from PIL import Image
+                    with Image.open(file_path) as img:
+                        # Verify it's a valid image and get format info
+                        img.verify()
+                        img_format = img.format.lower() if img.format else 'unknown'
+                        debug_logger.info(f"Image validation passed: {img_format} format")
+                except Exception as e:
+                    debug_logger.error(f"Invalid image file: {e}")
+                    self.show_error_message(f"Ungültige Bilddatei: {e}\n\nBitte wählen Sie eine gültige Bilddatei (PNG, JPG, etc.)")
+                    return
+                
+                # Check file size (limit to reasonable size for base64 encoding)
+                file_size = os.path.getsize(file_path)
+                max_size = 10 * 1024 * 1024  # 10MB limit
+                if file_size > max_size:
+                    debug_logger.error(f"Image file too large: {file_size} bytes (limit: {max_size})")
+                    self.show_error_message(f"Bilddatei zu groß: {file_size/1024/1024:.1f}MB\n\nMaximale Größe: {max_size/1024/1024}MB")
+                    return
+                
                 # Read and encode the image file as base64
                 with open(file_path, 'rb') as img_file:
                     image_data = img_file.read()
