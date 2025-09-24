@@ -1933,6 +1933,7 @@ class ImageSelectionPopup(FloatLayout):
         """Process the selected image file"""
         try:
             import shutil
+            import base64
             
             # Ensure IMAGE_DIR exists
             IMAGE_DIR.mkdir(parents=True, exist_ok=True)
@@ -1944,11 +1945,77 @@ class ImageSelectionPopup(FloatLayout):
             dest_path = IMAGE_DIR / new_filename
             
             shutil.copy2(source_path, dest_path)
-            
             debug_logger.info(f"Copied image file from {file_path} to {dest_path}")
             
+            # Convert image to base64 and add to transkript.json
+            try:
+                # Validate image file before processing
+                try:
+                    from PIL import Image
+                    with Image.open(file_path) as img:
+                        # Verify it's a valid image and get format info
+                        img.verify()
+                        img_format = img.format.lower() if img.format else 'unknown'
+                        debug_logger.info(f"Image validation passed: {img_format} format")
+                except Exception as e:
+                    debug_logger.error(f"Invalid image file: {e}")
+                    self.show_error_message(f"Ungültige Bilddatei: {e}\n\nBitte wählen Sie eine gültige Bilddatei (PNG, JPG, etc.)")
+                    return
+                
+                # Check file size (limit to reasonable size for base64 encoding)
+                file_size = os.path.getsize(file_path)
+                max_size = 10 * 1024 * 1024  # 10MB limit
+                if file_size > max_size:
+                    debug_logger.error(f"Image file too large: {file_size} bytes (limit: {max_size})")
+                    self.show_error_message(f"Bilddatei zu groß: {file_size/1024/1024:.1f}MB\n\nMaximale Größe: {max_size/1024/1024}MB")
+                    return
+                
+                # Read and encode the image file as base64
+                with open(file_path, 'rb') as img_file:
+                    image_data = img_file.read()
+                    image_base64 = base64.b64encode(image_data).decode('utf-8')
+                
+                # Path to transkript.json (standardized location)
+                transkript_json_path = Path("/home/pi/Desktop/v2_Tripple S/transkript.json")
+                
+                # Read existing transkript.json or create new structure
+                transcript_data = {}
+                if transkript_json_path.exists():
+                    try:
+                        with open(transkript_json_path, 'r', encoding='utf-8') as f:
+                            transcript_data = json.load(f)
+                    except (json.JSONDecodeError, Exception) as e:
+                        debug_logger.warning(f"Could not read existing transkript.json: {e}, creating new")
+                        transcript_data = {}
+                
+                # Add image_base64 field to the transcript data
+                transcript_data['image_base64'] = image_base64
+                transcript_data['image_filename'] = source_path.name
+                transcript_data['image_timestamp'] = timestamp
+                
+                # If no existing transcript, add a placeholder prompt
+                if 'transcript' not in transcript_data:
+                    transcript_data['transcript'] = ""
+                    transcript_data['timestamp'] = time.time()
+                    transcript_data['iso_timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    transcript_data['processing_method'] = "image_upload"
+                    transcript_data['workflow_step'] = "image_added"
+                
+                # Ensure the directory exists
+                transkript_json_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                # Write updated transkript.json
+                with open(transkript_json_path, 'w', encoding='utf-8') as f:
+                    json.dump(transcript_data, f, ensure_ascii=False, indent=2)
+                
+                debug_logger.info(f"Added image base64 data to transkript.json: {len(image_base64)} characters")
+                
+            except Exception as e:
+                debug_logger.error(f"Error adding image to transkript.json: {e}")
+                # Continue with normal processing even if JSON update fails
+            
             # Show success message
-            self.show_success_message(f"Bild erfolgreich hinzugefügt:\n{new_filename}")
+            self.show_success_message(f"Bild erfolgreich hinzugefügt:\n{new_filename}\n\nBild wurde auch als base64-Daten zu transkript.json hinzugefügt.")
             
             # Refresh gallery if slideshow is available
             if self.slideshow and hasattr(self.slideshow, 'force_reschedule'):

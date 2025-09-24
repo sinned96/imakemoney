@@ -1,6 +1,35 @@
+#!/usr/bin/env python3
+"""
+vertex_ai_image_workflow.py - Enhanced Vertex AI Image Generation with Multimodal Support
+
+This script processes transcripts and generates images using Vertex AI's Imagen API.
+Now supports multimodal requests (text + image) when image_base64 is present in transkript.json.
+
+Multimodal Support:
+- Checks transkript.json for image_base64 field
+- If present: builds Gemini multimodal request with text + image
+- If absent: uses traditional text-only request
+- Automatic fallback to text-only if image is invalid
+
+Requirements:
+- Vertex AI Generative AI API (Gemini) must be activated
+- Valid Google Cloud credentials with Vertex AI permissions
+- PIL library for image validation and processing
+
+File Format Support:
+- transkript.json: JSON format with optional image_base64 field (preferred)  
+- transkript.txt: Plain text format (fallback)
+
+Error Handling:
+- Invalid image data: Falls back to text-only request
+- Missing files: Comprehensive error messages and logging
+- Network errors: Proper timeout and retry logic
+"""
+
 import requests
 import os
 import base64
+import json
 import logging
 from PIL import Image, ImageOps
 
@@ -33,6 +62,7 @@ def setup_projekt_logging():
 logger = setup_projekt_logging()
 
 TRANSCRIPT_PATH = "/home/pi/Desktop/v2_Tripple S/transkript.txt"
+TRANSCRIPT_JSON_PATH = "/home/pi/Desktop/v2_Tripple S/transkript.json"
 BILDER_DIR = "/home/pi/Desktop/v2_Tripple S/BilderVertex"
 ENDPOINT = "https://vertex.googleapis.com/v1/your-endpoint"
 TOKEN = "YOUR_ACCESS_TOKEN"
@@ -78,18 +108,58 @@ def scale_image_to_1920x1080(image_path, preserve_aspect_ratio=True):
 def main():
     logger.info("=== Vertex AI Image Workflow Started ===")
     
-    if not os.path.exists(TRANSCRIPT_PATH):
-        logger.error(f"Transcript not found: {TRANSCRIPT_PATH}")
-        print(f"Transkript nicht gefunden: {TRANSCRIPT_PATH}")
-        return
-
-    try:
-        with open(TRANSCRIPT_PATH, "r", encoding='utf-8') as f:
-            prompt = f.read().strip()
-        logger.info(f"Transcript loaded: {len(prompt)} characters")
-    except Exception as e:
-        logger.error(f"Error reading transcript file: {e}")
-        print(f"Fehler beim Lesen des Transkripts: {e}")
+    # Check for transkript.json first (preferred for multimodal support)
+    prompt = ""
+    image_base64 = None
+    
+    if os.path.exists(TRANSCRIPT_JSON_PATH):
+        logger.info(f"Found transkript.json: {TRANSCRIPT_JSON_PATH}")
+        try:
+            with open(TRANSCRIPT_JSON_PATH, "r", encoding='utf-8') as f:
+                transcript_data = json.load(f)
+            
+            prompt = transcript_data.get('transcript', '').strip()
+            image_base64 = transcript_data.get('image_base64')
+            
+            logger.info(f"JSON transcript loaded: {len(prompt)} characters")
+            if image_base64:
+                logger.info(f"Image data found in JSON: {len(image_base64)} base64 characters")
+            else:
+                logger.info("No image data found in JSON transcript")
+                
+        except Exception as e:
+            logger.error(f"Error reading transcript JSON file: {e}")
+            print(f"Fehler beim Lesen des JSON-Transkripts: {e}")
+            
+            # Fallback to text file
+            logger.info("Falling back to transkript.txt")
+            if os.path.exists(TRANSCRIPT_PATH):
+                try:
+                    with open(TRANSCRIPT_PATH, "r", encoding='utf-8') as f:
+                        prompt = f.read().strip()
+                    logger.info(f"Text transcript loaded as fallback: {len(prompt)} characters")
+                except Exception as e2:
+                    logger.error(f"Error reading text transcript file: {e2}")
+                    print(f"Fehler beim Lesen des Text-Transkripts: {e2}")
+                    return
+            else:
+                logger.error("No transcript files found")
+                print("Keine Transkript-Dateien gefunden")
+                return
+    
+    elif os.path.exists(TRANSCRIPT_PATH):
+        logger.info(f"Using text transcript: {TRANSCRIPT_PATH}")
+        try:
+            with open(TRANSCRIPT_PATH, "r", encoding='utf-8') as f:
+                prompt = f.read().strip()
+            logger.info(f"Text transcript loaded: {len(prompt)} characters")
+        except Exception as e:
+            logger.error(f"Error reading transcript file: {e}")
+            print(f"Fehler beim Lesen des Transkripts: {e}")
+            return
+    else:
+        logger.error("No transcript files found")
+        print("Keine Transkript-Dateien gefunden")
         return
 
     if not prompt:
@@ -103,9 +173,65 @@ def main():
     logger.info(f"Sending prompt to Vertex AI: {enhanced_prompt[:100]}...")
 
     try:
+        # Build request payload based on whether we have image data
+        if image_base64:
+            # Multimodal request (text + image) using Gemini format
+            logger.info("Building multimodal request with text and image")
+            
+            # Validate and analyze base64 image data
+            try:
+                # Decode the full image to validate it
+                image_bytes = base64.b64decode(image_base64)
+                logger.info(f"Image base64 data validation passed: {len(image_bytes)} bytes decoded")
+                
+                # Try to detect MIME type by creating a temporary image
+                import io
+                try:
+                    with Image.open(io.BytesIO(image_bytes)) as img:
+                        img_format = img.format.lower() if img.format else 'png'
+                        mime_type = f"image/{img_format}"
+                        logger.info(f"Detected image format: {img_format}")
+                except Exception as img_error:
+                    logger.warning(f"Could not detect image format: {img_error}, defaulting to PNG")
+                    mime_type = "image/png"
+                    
+            except Exception as e:
+                logger.error(f"Invalid image base64 data: {e}")
+                print(f"Fehler: Ungültige Bilddaten - {e}")
+                print("Fallback: Fahre nur mit Text fort...")
+                
+                # Fallback to text-only request
+                logger.info("Falling back to text-only request due to invalid image")
+                request_payload = {"prompt": enhanced_prompt}
+                image_base64 = None  # Clear the image flag
+                
+            if image_base64:  # Only build multimodal if image is still valid
+                request_payload = {
+                    "instances": [{
+                        "prompt": enhanced_prompt,
+                        "image": {
+                            "inline_data": {
+                                "mime_type": mime_type,
+                                "data": image_base64
+                            }
+                        }
+                    }],
+                    "parameters": {
+                        "sampleCount": 1,
+                        "aspectRatio": "16:9",
+                        "resolution": "2k"
+                    }
+                }
+                logger.info(f"Multimodal request payload built (Gemini format, {mime_type})")
+            
+        if not image_base64:  # This covers both no image initially and fallback cases
+            # Text-only request (existing behavior)
+            logger.info("Building text-only request")
+            request_payload = {"prompt": enhanced_prompt}
+        
         response = requests.post(
             ENDPOINT,
-            json={"prompt": enhanced_prompt},
+            json=request_payload,
             headers={
                 "Authorization": f"Bearer {TOKEN}",
                 "Content-Type": "application/json"

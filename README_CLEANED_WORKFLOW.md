@@ -226,12 +226,28 @@ tail -f speech_recognition.log
 
 ## API Integration Details
 
-### Vertex AI Request Format
+### Vertex AI Request Formats
+
+#### Text-Only Request (Traditional)
 ```json
 {
-  "instances": [
-    {"prompt": "transcript text from transkript.txt"}
-  ],
+  "prompt": "transcript text from transkript.txt"
+}
+```
+
+#### Multimodal Request (Text + Image)
+When `image_base64` field is present in `transkript.json`, the system automatically builds a Gemini multimodal request:
+```json
+{
+  "instances": [{
+    "prompt": "transcript text from transkript.json",
+    "image": {
+      "inline_data": {
+        "mime_type": "image/png",
+        "data": "base64-encoded-image-data"
+      }
+    }
+  }],
   "parameters": {
     "sampleCount": 1,
     "aspectRatio": "16:9", 
@@ -240,11 +256,33 @@ tail -f speech_recognition.log
 }
 ```
 
+#### Transkript.json Format with Image Support
+```json
+{
+  "transcript": "Your transcribed text or prompt here",
+  "timestamp": 1234567890.123,
+  "iso_timestamp": "2023-12-01 14:30:45",
+  "processing_method": "google_speech_api",
+  "audio_source": "/home/pi/Desktop/v2_Tripple S/aufnahme.wav",
+  "workflow_step": "transcription_complete",
+  "image_base64": "iVBORw0KGgoAAAANSUhEUgA...",
+  "image_filename": "selected_image.png",
+  "image_timestamp": "20231201_143045"
+}
+```
+
+**Requirements for Multimodal Support:**
+- Vertex AI Generative AI API (Gemini) must be activated in Google Cloud
+- Valid Google Cloud credentials with Vertex AI permissions
+- Image files must be valid and under 10MB
+- Supported formats: PNG, JPG, JPEG, GIF, BMP
+
 ### Response Handling
 ```python
 # Success: Save base64 image data to BilderVertex/
 # Error: Log specific error code and fall back to demo images
 # Timeout: Retry with exponential backoff
+# Invalid Image: Fall back to text-only request
 ```
 
 ## Development
