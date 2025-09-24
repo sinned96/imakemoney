@@ -11,6 +11,9 @@ import threading
 import signal
 import logging
 import fcntl
+import socket
+import tempfile
+import base64
 try:
     from tkinter import Tk, Button, Label
     TKINTER_AVAILABLE = True
@@ -46,6 +49,73 @@ def setup_debug_logging():
 
 # Initialize debug logger
 debug_logger = setup_debug_logging()
+
+# Network and QR code utilities
+def get_network_ip():
+    """
+    Get the local network IP address that can be accessed from other devices
+    
+    Returns:
+        str: Network IP address or fallback to localhost
+    """
+    try:
+        # Try to connect to a remote address to determine the local IP
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            # Connect to Google DNS to determine local IP
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+    except Exception:
+        try:
+            # Fallback: Get hostname IP
+            hostname = socket.gethostname()
+            return socket.gethostbyname(hostname)
+        except Exception:
+            # Final fallback to localhost
+            return "127.0.0.1"
+
+def generate_qr_code_image(data, size=(300, 300)):
+    """
+    Generate QR code image data
+    
+    Args:
+        data (str): Data to encode in QR code
+        size (tuple): Size of the QR code image
+        
+    Returns:
+        bytes: PNG image data of QR code, or None if generation failed
+    """
+    try:
+        import qrcode
+        from PIL import Image as PILImage
+        
+        # Create QR code
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(data)
+        qr.make(fit=True)
+        
+        # Create image
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        # Resize to requested size
+        img = img.resize(size, PILImage.Resampling.LANCZOS)
+        
+        # Convert to bytes
+        import io
+        img_bytes = io.BytesIO()
+        img.save(img_bytes, format='PNG')
+        return img_bytes.getvalue()
+        
+    except ImportError as e:
+        debug_logger.error(f"QR code libraries not available: {e}")
+        return None
+    except Exception as e:
+        debug_logger.error(f"Error generating QR code: {e}")
+        return None
 
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
@@ -891,10 +961,10 @@ class AufnahmePopup(FloatLayout):
         
         # Title
         self.title = Label(
-            text="Aufnahme",
+            text="Audio-Aufnahme + Bild",
             size_hint_y=None,
             height=dp(40),
-            font_size=dp(28),
+            font_size=dp(26),
             color=(1, 1, 1, 1)
         )
         self.panel.add_widget(self.title)
@@ -935,6 +1005,48 @@ class AufnahmePopup(FloatLayout):
         )
         self.button.bind(on_press=self.toggle_recording)
         self.panel.add_widget(self.button)
+        
+        # Image selection button (optional - for enhanced workflow)
+        self.image_button = Button(
+            text="📷 Bild hinzufügen (optional)",
+            size_hint_y=None,
+            height=dp(50),
+            background_normal='',
+            background_color=(0.35, 0.35, 0.55, 1),
+            color=(1, 1, 1, 1),
+            font_size=dp(18)
+        )
+        self.image_button.bind(on_press=self.open_image_selection)
+        self.panel.add_widget(self.image_button)
+        
+        # QR code button for mobile upload
+        self.qr_button = Button(
+            text="📱 QR-Code für Mobile Upload",
+            size_hint_y=None,
+            height=dp(50),
+            background_normal='',
+            background_color=(0.45, 0.35, 0.55, 1),
+            color=(1, 1, 1, 1),
+            font_size=dp(18)
+        )
+        self.qr_button.bind(on_press=self.show_qr_code)
+        self.panel.add_widget(self.qr_button)
+        
+        # Selected image info
+        self.image_info_label = Label(
+            text="",
+            size_hint_y=None,
+            height=dp(0),  # Initially hidden
+            font_size=dp(14),
+            color=(0.7, 0.9, 0.7, 1),
+            text_size=(None, None),
+            halign='center'
+        )
+        self.panel.add_widget(self.image_info_label)
+        
+        # Track selected image
+        self.selected_image_path = None
+        self.selected_image_base64 = None
         
         # Output display area - wrapped in a container for easy hide/show
         self.output_section = BoxLayout(orientation='vertical', size_hint=(1, 0.5))
@@ -1555,6 +1667,10 @@ class AufnahmePopup(FloatLayout):
                 # Mark as triggered ONLY after successful creation
                 self.workflow_triggered = True
                 
+                # If image is selected, prepare transkript.json with image data
+                if self.selected_image_base64 and self.selected_image_path:
+                    self._create_image_transkript()
+                
                 trigger_msg = "Workflow-Trigger erstellt"
                 debug_logger.info(trigger_msg)
                 print(trigger_msg)
@@ -1577,6 +1693,38 @@ class AufnahmePopup(FloatLayout):
                 self.add_output_text(f"[color=ff4444]{error_msg}[/color]")
                 # Reset trigger state on error
                 self.workflow_triggered = False
+    
+    def _create_image_transkript(self):
+        """Create or update transkript.json with selected image data"""
+        try:
+            transkript_path = Path("/home/pi/Desktop/v2_Tripple S/transkript.json")
+            
+            # Prepare transcript data with image
+            timestamp = datetime.now()
+            transcript_data = {
+                "transcript": "Aufnahme mit Bild wird vorbereitet...",
+                "timestamp": timestamp.timestamp(),
+                "iso_timestamp": timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                "processing_method": "recording_with_image",
+                "workflow_step": "image_prepared",
+                "image_base64": self.selected_image_base64,
+                "image_filename": os.path.basename(self.selected_image_path),
+                "image_timestamp": timestamp.strftime("%Y%m%d_%H%M%S")
+            }
+            
+            # Ensure directory exists
+            transkript_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Write transcript data
+            with open(transkript_path, 'w', encoding='utf-8') as f:
+                json.dump(transcript_data, f, indent=2, ensure_ascii=False)
+            
+            debug_logger.info(f"Created initial transkript.json with image data: {os.path.basename(self.selected_image_path)}")
+            self.add_output_text(f"[color=44ff44]✓ Bild für Verarbeitung vorbereitet[/color]")
+            
+        except Exception as e:
+            debug_logger.error(f"Error creating image transcript: {e}")
+            self.add_output_text(f"[color=ff4444]Fehler beim Vorbereiten des Bildes: {e}[/color]")
     
     def _start_workflow_service(self):
         """Start the workflow service using the existing start_workflow_service.py script"""
@@ -1665,6 +1813,11 @@ class AufnahmePopup(FloatLayout):
                         self.workflow_triggered = False
                         debug_logger.info("Reset workflow state for next recording")
                         
+                        # Clear selected image after workflow completion
+                        if self.selected_image_path or self.selected_image_base64:
+                            self.clear_selected_image()
+                            debug_logger.info("Cleared selected image after workflow completion")
+                        
                         workflow_complete_msg = "Workflow abgeschlossen"
                         print(workflow_complete_msg)
                         
@@ -1697,133 +1850,8 @@ class AufnahmePopup(FloatLayout):
         else:
             debug_logger.warning("No slideshow reference available for gallery switch")
     
-    def close_popup(self, instance):
-        """Close the popup window"""
-        debug_logger.info("close_popup called")
-        
-        # Stop recording if running
-        if self.is_running:
-            debug_logger.info("Stopping recording before closing popup")
-            self.stop_recording()
-        
-        # Stop status checking
-        if self.workflow_status_checker:
-            Clock.unschedule(self.workflow_status_checker)
-            self.workflow_status_checker = None
-            debug_logger.info("Stopped workflow status checking")
-        
-        # Remove from parent
-        if self.parent:
-            self.parent.remove_widget(self)
-            debug_logger.info("Removed popup from parent widget")
-
-class ImageSelectionPopup(FloatLayout):
-    """Popup for selecting images via local file chooser or QR code upload"""
-    def __init__(self, slideshow=None, **kwargs):
-        super().__init__(**kwargs)
-        self.slideshow = slideshow
-        
-        # Background
-        with self.canvas.before:
-            Color(0, 0, 0, 0.7)
-            self.bg = Rectangle(pos=self.pos, size=self.size)
-        self.bind(pos=self._update_bg, size=self._update_bg)
-        
-        # Main panel
-        panel = BoxLayout(
-            orientation='vertical',
-            size_hint=(None, None),
-            size=(dp(500), dp(400)),
-            pos_hint={'center_x': 0.5, 'center_y': 0.5},
-            padding=dp(20),
-            spacing=dp(15)
-        )
-        
-        with panel.canvas.before:
-            Color(0.16, 0.16, 0.20, 0.95)
-            panel._bg = Rectangle(pos=panel.pos, size=panel.size)
-        panel.bind(pos=lambda *a: setattr(panel._bg, 'pos', panel.pos),
-                  size=lambda *a: setattr(panel._bg, 'size', panel.size))
-        
-        # Title
-        title = Label(
-            text="Bild auswählen",
-            size_hint_y=None,
-            height=dp(50),
-            font_size=dp(28),
-            color=(1, 1, 1, 1)
-        )
-        panel.add_widget(title)
-        
-        # Description
-        desc = Label(
-            text="Wählen Sie eine Option zum Hinzufügen von Bildern:",
-            size_hint_y=None,
-            height=dp(40),
-            font_size=dp(16),
-            color=(0.9, 0.9, 0.9, 1),
-            text_size=(dp(460), None),
-            halign='center'
-        )
-        panel.add_widget(desc)
-        
-        # Button container
-        button_container = BoxLayout(
-            orientation='vertical',
-            size_hint_y=None,
-            height=dp(160),
-            spacing=dp(15)
-        )
-        
-        # Local file chooser button
-        file_button = Button(
-            text="📁 Lokale Datei wählen",
-            size_hint_y=None,
-            height=dp(60),
-            background_normal='',
-            background_color=(0.25, 0.45, 0.65, 1),
-            color=(1, 1, 1, 1),
-            font_size=dp(20)
-        )
-        file_button.bind(on_press=self.open_file_chooser)
-        button_container.add_widget(file_button)
-        
-        # QR code button
-        qr_button = Button(
-            text="📱 QR-Code für Upload-Link",
-            size_hint_y=None,
-            height=dp(60),
-            background_normal='',
-            background_color=(0.45, 0.25, 0.65, 1),
-            color=(1, 1, 1, 1),
-            font_size=dp(20)
-        )
-        qr_button.bind(on_press=self.show_qr_code)
-        button_container.add_widget(qr_button)
-        
-        panel.add_widget(button_container)
-        
-        # Close button
-        close_button = Button(
-            text="Schließen",
-            size_hint_y=None,
-            height=dp(50),
-            background_normal='',
-            background_color=(0.4, 0.4, 0.5, 1),
-            color=(1, 1, 1, 1),
-            font_size=dp(18)
-        )
-        close_button.bind(on_press=self.close_popup)
-        panel.add_widget(close_button)
-        
-        self.add_widget(panel)
-    
-    def _update_bg(self, *args):
-        self.bg.pos = self.pos
-        self.bg.size = self.size
-    
-    def open_file_chooser(self, instance):
-        """Open file chooser for local image selection"""
+    def open_image_selection(self, instance):
+        """Open image selection dialog"""
         try:
             from kivy.uix.filechooser import FileChooserListView
             from kivy.uix.popup import Popup
@@ -1843,9 +1871,8 @@ class ImageSelectionPopup(FloatLayout):
             def select_file(*args):
                 if file_chooser.selection:
                     selected_file = file_chooser.selection[0]
-                    self.process_selected_file(selected_file)
+                    self.process_selected_image(selected_file)
                     popup.dismiss()
-                    self.close_popup(None)
             
             def cancel_selection(*args):
                 popup.dismiss()
@@ -1862,42 +1889,155 @@ class ImageSelectionPopup(FloatLayout):
             content.add_widget(buttons)
             
             popup = Popup(
-                title="Bilddatei auswählen",
+                title="Bild für Aufnahme auswählen",
                 content=content,
                 size_hint=(0.8, 0.8)
             )
             popup.open()
             
         except Exception as e:
-            debug_logger.error(f"Error opening file chooser: {e}")
-            # Show error message
-            self.show_error_message(f"Fehler beim Öffnen des Datei-Browsers: {e}")
+            debug_logger.error(f"Error opening image selection: {e}")
+            self.add_output_text(f"[color=ff4444]Fehler beim Öffnen der Bildauswahl: {e}[/color]")
+    
+    def process_selected_image(self, file_path):
+        """Process selected image for recording workflow"""
+        try:
+            debug_logger.info(f"Processing selected image: {file_path}")
+            
+            # Validate image file
+            if not os.path.exists(file_path):
+                self.add_output_text(f"[color=ff4444]Bilddatei nicht gefunden: {file_path}[/color]")
+                return
+            
+            # Check file size (limit to reasonable size)
+            file_size = os.path.getsize(file_path)
+            if file_size > 10 * 1024 * 1024:  # 10MB limit
+                self.add_output_text(f"[color=ff4444]Bilddatei zu groß (>10MB): {file_size/1024/1024:.1f}MB[/color]")
+                return
+            
+            # Convert image to base64
+            try:
+                with open(file_path, 'rb') as f:
+                    image_data = f.read()
+                    self.selected_image_base64 = base64.b64encode(image_data).decode('utf-8')
+                    self.selected_image_path = file_path
+                
+                # Update UI to show selected image
+                filename = os.path.basename(file_path)
+                self.image_info_label.text = f"✓ Bild ausgewählt: {filename}"
+                self.image_info_label.height = dp(30)
+                
+                # Update button color to indicate image is selected
+                self.image_button.text = f"✓ Bild: {filename[:20]}{'...' if len(filename) > 20 else ''}"
+                self.image_button.background_color = (0.2, 0.6, 0.3, 1)
+                
+                self.add_output_text(f"[color=44ff44]✓ Bild ausgewählt: {filename} ({file_size/1024:.1f}KB)[/color]")
+                debug_logger.info(f"Image processed successfully: {filename}, size: {file_size} bytes")
+                
+            except Exception as e:
+                debug_logger.error(f"Error processing image file: {e}")
+                self.add_output_text(f"[color=ff4444]Fehler beim Verarbeiten des Bildes: {e}[/color]")
+                
+        except Exception as e:
+            debug_logger.error(f"Error in process_selected_image: {e}")
+            self.add_output_text(f"[color=ff4444]Fehler bei der Bildverarbeitung: {e}[/color]")
+    
+    def clear_selected_image(self):
+        """Clear selected image"""
+        self.selected_image_path = None
+        self.selected_image_base64 = None
+        self.image_info_label.text = ""
+        self.image_info_label.height = dp(0)
+        self.image_button.text = "📷 Bild hinzufügen (optional)"
+        self.image_button.background_color = (0.35, 0.35, 0.55, 1)
+        debug_logger.info("Selected image cleared")
     
     def show_qr_code(self, instance):
         """Show QR code for upload link"""
         try:
-            # Generate upload URL (simple example - in real app this would be a proper upload endpoint)
-            upload_url = "http://localhost:8000/upload"  # Example URL
+            # Get network IP for access from mobile devices
+            network_ip = get_network_ip()
+            upload_url = f"http://{network_ip}:8000/upload"
+            
+            debug_logger.info(f"Generating QR code for upload URL: {upload_url}")
             
             # Create QR code display popup
             from kivy.uix.popup import Popup
+            from kivy.graphics.texture import Texture
             
             qr_content = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(15))
             
-            # QR code placeholder (in real implementation, generate actual QR code)
-            qr_label = Label(
-                text=f"📱 QR-Code\n\nUpload-Link:\n{upload_url}\n\n(QR-Code würde hier angezeigt)",
-                font_size=dp(16),
-                color=(1, 1, 1, 1),
-                text_size=(dp(300), None),
-                halign='center'
-            )
-            qr_content.add_widget(qr_label)
+            # Try to generate actual QR code
+            qr_img_data = generate_qr_code_image(upload_url, size=(250, 250))
+            
+            if qr_img_data:
+                # Create QR code image widget
+                try:
+                    # Save QR code to temporary file for Kivy Image widget
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_file:
+                        tmp_file.write(qr_img_data)
+                        tmp_path = tmp_file.name
+                    
+                    qr_image = Image(
+                        source=tmp_path,
+                        size_hint=(None, None),
+                        size=(dp(250), dp(250)),
+                        pos_hint={'center_x': 0.5}
+                    )
+                    qr_content.add_widget(qr_image)
+                    
+                    # Schedule cleanup of temp file
+                    def cleanup_temp_file(dt):
+                        try:
+                            os.unlink(tmp_path)
+                        except:
+                            pass
+                    Clock.schedule_once(cleanup_temp_file, 5.0)
+                    
+                except Exception as img_error:
+                    debug_logger.warning(f"Failed to create QR image widget: {img_error}")
+                    # Fallback to text display
+                    qr_label = Label(
+                        text=f"📱 QR-Code generiert\n\nUpload-Link:\n{upload_url}\n\n(QR-Code-Anzeige fehlgeschlagen)",
+                        font_size=dp(14),
+                        color=(1, 1, 1, 1),
+                        text_size=(dp(300), None),
+                        halign='center'
+                    )
+                    qr_content.add_widget(qr_label)
+            else:
+                # Fallback when QR generation fails
+                error_msg = "⚠️ QR-Code Bibliotheken fehlen\n\nBitte installieren Sie:\npip install qrcode[pil] Pillow"
+                if network_ip != "127.0.0.1":
+                    error_msg += f"\n\nUpload-Link:\n{upload_url}\n\n(Manuell öffnen)"
+                else:
+                    error_msg += f"\n\nNetzwerk-IP nicht verfügbar\nFallback: {upload_url}"
+                
+                qr_label = Label(
+                    text=error_msg,
+                    font_size=dp(14),
+                    color=(1, 1, 0.7, 1),  # Yellow tint for warning
+                    text_size=(dp(300), None),
+                    halign='center'
+                )
+                qr_content.add_widget(qr_label)
+            
+            # Network info
+            if network_ip != "127.0.0.1":
+                network_info = Label(
+                    text=f"📡 Netzwerk-IP: {network_ip}\nPort: 8000",
+                    font_size=dp(12),
+                    color=(0.8, 0.8, 1, 1),
+                    text_size=(dp(300), None),
+                    halign='center'
+                )
+                qr_content.add_widget(network_info)
             
             # Instructions
             instructions = Label(
-                text="Scannen Sie den QR-Code mit Ihrem Smartphone,\num Bilder hochzuladen.",
-                font_size=dp(14),
+                text="Scannen Sie den QR-Code mit Ihrem Smartphone\noder öffnen Sie den Link manuell,\num Bilder hochzuladen.",
+                font_size=dp(12),
                 color=(0.9, 0.9, 0.9, 1),
                 text_size=(dp(300), None),
                 halign='center'
@@ -1921,136 +2061,33 @@ class ImageSelectionPopup(FloatLayout):
                 title="QR-Code für Bild-Upload",
                 content=qr_content,
                 size_hint=(None, None),
-                size=(dp(400), dp(500))
+                size=(dp(400), dp(600))  # Made taller to accommodate network info
             )
             qr_popup.open()
             
         except Exception as e:
             debug_logger.error(f"Error showing QR code: {e}")
-            self.show_error_message(f"Fehler beim Anzeigen des QR-Codes: {e}")
-    
-    def process_selected_file(self, file_path):
-        """Process the selected image file"""
-        try:
-            import shutil
-            import base64
-            
-            # Ensure IMAGE_DIR exists
-            IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-            
-            # Copy file to IMAGE_DIR with timestamp to avoid conflicts
-            source_path = Path(file_path)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            new_filename = f"{timestamp}_{source_path.name}"
-            dest_path = IMAGE_DIR / new_filename
-            
-            shutil.copy2(source_path, dest_path)
-            debug_logger.info(f"Copied image file from {file_path} to {dest_path}")
-            
-            # Convert image to base64 and add to transkript.json
-            try:
-                # Validate image file before processing
-                try:
-                    from PIL import Image
-                    with Image.open(file_path) as img:
-                        # Verify it's a valid image and get format info
-                        img.verify()
-                        img_format = img.format.lower() if img.format else 'unknown'
-                        debug_logger.info(f"Image validation passed: {img_format} format")
-                except Exception as e:
-                    debug_logger.error(f"Invalid image file: {e}")
-                    self.show_error_message(f"Ungültige Bilddatei: {e}\n\nBitte wählen Sie eine gültige Bilddatei (PNG, JPG, etc.)")
-                    return
-                
-                # Check file size (limit to reasonable size for base64 encoding)
-                file_size = os.path.getsize(file_path)
-                max_size = 10 * 1024 * 1024  # 10MB limit
-                if file_size > max_size:
-                    debug_logger.error(f"Image file too large: {file_size} bytes (limit: {max_size})")
-                    self.show_error_message(f"Bilddatei zu groß: {file_size/1024/1024:.1f}MB\n\nMaximale Größe: {max_size/1024/1024}MB")
-                    return
-                
-                # Read and encode the image file as base64
-                with open(file_path, 'rb') as img_file:
-                    image_data = img_file.read()
-                    image_base64 = base64.b64encode(image_data).decode('utf-8')
-                
-                # Path to transkript.json (standardized location)
-                transkript_json_path = Path("/home/pi/Desktop/v2_Tripple S/transkript.json")
-                
-                # Read existing transkript.json or create new structure
-                transcript_data = {}
-                if transkript_json_path.exists():
-                    try:
-                        with open(transkript_json_path, 'r', encoding='utf-8') as f:
-                            transcript_data = json.load(f)
-                    except (json.JSONDecodeError, Exception) as e:
-                        debug_logger.warning(f"Could not read existing transkript.json: {e}, creating new")
-                        transcript_data = {}
-                
-                # Add image_base64 field to the transcript data
-                transcript_data['image_base64'] = image_base64
-                transcript_data['image_filename'] = source_path.name
-                transcript_data['image_timestamp'] = timestamp
-                
-                # If no existing transcript, add a placeholder prompt
-                if 'transcript' not in transcript_data:
-                    transcript_data['transcript'] = ""
-                    transcript_data['timestamp'] = time.time()
-                    transcript_data['iso_timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    transcript_data['processing_method'] = "image_upload"
-                    transcript_data['workflow_step'] = "image_added"
-                
-                # Ensure the directory exists
-                transkript_json_path.parent.mkdir(parents=True, exist_ok=True)
-                
-                # Write updated transkript.json
-                with open(transkript_json_path, 'w', encoding='utf-8') as f:
-                    json.dump(transcript_data, f, ensure_ascii=False, indent=2)
-                
-                debug_logger.info(f"Added image base64 data to transkript.json: {len(image_base64)} characters")
-                
-            except Exception as e:
-                debug_logger.error(f"Error adding image to transkript.json: {e}")
-                # Continue with normal processing even if JSON update fails
-            
-            # Show success message
-            self.show_success_message(f"Bild erfolgreich hinzugefügt:\n{new_filename}\n\nBild wurde auch als base64-Daten zu transkript.json hinzugefügt.")
-            
-            # Refresh gallery if slideshow is available
-            if self.slideshow and hasattr(self.slideshow, 'force_reschedule'):
-                self.slideshow.force_reschedule()
-                
-        except Exception as e:
-            debug_logger.error(f"Error processing selected file {file_path}: {e}")
-            self.show_error_message(f"Fehler beim Verarbeiten der Datei: {e}")
-    
-    def show_error_message(self, message):
-        """Show error message popup"""
-        from kivy.uix.popup import Popup
-        popup = Popup(
-            title="Fehler",
-            content=Label(text=message, text_size=(dp(300), None), halign='center'),
-            size_hint=(None, None),
-            size=(dp(400), dp(200))
-        )
-        popup.open()
-    
-    def show_success_message(self, message):
-        """Show success message popup"""
-        from kivy.uix.popup import Popup
-        popup = Popup(
-            title="Erfolg",
-            content=Label(text=message, text_size=(dp(300), None), halign='center'),
-            size_hint=(None, None),
-            size=(dp(400), dp(200))
-        )
-        popup.open()
+            self.add_output_text(f"[color=ff4444]Fehler beim Anzeigen des QR-Codes: {e}[/color]")
     
     def close_popup(self, instance):
         """Close the popup window"""
+        debug_logger.info("close_popup called")
+        
+        # Stop recording if running
+        if self.is_running:
+            debug_logger.info("Stopping recording before closing popup")
+            self.stop_recording()
+        
+        # Stop status checking
+        if self.workflow_status_checker:
+            Clock.unschedule(self.workflow_status_checker)
+            self.workflow_status_checker = None
+            debug_logger.info("Stopped workflow status checking")
+        
+        # Remove from parent
         if self.parent:
             self.parent.remove_widget(self)
+            debug_logger.info("Removed popup from parent widget")
 
 class GeneralSettingsPopup(FloatLayout):
     def __init__(self, slideshow, **kw):
@@ -2708,8 +2745,7 @@ class Slideshow(FloatLayout):
         """Update KivyMD toolbar buttons"""
         bar.right_action_items=[
             ["calendar",lambda x:self.open_schedule_editor()],
-            ["image",lambda x:self.open_image_selection_popup()],
-            ["record",lambda x:self.open_aufnahme_popup()],
+            ["record",lambda x:self.open_aufnahme_popup()],  # Unified: use Aufnahme for all recording including images
             ["image-multiple",lambda x:self.open_gallery()],
             ["cog",lambda x:self.open_settings_root()],
             ["logout",lambda x:self.logout()],
@@ -2720,8 +2756,7 @@ class Slideshow(FloatLayout):
         """Update toolbar buttons"""
         bar.set_right_actions([
             ("Zeiten", self.open_schedule_editor),
-            ("Bild auswählen", self.open_image_selection_popup),
-            ("Aufnahme", self.open_aufnahme_popup),
+            ("Aufnahme", self.open_aufnahme_popup),  # Unified: use Aufnahme for all recording including images
             ("Galerie", self.open_gallery),
             ("Einstellungen", self.open_settings_root),
             ("Logout", self.logout),
@@ -2736,7 +2771,7 @@ class Slideshow(FloatLayout):
     def open_schedule_editor(self): self.open_single(ScheduleEditor(self))
     def open_settings_root(self): self.open_single(SettingsRootPopup(self))
     def open_aufnahme_popup(self): self.open_single(AufnahmePopup(slideshow=self))
-    def open_image_selection_popup(self): self.open_single(ImageSelectionPopup(slideshow=self))
+    # Note: Image selection is now integrated into the Aufnahme popup
 
     def force_reschedule(self):
         scheduled=self.mode_manager.scheduled_mode()
@@ -3142,6 +3177,15 @@ else:
             return True
 
 if __name__ == "__main__":
+    # Start upload server in background thread
+    try:
+        from upload_server import start_server_thread
+        debug_logger.info("Starting upload server thread...")
+        upload_thread = start_server_thread()
+        debug_logger.info("Upload server thread started")
+    except Exception as e:
+        debug_logger.warning(f"Could not start upload server: {e}")
+    
     app = KioskMDApp()
     Window.bind(on_mouse_down=lambda w,x,y,b,m:
                 hasattr(app,'root_widget') and app.root_widget.children and

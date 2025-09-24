@@ -143,14 +143,62 @@ The following files were removed during cleanup:
 
 ### Required Python Packages
 ```bash
+# Core dependencies
 pip install kivy kivymd google-cloud-speech google-cloud-aiplatform requests pyperclip
+
+# QR Code and image processing dependencies (required for mobile upload)
+pip install qrcode[pil] Pillow
 ```
+
+### QR Code and Mobile Upload Dependencies
+
+The mobile upload functionality requires additional libraries:
+
+- **qrcode[pil]** - For generating QR codes for upload links
+- **Pillow** - For image processing and QR code generation
+
+```bash
+# Install QR code dependencies
+pip install qrcode[pil] Pillow
+```
+
+**Error Handling**: If these libraries are missing:
+- QR code display shows installation instructions
+- Upload server still works, but QR codes won't be generated
+- Manual IP address access is still available
 
 ### System Requirements  
 - Linux/Raspberry Pi OS
 - Audio recording capability (ALSA/PulseAudio)
 - Internet connection for Google Cloud APIs
 - Google Cloud Project with Vertex AI API enabled
+- **Network access** - For mobile upload functionality via QR codes
+
+### Network Setup for Mobile Access
+
+The mobile upload feature requires network configuration:
+
+1. **Automatic IP Detection**: The application automatically detects your network IP
+2. **Upload Server**: Runs on port 8000 (configurable)
+3. **QR Code Generation**: Contains network IP + port (e.g., `http://192.168.1.100:8000/upload`)
+4. **Firewall**: Ensure port 8000 is accessible from mobile devices
+
+**Network Requirements**:
+- Raspberry Pi and mobile device on same network
+- Port 8000 open for HTTP connections
+- Network IP address accessible (not just localhost)
+
+**Troubleshooting Network Access**:
+```bash
+# Check your network IP
+ip addr show | grep "inet.*eth0\|inet.*wlan0"
+
+# Test server accessibility from mobile
+# On mobile browser: http://YOUR_PI_IP:8000/upload
+
+# Check if port is blocked
+sudo netstat -tlnp | grep :8000
+```
 
 ## Configuration
 
@@ -168,14 +216,33 @@ export PROJECT_ID="your-project-id"
 
 ## Usage
 
-### GUI Mode
+### GUI Mode with Enhanced Image+Text Workflow
 ```bash
 python3 main.py
 ```
-- Click "Aufnahme" to start recording
-- Recording automatically triggers speech recognition  
-- Speech recognition automatically triggers Vertex AI
-- Generated images appear in slideshow
+
+**New Integrated Workflow** (All via "Aufnahme" button):
+1. **Optional**: Click "📷 Bild hinzufügen" to select an image before recording
+2. Click "Start" to begin audio recording
+3. Speak your prompt/description
+4. Click "Stop" to end recording
+5. **Automatic Processing**: 
+   - Audio → Speech Recognition → Text
+   - Text + Image (if selected) → Vertex AI → Generated Images
+   - Results appear in slideshow
+
+**Mobile Upload via QR Code**:
+1. Click "📱 QR-Code für Upload-Link" in image selection
+2. Scan QR code with mobile device  
+3. Upload images directly from phone
+4. Images are automatically integrated into workflow
+
+**Key Features**:
+- ✅ **Unified Workflow**: Both text and image processing via single "Aufnahme" button
+- ✅ **QR Code Access**: Real network IP detection for mobile access
+- ✅ **Automatic Integration**: Selected images become part of transkript.json
+- ✅ **Error Handling**: Graceful fallbacks when QR libraries unavailable
+- ✅ **Network Detection**: Automatically finds accessible IP address
 
 ### Service Mode  
 ```bash
@@ -211,6 +278,23 @@ python3 test_end_to_end_workflow.py
    - Install audio tools: `apt-get install alsa-utils pulseaudio`
    - Check microphone permissions
    - Test with: `arecord -l`
+
+4. **QR Code not displaying**
+   - Install QR dependencies: `pip install qrcode[pil] Pillow`
+   - Check error messages in application output
+   - Verify network connectivity
+
+5. **Mobile upload not accessible**
+   - Check network IP detection: Application shows detected IP
+   - Ensure mobile device on same network as Raspberry Pi
+   - Test direct URL access: `http://YOUR_PI_IP:8000/upload`
+   - Check firewall settings for port 8000
+   - Verify upload server is running (automatic on app start)
+
+6. **Image not integrated in workflow**
+   - Check `transkript.json` contains `image_base64` field
+   - Verify image file size < 10MB
+   - Check supported formats: PNG, JPG, JPEG, GIF, BMP
 
 ### Log Analysis
 ```bash
