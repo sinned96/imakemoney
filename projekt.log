@@ -113,3 +113,31 @@ sdl2 - RuntimeError: b'Could not load EGL library'
   File "kivy/core/window/_window_sdl2.pyx", line 76, in kivy.core.window._window_sdl2._WindowSDL2Storage.die
 
 [2025-09-24 14:29:40,475] CRITICAL [kivy]: App: Unable to get a Window, abort.
+[2025-09-24 14:31:19,526] INFO [kivy]: Kivy: v2.3.1
+[2025-09-24 14:31:19,527] INFO [kivy]: Logger: Record log in /home/runner/.kivy/logs/kivy_25-09-24_2.txt
+[2025-09-24 14:31:19,527] INFO [kivy]: Kivy: Installed at "/home/runner/.local/lib/python3.12/site-packages/kivy/__init__.py"
+[2025-09-24 14:31:19,527] INFO [kivy]: Python: v3.12.3 (main, Aug 14 2025, 17:47:21) [GCC 13.3.0]
+[2025-09-24 14:31:19,527] INFO [kivy]: Python: Interpreter at "/usr/bin/python3"
+[2025-09-24 14:31:19,527] INFO [kivy]: Logger: Purge log fired. Processing...
+[2025-09-24 14:31:19,527] INFO [kivy]: Logger: Purge finished!
+[2025-09-24 14:31:19,551] INFO [kivy]: Factory: 195 symbols loaded
+[2025-09-24 14:31:19,622] INFO [kivy]: Image: Providers: img_tex, img_dds, img_sdl2 (img_pil, img_ffpyplayer ignored)
+[2025-09-24 14:31:19,628] INFO [kivy]: Text: Provider: sdl2
+[2025-09-24 14:31:19,640] ERROR [kivy]: Input: MTDev is not supported by your version of linux
+Traceback (most recent call last):
+  File "/home/runner/.local/lib/python3.12/site-packages/kivy/input/providers/__init__.py", line 41, in <module>
+    import kivy.input.providers.mtdev
+  File "/home/runner/.local/lib/python3.12/site-packages/kivy/input/providers/mtdev.py", line 94, in <module>
+    from kivy.lib.mtdev import Device, \
+  File "/home/runner/.local/lib/python3.12/site-packages/kivy/lib/mtdev.py", line 30, in <module>
+    libmtdev = cdll.LoadLibrary('libmtdev.so.1')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/ctypes/__init__.py", line 460, in LoadLibrary
+    return self._dlltype(name)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/ctypes/__init__.py", line 379, in __init__
+    self._handle = _dlopen(self._name, mode)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: libmtdev.so.1: cannot open shared object file: No such file or directory
+[2025-09-24 14:31:19,643] INFO [kivy]: Window: Provider: sdl2
+[2025-09-24 14:31:19,656] INFO [kivy]: Window: Provider: x11(['window_sdl2'] ignored)
