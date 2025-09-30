@@ -142,6 +142,7 @@ from kivy.core.window import Window
 # ------------------ KONFIG ------------------
 APP_DIR = Path(__file__).parent
 IMAGE_DIR = Path("/home/pi/Desktop/v2_Tripple S/BilderVertex")
+IMPORT_DIR = Path("/home/pi/Desktop/v2_Tripple S/BilderImport")
 IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png')
 ACCOUNTS_PATH = Path("/home/pi/Desktop/v2_Tripple S/Accounts.txt")
 MODES_PATH = APP_DIR / "modes.json"
@@ -323,6 +324,8 @@ class ModeManager:
         if "Urlaub" not in names:
             self.modes.append(Mode("Urlaub", images=[], interval=15,
                                    windows=[{"start": "12:30", "end": "13:30"}], auto=True)); changed = True
+        if "Import" not in names:
+            self.modes.append(Mode("Import", images=[], interval=5, windows=[], auto=False)); changed = True
         if changed:
             self.save()
     def get(self, name):
@@ -2435,17 +2438,31 @@ class GalleryEditor(FloatLayout):
         
         self.target_mode=mode
         self.status_lbl.text=f"Modus: {mode.name}"
+        # Reload images for the new mode (important for Import mode)
+        self._reload_all_images()
         self._populate()
     def toggle_filter(self,*_):
         self.filter_selected_only=not self.filter_selected_only
         self.filter_btn.text="Nur Modus-Bilder: AN" if self.filter_selected_only else "Nur Modus-Bilder: AUS"
         self._populate()
     def _reload_all_images(self):
-        if IMAGE_DIR.exists():
-            files=[str(p) for p in IMAGE_DIR.iterdir()
-                   if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS]
-            files.sort()
-        else: files=[]
+        """Load images from appropriate directory based on current mode"""
+        # If Import mode is selected, load from IMPORT_DIR, otherwise from IMAGE_DIR
+        if self.target_mode and self.target_mode.name == "Import":
+            if IMPORT_DIR.exists():
+                files=[str(p) for p in IMPORT_DIR.iterdir()
+                       if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS]
+                files.sort()
+            else:
+                files=[]
+        else:
+            # Load from standard IMAGE_DIR
+            if IMAGE_DIR.exists():
+                files=[str(p) for p in IMAGE_DIR.iterdir()
+                       if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS]
+                files.sort()
+            else:
+                files=[]
         if len(files)>MAX_IMAGES_DISPLAY: files=files[:MAX_IMAGES_DISPLAY]
         self.all_images_cache=files
         
@@ -2933,8 +2950,16 @@ class Slideshow(FloatLayout):
             self.set_mode(target, manual=False)
 
     def _scan_global(self):
+        """Scan IMAGE_DIR for AI-generated images"""
         if IMAGE_DIR.exists():
             files=[str(p) for p in IMAGE_DIR.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS]
+            files.sort(); return files
+        return []
+    
+    def _scan_import(self):
+        """Scan IMPORT_DIR for imported images"""
+        if IMPORT_DIR.exists():
+            files=[str(p) for p in IMPORT_DIR.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS]
             files.sort(); return files
         return []
 
@@ -2945,6 +2970,8 @@ class Slideshow(FloatLayout):
         # Update images for all modes - especially important for Tag/Nacht mode switching
         if self.current_mode.name in ("Alle Bilder","Standard"):
             cur=self._scan_global()
+        elif self.current_mode.name == "Import":
+            cur=self._scan_import()
         else:
             # For Tag/Nacht and other specific modes, check their assigned images
             cur=self.current_mode.existing_images()
@@ -2962,6 +2989,8 @@ class Slideshow(FloatLayout):
         if manual: self.manual_override=True
         if mode.name in ("Alle Bilder","Standard"):
             self.images=self._scan_global()
+        elif mode.name == "Import":
+            self.images=self._scan_import()
         else:
             self.images=mode.existing_images()
         if mode.randomize: shuffle(self.images)
