@@ -831,6 +831,83 @@ class ImageSettingsPopup(FloatLayout):
         if self.on_close: self.on_close()
         if self.parent: self.parent.remove_widget(self)
 
+class ImageLightboxPopup(FloatLayout):
+    """Lightbox overlay for displaying full-size images"""
+    def __init__(self, image_path, **kw):
+        super().__init__(**kw)
+        self.image_path=image_path
+        
+        # Dark overlay background
+        with self.canvas.before:
+            Color(0,0,0,0.9)
+            self.bg=Rectangle(pos=self.pos,size=self.size)
+        self.bind(pos=lambda *a:setattr(self.bg,'pos',self.pos),
+                  size=lambda *a:setattr(self.bg,'size',self.size))
+        
+        # Main container for image
+        container=FloatLayout()
+        
+        # Full-size image centered on screen
+        self.img=Image(source=image_path,
+                      size_hint=(None,None),
+                      pos_hint={'center_x':0.5,'center_y':0.5},
+                      allow_stretch=True,
+                      keep_ratio=True)
+        
+        # Bind to window size to scale image appropriately
+        from kivy.core.window import Window
+        self.img.size=(Window.width*0.9, Window.height*0.9)
+        Window.bind(size=self._update_image_size)
+        
+        container.add_widget(self.img)
+        
+        # Close button in top-right corner
+        close_btn=Button(text="✕",
+                        size_hint=(None,None),
+                        size=(dp(50),dp(50)),
+                        pos_hint={'right':0.98,'top':0.98},
+                        background_normal='',
+                        background_color=(0.3,0.3,0.3,0.8),
+                        color=(1,1,1,1),
+                        font_size=dp(24))
+        close_btn.bind(on_release=lambda *_: self._close())
+        container.add_widget(close_btn)
+        
+        # Filename label at bottom
+        name=Path(image_path).name
+        name_label=Label(text=name,
+                        size_hint=(1,None),
+                        height=dp(40),
+                        pos_hint={'x':0,'y':0.02},
+                        font_size=dp(16),
+                        color=(1,1,1,0.9))
+        container.add_widget(name_label)
+        
+        self.add_widget(container)
+        
+        # Click anywhere on background to close
+        self.bind(on_touch_down=self._on_touch)
+    
+    def _update_image_size(self, window, size):
+        """Update image size when window is resized"""
+        self.img.size=(size[0]*0.9, size[1]*0.9)
+    
+    def _on_touch(self, instance, touch):
+        """Handle touch events - close on background click"""
+        # Check if touch is on the image or close button
+        if self.img.collide_point(*touch.pos):
+            return False  # Don't close if clicking on image
+        # Close if clicking on background
+        self._close()
+        return True
+    
+    def _close(self):
+        """Close the lightbox"""
+        from kivy.core.window import Window
+        Window.unbind(size=self._update_image_size)
+        if self.parent:
+            self.parent.remove_widget(self)
+
 # ---- Globale Settings Hierarchie ----
 class SettingsRootPopup(FloatLayout):
     def __init__(self, slideshow, **kw):
@@ -2198,6 +2275,11 @@ class ImageTile(BoxLayout):
         self.on_toggle=on_toggle
         self.open_settings=open_settings
         self.is_selected_fn=is_selected_fn
+        
+        # Double-click/tap detection
+        self.last_touch_time=0
+        self.double_click_threshold=0.3  # seconds
+        
         with self.canvas.before:
             Color(0.18,0.18,0.20,1)
             self.bg_rect=Rectangle(pos=self.pos,size=self.size)
@@ -2223,6 +2305,37 @@ class ImageTile(BoxLayout):
         row.add_widget(self.toggle_btn); row.add_widget(gear)
         self.add_widget(row)
         self.refresh_state()
+    
+    def on_touch_down(self, touch):
+        """Handle touch/click events for double-click/tap detection"""
+        # Check if touch is on the image area (not on buttons)
+        if self.img.collide_point(*touch.pos):
+            current_time = time.time()
+            time_since_last = current_time - self.last_touch_time
+            
+            # Check if this is a double-click/tap
+            if time_since_last < self.double_click_threshold:
+                # Double-click detected! Open lightbox
+                self._open_lightbox()
+                self.last_touch_time = 0  # Reset to prevent triple-click
+                return True
+            else:
+                # First click, record time
+                self.last_touch_time = current_time
+        
+        # Continue normal touch handling
+        return super().on_touch_down(touch)
+    
+    def _open_lightbox(self):
+        """Open the lightbox to display full-size image"""
+        # Find the root parent to add the lightbox overlay
+        root = self
+        while root.parent is not None:
+            root = root.parent
+        
+        # Create and add lightbox popup
+        lightbox = ImageLightboxPopup(self.path)
+        root.add_widget(lightbox)
     def _short(self,name,maxlen=18):
         return name if len(name)<=maxlen else name[:maxlen-3]+"..."
     def _upd(self,*a):
