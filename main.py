@@ -2409,7 +2409,7 @@ class GalleryEditor(FloatLayout):
         header.add_widget(self.filter_btn)
         right.add_widget(header)
         from kivy.uix.gridlayout import GridLayout
-        self.gallery_grid=GridLayout(cols=4,spacing=dp(14),padding=dp(6),size_hint_y=None)
+        self.gallery_grid=GridLayout(cols=8,spacing=dp(14),padding=dp(6),size_hint_y=None)
         self.gallery_grid.bind(minimum_height=lambda inst,val:setattr(inst,'height',val))
         gs=ScrollView(); gs.add_widget(self.gallery_grid); right.add_widget(gs)
         root.add_widget(left); root.add_widget(right)
