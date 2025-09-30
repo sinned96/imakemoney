@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 BASE_DIR = Path("/home/pi/Desktop/v2_Tripple S")
 IMAGE_DIR = BASE_DIR / "BilderVertex"
+IMPORT_DIR = BASE_DIR / "BilderImport"  # Directory for imported images
 TRANSCRIPT_JSON = BASE_DIR / "transkript.json"
 UPLOAD_PORT = 8000
 
@@ -170,7 +171,7 @@ class UploadHandler(BaseHTTPRequestHandler):
         status = {
             "status": "running",
             "timestamp": datetime.now().isoformat(),
-            "upload_dir": str(IMAGE_DIR),
+            "upload_dir": str(IMPORT_DIR),
             "server": "ImakeMoney Upload Server"
         }
         
@@ -236,23 +237,23 @@ class UploadHandler(BaseHTTPRequestHandler):
             self.send_json_response({"success": False, "error": str(e)}, 500)
     
     def save_uploaded_image(self, filename, image_data):
-        """Save uploaded image and add to transcript.json"""
+        """Save uploaded image to IMPORT_DIR and add to transcript.json"""
         try:
             # Ensure directories exist
-            IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+            IMPORT_DIR.mkdir(parents=True, exist_ok=True)
             BASE_DIR.mkdir(parents=True, exist_ok=True)
             
             # Generate unique filename
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             name_part, ext = os.path.splitext(filename)
-            safe_filename = f"upload_{timestamp}_{name_part}{ext}"
-            file_path = IMAGE_DIR / safe_filename
+            safe_filename = f"import_{timestamp}_{name_part}{ext}"
+            file_path = IMPORT_DIR / safe_filename
             
             # Write image file
             with open(file_path, 'wb') as f:
                 f.write(image_data)
             
-            logger.info(f"Saved uploaded image: {file_path}")
+            logger.info(f"Saved imported image: {file_path}")
             
             # Convert to base64 for transcript.json
             image_base64 = base64.b64encode(image_data).decode('utf-8')
@@ -311,7 +312,7 @@ def start_upload_server(port=UPLOAD_PORT):
         server = HTTPServer(('0.0.0.0', port), UploadHandler)
         logger.info(f"Upload server starting on port {port}")
         logger.info(f"Upload URL: http://localhost:{port}/upload")
-        logger.info(f"Image directory: {IMAGE_DIR}")
+        logger.info(f"Import directory: {IMPORT_DIR}")
         server.serve_forever()
     except KeyboardInterrupt:
         logger.info("Server stopped by user")
