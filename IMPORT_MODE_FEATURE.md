@@ -4,6 +4,10 @@
 
 Dieses Feature fügt einen neuen "Import"-Modus zur Galerie hinzu, der importierte Bilder separat von KI-generierten Bildern verwaltet und anzeigt. Alle Bilder (KI und Import) unterstützen das Doppelklick-/Doppeltipp-Feature zur Vollbildanzeige.
 
+### Quellordner-Übersicht (Source Folders)
+- **Galerie**: `/home/pi/Desktop/v2_Tripple S/BilderVertex` - KI-generierte Bilder
+- **Import**: `/home/pi/Desktop/v2_Tripple S/uploads` - Importierte Bilder (via Mobile Upload oder Aufnahme-Funktion)
+
 ## Funktionen
 
 ### 1. Import-Ordner (uploads)
@@ -44,6 +48,14 @@ Das Feature ist bereits vollständig implementiert und funktioniert für **alle 
 - Mobile Uploads werden automatisch im Import-Ordner gespeichert
 - Dateinamen-Präfix geändert von `upload_` zu `import_`
 - Format: `import_YYYYMMDD_HHMMSS_originalname.ext`
+
+### 5. Bildauswahl mit Tabs (Aufnahme-Funktion)
+
+- Beim Hinzufügen eines Bildes zur Aufnahme gibt es jetzt zwei Tabs:
+  - **"Galerie (KI-Bilder)"**: Zugriff auf BilderVertex-Ordner
+  - **"Import (Uploads)"**: Zugriff auf uploads-Ordner
+- Benutzer können zwischen beiden Quellen wechseln
+- Identische Funktionalität für beide Bildquellen
 
 ## Technische Implementierung
 
