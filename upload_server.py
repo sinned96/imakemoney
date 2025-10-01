@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 BASE_DIR = Path("/home/pi/Desktop/v2_Tripple S")
 IMAGE_DIR = BASE_DIR / "BilderVertex"
-IMPORT_DIR = BASE_DIR / "BilderImport"  # Directory for imported images
+IMPORT_DIR = BASE_DIR / "uploads"  # Directory for imported images (changed from BilderImport)
 TRANSCRIPT_JSON = BASE_DIR / "transkript.json"
 UPLOAD_PORT = 8000
 

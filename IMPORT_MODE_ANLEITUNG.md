@@ -10,8 +10,8 @@ Der Import-Modus ist eine neue Funktion, die importierte Bilder separat von KI-g
 
 Bilder werden jetzt in zwei verschiedenen Ordnern gespeichert:
 
-- **KI-Bilder**: `/home/pi/Desktop/v2_Tripple S/BilderVertex`
-- **Import-Bilder**: `/home/pi/Desktop/v2_Tripple S/BilderImport`
+- **KI-Bilder (Galerie)**: `/home/pi/Desktop/v2_Tripple S/BilderVertex`
+- **Import-Bilder**: `/home/pi/Desktop/v2_Tripple S/uploads`
 
 ### 📱 Import-Button in der Modi-Liste
 
@@ -146,8 +146,8 @@ Wichtig:
 ### ❓ Wo werden importierte Bilder gespeichert?
 
 **Antwort:** In einem separaten Ordner:
-- Import-Bilder: `/home/pi/Desktop/v2_Tripple S/BilderImport`
-- KI-Bilder: `/home/pi/Desktop/v2_Tripple S/BilderVertex`
+- Import-Bilder: `/home/pi/Desktop/v2_Tripple S/uploads`
+- KI-Bilder (Galerie): `/home/pi/Desktop/v2_Tripple S/BilderVertex`
 
 ### ❓ Wie erkenne ich importierte Bilder?
 
@@ -205,7 +205,7 @@ Wichtig:
 **Lösung:**
 1. Prüfe, ob Bilder im Import-Ordner existieren:
    ```bash
-   ls -la "/home/pi/Desktop/v2_Tripple S/BilderImport"
+   ls -la "/home/pi/Desktop/v2_Tripple S/uploads"
    ```
 2. Im Import-Modus: Galerie neu laden (Modus wechseln und zurück)
 3. Prüfe Dateiendungen (nur .jpg, .jpeg, .png werden unterstützt)

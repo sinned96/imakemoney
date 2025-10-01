@@ -33,12 +33,12 @@ This implementation adds a complete Import mode to the image gallery, enabling s
 **After:**
 ```
 /home/pi/Desktop/v2_Tripple S/
-├── BilderVertex/          # AI-generated images only
+├── BilderVertex/          # AI-generated images only (Galerie)
 │   ├── bild_001.png
 │   ├── bild_002.png
 │   └── ...
 │
-└── BilderImport/          # Imported images only (NEW!)
+└── uploads/               # Imported images only (Import-Ordner)
     ├── import_20240115_123456_photo1.jpg
     ├── import_20240115_123457_photo2.jpg
     └── ...

@@ -142,7 +142,7 @@ from kivy.core.window import Window
 # ------------------ KONFIG ------------------
 APP_DIR = Path(__file__).parent
 IMAGE_DIR = Path("/home/pi/Desktop/v2_Tripple S/BilderVertex")
-IMPORT_DIR = Path("/home/pi/Desktop/v2_Tripple S/BilderImport")
+IMPORT_DIR = Path("/home/pi/Desktop/v2_Tripple S/uploads")  # Changed from BilderImport to uploads
 IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png')
 ACCOUNTS_PATH = Path("/home/pi/Desktop/v2_Tripple S/Accounts.txt")
 MODES_PATH = APP_DIR / "modes.json"
@@ -1931,16 +1931,32 @@ class AufnahmePopup(FloatLayout):
             debug_logger.warning("No slideshow reference available for gallery switch")
     
     def open_image_selection(self, instance):
-        """Open image selection dialog"""
+        """Open image selection dialog with tabs for Gallery and Import folders"""
         try:
             from kivy.uix.filechooser import FileChooserListView
             from kivy.uix.popup import Popup
+            from kivy.uix.tabbedpanel import TabbedPanel, TabbedPanelItem
             
-            # Create file chooser popup
-            file_chooser = FileChooserListView(
+            # Create tabbed panel for source selection
+            tab_panel = TabbedPanel(do_default_tab=False, tab_width=dp(150))
+            
+            # Gallery tab (BilderVertex)
+            gallery_tab = TabbedPanelItem(text='Galerie (KI-Bilder)')
+            gallery_chooser = FileChooserListView(
                 filters=['*.jpg', '*.jpeg', '*.png', '*.bmp', '*.gif'],
                 path=str(IMAGE_DIR) if IMAGE_DIR.exists() else str(Path.home())
             )
+            gallery_tab.add_widget(gallery_chooser)
+            tab_panel.add_widget(gallery_tab)
+            
+            # Import tab (uploads folder)
+            import_tab = TabbedPanelItem(text='Import (Uploads)')
+            import_chooser = FileChooserListView(
+                filters=['*.jpg', '*.jpeg', '*.png', '*.bmp', '*.gif'],
+                path=str(IMPORT_DIR) if IMPORT_DIR.exists() else str(Path.home())
+            )
+            import_tab.add_widget(import_chooser)
+            tab_panel.add_widget(import_tab)
             
             # Button layout for file chooser
             buttons = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
@@ -1949,8 +1965,14 @@ class AufnahmePopup(FloatLayout):
             cancel_btn = Button(text="Abbrechen", size_hint_x=0.5)
             
             def select_file(*args):
-                if file_chooser.selection:
-                    selected_file = file_chooser.selection[0]
+                # Get the active file chooser based on selected tab
+                if tab_panel.current_tab == gallery_tab:
+                    active_chooser = gallery_chooser
+                else:
+                    active_chooser = import_chooser
+                
+                if active_chooser.selection:
+                    selected_file = active_chooser.selection[0]
                     self.process_selected_image(selected_file)
                     popup.dismiss()
             
@@ -1963,9 +1985,9 @@ class AufnahmePopup(FloatLayout):
             buttons.add_widget(select_btn)
             buttons.add_widget(cancel_btn)
             
-            # File chooser layout
+            # Main content layout
             content = BoxLayout(orientation='vertical')
-            content.add_widget(file_chooser)
+            content.add_widget(tab_panel)
             content.add_widget(buttons)
             
             popup = Popup(

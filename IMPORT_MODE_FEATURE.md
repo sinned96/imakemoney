@@ -4,11 +4,15 @@
 
 Dieses Feature fügt einen neuen "Import"-Modus zur Galerie hinzu, der importierte Bilder separat von KI-generierten Bildern verwaltet und anzeigt. Alle Bilder (KI und Import) unterstützen das Doppelklick-/Doppeltipp-Feature zur Vollbildanzeige.
 
+### Quellordner-Übersicht (Source Folders)
+- **Galerie**: `/home/pi/Desktop/v2_Tripple S/BilderVertex` - KI-generierte Bilder
+- **Import**: `/home/pi/Desktop/v2_Tripple S/uploads` - Importierte Bilder (via Mobile Upload oder Aufnahme-Funktion)
+
 ## Funktionen
 
-### 1. Import-Ordner (BilderImport)
+### 1. Import-Ordner (uploads)
 
-- Separater Ordner für importierte Bilder: `/home/pi/Desktop/v2_Tripple S/BilderImport`
+- Separater Ordner für importierte Bilder: `/home/pi/Desktop/v2_Tripple S/uploads`
 - KI-generierte Bilder bleiben im ursprünglichen Ordner: `/home/pi/Desktop/v2_Tripple S/BilderVertex`
 - Klare Trennung zwischen importierten und generierten Bildern
 
@@ -45,13 +49,21 @@ Das Feature ist bereits vollständig implementiert und funktioniert für **alle 
 - Dateinamen-Präfix geändert von `upload_` zu `import_`
 - Format: `import_YYYYMMDD_HHMMSS_originalname.ext`
 
+### 5. Bildauswahl mit Tabs (Aufnahme-Funktion)
+
+- Beim Hinzufügen eines Bildes zur Aufnahme gibt es jetzt zwei Tabs:
+  - **"Galerie (KI-Bilder)"**: Zugriff auf BilderVertex-Ordner
+  - **"Import (Uploads)"**: Zugriff auf uploads-Ordner
+- Benutzer können zwischen beiden Quellen wechseln
+- Identische Funktionalität für beide Bildquellen
+
 ## Technische Implementierung
 
 ### Konstanten
 
 ```python
-IMAGE_DIR = Path("/home/pi/Desktop/v2_Tripple S/BilderVertex")    # KI-Bilder
-IMPORT_DIR = Path("/home/pi/Desktop/v2_Tripple S/BilderImport")  # Import-Bilder
+IMAGE_DIR = Path("/home/pi/Desktop/v2_Tripple S/BilderVertex")  # KI-Bilder (Galerie)
+IMPORT_DIR = Path("/home/pi/Desktop/v2_Tripple S/uploads")      # Import-Bilder
 ```
 
 ### ModeManager
@@ -175,11 +187,11 @@ class ImageLightboxPopup(FloatLayout):
 
 ```
 /home/pi/Desktop/v2_Tripple S/
-├── BilderVertex/          # KI-generierte Bilder
+├── BilderVertex/          # KI-generierte Bilder (Galerie)
 │   ├── bild_001.png
 │   ├── bild_002.png
 │   └── ...
-├── BilderImport/          # Importierte Bilder
+├── uploads/               # Importierte Bilder (Import-Ordner)
 │   ├── import_20240115_123456_photo1.jpg
 │   ├── import_20240115_123457_photo2.jpg
 │   └── ...
@@ -194,6 +206,12 @@ class ImageLightboxPopup(FloatLayout):
 3. **Keine Zoom-Funktion:** Aktuell nicht implementiert (mögliches zukünftiges Feature)
 
 ## Changelog
+
+### Version 2.0 (2025-01-XX)
+- ✅ IMPORT_DIR geändert von `BilderImport` zu `uploads` Ordner
+- ✅ Bildauswahl-Popup erweitert mit Tabs für Galerie (BilderVertex) und Import (uploads)
+- ✅ Upload-Server speichert jetzt in uploads-Ordner
+- ✅ Dokumentation aktualisiert: Galerie = BilderVertex, Import = uploads
 
 ### Version 1.0 (2025-01-15)
 - ✅ IMPORT_DIR Konstante hinzugefügt
