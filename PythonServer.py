@@ -572,6 +572,21 @@ class WorkflowFileWatcher:
                     bilder_dir_path.mkdir(parents=True, exist_ok=True)
                     self.log_status(f"Target directory ensured: {bilder_dir_path}")
                     
+                    # Read aspect ratio from image_meta.json
+                    aspect_ratio = "16:9"  # Default
+                    try:
+                        meta_path = self.work_dir / "image_meta.json"
+                        if meta_path.exists():
+                            import json
+                            with open(meta_path, 'r', encoding='utf-8') as f:
+                                meta_data = json.load(f)
+                                aspect_ratio = meta_data.get("aspect_ratio", "16:9")
+                            self.log_status(f"Using aspect ratio from config: {aspect_ratio}")
+                        else:
+                            self.log_status("No image_meta.json found, using default aspect ratio: 16:9")
+                    except Exception as e:
+                        self.log_status(f"Could not read aspect ratio config: {e}, using default: 16:9", "WARNING")
+                    
                     # Generate image using Vertex AI
                     self.log_status("Sending prompt to Vertex AI Imagen API...")
                     image_paths = generate_image_imagen4(
@@ -579,7 +594,8 @@ class WorkflowFileWatcher:
                         image_count=1, 
                         bilder_dir=str(bilder_dir_path), 
                         output_prefix="bild",
-                        logger=self.log_status
+                        logger=self.log_status,
+                        aspect_ratio=aspect_ratio
                     )
                     
                     if image_paths:
@@ -844,7 +860,7 @@ def scale_image_to_1920x1080(image_path, preserve_aspect_ratio=True, logger=None
         log(f"Error scaling image {image_path}: {e}", "ERROR")
         return False
 
-def generate_image_imagen4(prompt, image_count=1, bilder_dir=BILDER_DIR, output_prefix="bild", logger=None):
+def generate_image_imagen4(prompt, image_count=1, bilder_dir=BILDER_DIR, output_prefix="bild", logger=None, aspect_ratio="16:9"):
     """
     Generate images using Google's Vertex AI Imagen 4.0 API
     
@@ -855,7 +871,7 @@ def generate_image_imagen4(prompt, image_count=1, bilder_dir=BILDER_DIR, output_
     - Google Cloud Project ID: Set via PROJECT_ID environment variable (default: "trippe-s")
     - Credentials File: {GOOGLE_CREDENTIALS} (service account JSON key)
     - API Endpoint: Vertex AI Imagen 4.0 in us-central1 region
-    - Image Parameters: 16:9 aspect ratio, 2k resolution
+    - Image Parameters: configurable aspect ratio (16:9 or 9:16), 2k resolution
     - Error Handling: Graceful fallback to demo images if API unavailable
     
     Args:
@@ -864,6 +880,7 @@ def generate_image_imagen4(prompt, image_count=1, bilder_dir=BILDER_DIR, output_
         bilder_dir (str): Target directory for generated images (default: {BILDER_DIR})
         output_prefix (str): Filename prefix for generated images (default: "bild")
         logger (callable): Optional logging function for status updates
+        aspect_ratio (str): Aspect ratio for generated images - "16:9" or "9:16" (default: "16:9")
     
     Returns:
         list: List of generated image file paths, empty list if failed
@@ -947,14 +964,14 @@ def generate_image_imagen4(prompt, image_count=1, bilder_dir=BILDER_DIR, output_
             ],
             "parameters": {
                 "sampleCount": image_count,
-                "aspectRatio": "16:9",
+                "aspectRatio": aspect_ratio,
                 "resolution": "2k"
             }
         }
         
         log(f"Sending request to Vertex AI Imagen API...")
         log(f"Endpoint: {ENDPOINT}")
-        log(f"Parameters: {image_count} images, 16:9 aspect ratio, 2k resolution")
+        log(f"Parameters: {image_count} images, {aspect_ratio} aspect ratio, 2k resolution")
         
         response = requests.post(ENDPOINT, headers=headers, json=payload, timeout=120)
         
