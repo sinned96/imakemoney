@@ -644,7 +644,7 @@ class CustomAppBar(BoxLayout):
 
 # ---- Persistenz Bild-Meta ----
 def load_image_meta():
-    base = {"effects":{}, "intervals":{}, "weights":{}, "brightness":{}, "global_interval": None, "global_brightness": None}
+    base = {"effects":{}, "intervals":{}, "weights":{}, "brightness":{}, "global_interval": None, "global_brightness": None, "aspect_ratio": "16:9"}
     if not IMAGE_META_PATH.exists():
         return base
     try:
@@ -2755,6 +2755,88 @@ class ScheduleEditor(FloatLayout):
         if self.slideshow.current_overlay is self:
             self.slideshow.current_overlay=None
 
+# ---- Format Selection Popup ----
+class FormatSelectionPopup(FloatLayout):
+    def __init__(self, slideshow, **kw):
+        super().__init__(**kw)
+        self.slideshow = slideshow
+        with self.canvas.before:
+            Color(0, 0, 0, 0.55)
+            self.bg = Rectangle(pos=self.pos, size=self.size)
+        self.bind(pos=self._upd, size=self._upd)
+        
+        panel = BoxLayout(orientation='vertical', size_hint=(None, None),
+                         size=(dp(400), dp(300)),
+                         pos_hint={'center_x': 0.5, 'center_y': 0.5},
+                         padding=dp(22), spacing=dp(16))
+        with panel.canvas.before:
+            Color(0.18, 0.18, 0.22, 0.97)
+            panel._bg = Rectangle(pos=panel.pos, size=panel.size)
+        panel.bind(pos=lambda *a: setattr(panel._bg, 'pos', panel.pos),
+                  size=lambda *a: setattr(panel._bg, 'size', panel.size))
+        
+        panel.add_widget(Label(text="Format", size_hint_y=None, height=dp(54),
+                              font_size=dp(32), color=(1, 1, 1, 1), 
+                              bold=True))
+        
+        # Current format display
+        current_text = f"Aktuell: {self.slideshow.aspect_ratio}"
+        self.current_label = Label(text=current_text, size_hint_y=None, height=dp(30),
+                                   font_size=dp(18), color=(0.7, 0.9, 1, 1))
+        panel.add_widget(self.current_label)
+        
+        # Spacer
+        panel.add_widget(Widget(size_hint_y=0.2))
+        
+        # Format buttons
+        btn_horizontal = Button(text="Horizontal (16:9)", size_hint_y=None, height=dp(60),
+                               font_size=dp(22),
+                               background_normal='', background_color=(0.3, 0.5, 0.7, 1),
+                               color=(1, 1, 1, 1))
+        btn_horizontal.bind(on_release=lambda x: self._select_format("16:9"))
+        panel.add_widget(btn_horizontal)
+        
+        btn_vertical = Button(text="Vertikal (9:16)", size_hint_y=None, height=dp(60),
+                             font_size=dp(22),
+                             background_normal='', background_color=(0.3, 0.5, 0.7, 1),
+                             color=(1, 1, 1, 1))
+        btn_vertical.bind(on_release=lambda x: self._select_format("9:16"))
+        panel.add_widget(btn_vertical)
+        
+        # Spacer
+        panel.add_widget(Widget(size_hint_y=0.2))
+        
+        # Close button
+        close_btn = Button(text="Schließen", size_hint_y=None, height=dp(50),
+                          font_size=dp(20),
+                          background_normal='', background_color=(0.4, 0.4, 0.5, 1),
+                          color=(1, 1, 1, 1))
+        close_btn.bind(on_release=lambda x: self.close())
+        panel.add_widget(close_btn)
+        
+        self.add_widget(panel)
+    
+    def _upd(self, *a):
+        self.bg.pos = self.pos
+        self.bg.size = self.size
+    
+    def _select_format(self, aspect_ratio):
+        self.slideshow.aspect_ratio = aspect_ratio
+        self.slideshow.persist_meta()
+        self.current_label.text = f"Aktuell: {aspect_ratio}"
+        # Show feedback
+        from kivy.animation import Animation
+        from kivy.clock import Clock
+        original_color = self.current_label.color
+        self.current_label.color = (0.3, 1, 0.3, 1)  # Green feedback
+        Clock.schedule_once(lambda dt: setattr(self.current_label, 'color', original_color), 0.5)
+    
+    def close(self):
+        if self.parent:
+            self.parent.remove_widget(self)
+        if self.slideshow.current_overlay is self:
+            self.slideshow.current_overlay = None
+
 # ---- Slideshow ----
 class Slideshow(FloatLayout):
     def __init__(self, mode_manager: ModeManager, **kw):
@@ -2778,6 +2860,7 @@ class Slideshow(FloatLayout):
         self.image_brightness_overrides = meta.get("brightness", {})
         self.global_interval_override = meta.get("global_interval", None)
         self.global_brightness_override = meta.get("global_brightness", None)
+        self.aspect_ratio = meta.get("aspect_ratio", "16:9")
 
         self._toolbar_timer=None
         self._toolbar_anim=None
@@ -2846,7 +2929,8 @@ class Slideshow(FloatLayout):
             "weights": self.image_priority_weights,
             "brightness": self.image_brightness_overrides,
             "global_interval": self.global_interval_override,
-            "global_brightness": self.global_brightness_override
+            "global_brightness": self.global_brightness_override,
+            "aspect_ratio": self.aspect_ratio
         }
         save_image_meta(meta)
 
@@ -2898,6 +2982,7 @@ class Slideshow(FloatLayout):
         bar.right_action_items=[
             ["calendar",lambda x:self.open_schedule_editor()],
             ["record",lambda x:self.open_aufnahme_popup()],  # Unified: use Aufnahme for all recording including images
+            ["aspect-ratio",lambda x:self.open_format_selection()],  # Format selection button
             ["image-multiple",lambda x:self.open_gallery()],
             ["cog",lambda x:self.open_settings_root()],
             ["logout",lambda x:self.logout()],
@@ -2909,6 +2994,7 @@ class Slideshow(FloatLayout):
         bar.set_right_actions([
             ("Zeiten", self.open_schedule_editor),
             ("Aufnahme", self.open_aufnahme_popup),  # Unified: use Aufnahme for all recording including images
+            ("Format", self.open_format_selection),  # Format selection button
             ("Galerie", self.open_gallery),
             ("Einstellungen", self.open_settings_root),
             ("Logout", self.logout),
@@ -2923,6 +3009,7 @@ class Slideshow(FloatLayout):
     def open_schedule_editor(self): self.open_single(ScheduleEditor(self))
     def open_settings_root(self): self.open_single(SettingsRootPopup(self))
     def open_aufnahme_popup(self): self.open_single(AufnahmePopup(slideshow=self))
+    def open_format_selection(self): self.open_single(FormatSelectionPopup(self))
     # Note: Image selection is now integrated into the Aufnahme popup
 
     def force_reschedule(self):

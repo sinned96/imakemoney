@@ -79,6 +79,7 @@ workflow_service.lock
 recording_debug.log
 speech_recognition.log
 upload.log
+projekt.log
 transkript.txt
 transkript.json
 BilderVertex/

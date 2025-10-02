@@ -4,5 +4,6 @@
   "weights": {},
   "brightness": {},
   "global_interval": null,
-  "global_brightness": null
+  "global_brightness": null,
+  "aspect_ratio": "16:9"
 }
