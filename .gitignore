@@ -3,6 +3,12 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Virtual environment
+venv/
+env/
+ENV/
+pyvenv.cfg
+
 # Distribution / packaging
 .Python
 build/
@@ -87,3 +93,10 @@ Transkripte/
 
 # Legacy files (no longer used)
 Aufnahmen_Backup/
+
+# Test files (removed in cleanup)
+test_*.py
+
+# Demo/temp images
+*-demo.png
+spinner-positioning-*.png

@@ -2824,6 +2824,16 @@ class FormatSelectionPopup(FloatLayout):
         self.slideshow.aspect_ratio = aspect_ratio
         self.slideshow.persist_meta()
         self.current_label.text = f"Aktuell: {aspect_ratio}"
+        
+        # Dynamically resize window based on aspect ratio
+        from kivy.core.window import Window
+        if aspect_ratio == "16:9":
+            # Horizontal format: wider window
+            Window.size = (1280, 720)
+        elif aspect_ratio == "9:16":
+            # Vertical format: taller window
+            Window.size = (720, 1280)
+        
         # Reload images with new aspect ratio filter
         if self.slideshow.current_mode:
             mode = self.slideshow.current_mode
@@ -2877,6 +2887,13 @@ class Slideshow(FloatLayout):
         self.global_interval_override = meta.get("global_interval", None)
         self.global_brightness_override = meta.get("global_brightness", None)
         self.aspect_ratio = meta.get("aspect_ratio", "16:9")
+        
+        # Set initial window size based on aspect ratio
+        from kivy.core.window import Window
+        if self.aspect_ratio == "16:9":
+            Window.size = (1280, 720)
+        elif self.aspect_ratio == "9:16":
+            Window.size = (720, 1280)
 
         self._toolbar_timer=None
         self._toolbar_anim=None
@@ -3216,7 +3233,11 @@ class Slideshow(FloatLayout):
         self._bring_toolbar_to_front()
         if not self.images:
             self.img_a.source=""; self.img_b.source=""
-            self.placeholder.text=f"Keine Bilder im Modus '{self.current_mode.name}'." if self.current_mode else "Keine Bilder."
+            # More informative message about why no images are shown
+            if self.current_mode:
+                self.placeholder.text=f"Keine Bilder im Format {self.aspect_ratio} für Modus '{self.current_mode.name}'.\nBitte Format wechseln oder Bilder hinzufügen."
+            else:
+                self.placeholder.text="Keine Bilder gefunden.\nBitte Bilder hinzufügen."
             self.placeholder.opacity=1
             self.update_info(empty=True)
             return
