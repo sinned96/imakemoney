@@ -67,22 +67,53 @@ BILDER_DIR = "/home/pi/Desktop/v2_Tripple S/BilderVertex"
 ENDPOINT = "https://vertex.googleapis.com/v1/your-endpoint"
 TOKEN = "YOUR_ACCESS_TOKEN"
 
-def scale_image_to_1920x1080(image_path, preserve_aspect_ratio=True):
+def get_aspect_ratio_from_meta():
     """
-    Scale an image to 1920x1080 pixels using Pillow with LANCZOS resampling.
+    Read aspect ratio from image_meta.json
+    
+    Returns:
+        str: Aspect ratio ("16:9" or "9:16"), defaults to "16:9"
+    """
+    from pathlib import Path
+    try:
+        # Try to read from the same directory as this script
+        script_dir = Path(__file__).parent
+        meta_path = script_dir / "image_meta.json"
+        if meta_path.exists():
+            with open(meta_path, 'r', encoding='utf-8') as f:
+                meta = json.load(f)
+                aspect_ratio = meta.get("aspect_ratio", "16:9")
+                logger.info(f"Aspect ratio from image_meta.json: {aspect_ratio}")
+                return aspect_ratio
+    except Exception as e:
+        logger.warning(f"Could not read aspect ratio from image_meta.json: {e}")
+    
+    # Default to 16:9
+    return "16:9"
+
+def scale_image_to_target_size(image_path, aspect_ratio="16:9", preserve_aspect_ratio=True):
+    """
+    Scale an image to target size based on aspect ratio using Pillow with LANCZOS resampling.
     
     Args:
         image_path (str): Path to the image file
+        aspect_ratio (str): Target aspect ratio ("16:9" or "9:16")
         preserve_aspect_ratio (bool): If True, uses ImageOps.fit to preserve aspect ratio.
                                     If False, uses resize which may distort the image.
     
     Returns:
         bool: True if scaling was successful, False otherwise
     """
-    logger.info(f"Starting image scaling to 1920x1080: {image_path}")
+    # Determine target size based on aspect ratio
+    if aspect_ratio == "9:16":
+        target_size = (1080, 1920)  # Vertical format
+        logger.info(f"Starting image scaling to 1080x1920 (9:16): {image_path}")
+    else:  # Default to 16:9
+        target_size = (1920, 1080)  # Horizontal format
+        logger.info(f"Starting image scaling to 1920x1080 (16:9): {image_path}")
+    
     try:
         with Image.open(image_path) as img:
-            target_size = (1920, 1080)
             logger.info(f"Original image size: {img.size}")
             
             if preserve_aspect_ratio:
@@ -96,14 +127,22 @@ def scale_image_to_1920x1080(image_path, preserve_aspect_ratio=True):
             
             # Save the scaled image back to the same path
             scaled_img.save(image_path, "PNG")
-            logger.info(f"Image successfully scaled to 1920x1080: {image_path}")
-            print(f"Bild erfolgreich auf 1920x1080 skaliert: {image_path}")
+            logger.info(f"Image successfully scaled to {target_size}: {image_path}")
+            print(f"Bild erfolgreich auf {target_size[0]}x{target_size[1]} skaliert: {image_path}")
             return True
             
     except Exception as e:
         logger.error(f"Error scaling image {image_path}: {e}")
         print(f"Fehler beim Skalieren des Bildes {image_path}: {e}")
         return False
+
+def scale_image_to_1920x1080(image_path, preserve_aspect_ratio=True):
+    """
+    Legacy function for backward compatibility.
+    Now uses aspect ratio from image_meta.json to determine target size.
+    """
+    aspect_ratio = get_aspect_ratio_from_meta()
+    return scale_image_to_target_size(image_path, aspect_ratio, preserve_aspect_ratio)
 
 def main():
     logger.info("=== Vertex AI Image Workflow Started ===")
@@ -218,7 +257,7 @@ def main():
                     }],
                     "parameters": {
                         "sampleCount": 1,
-                        "aspectRatio": "16:9",
+                        "aspectRatio": get_aspect_ratio_from_meta(),
                         "resolution": "2k"
                     }
                 }

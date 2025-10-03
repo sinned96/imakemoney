@@ -3009,21 +3009,9 @@ class Slideshow(FloatLayout):
         """Apply layout based on current aspect ratio"""
         from kivy.core.window import Window
         
-        # Determine target dimensions based on aspect ratio and screen size
-        screen_ratio = self.screen_width / self.screen_height
-        
         if self.aspect_ratio == "16:9":
-            # Horizontal layout: toolbar at bottom
-            # Use 16:9 aspect ratio within available screen space
-            target_ratio = 16 / 9
-            if screen_ratio > target_ratio:
-                # Screen is wider than 16:9, use height as constraint
-                self.content_height = self.screen_height
-                self.content_width = self.content_height * target_ratio
-            else:
-                # Screen is narrower than 16:9, use width as constraint
-                self.content_width = self.screen_width
-                self.content_height = self.content_width / target_ratio
+            # Horizontal layout: toolbar at top (or bottom)
+            # Content uses full screen space
             
             # Recreate toolbar for horizontal layout
             if hasattr(self, 'toolbar') and self.toolbar:
@@ -3033,18 +3021,7 @@ class Slideshow(FloatLayout):
             
         elif self.aspect_ratio == "9:16":
             # Vertical layout: toolbar on right side
-            # Use 9:16 aspect ratio within available screen space
-            target_ratio = 9 / 16
-            if screen_ratio > target_ratio:
-                # Screen is wider, use height as constraint
-                self.content_height = self.screen_height
-                self.content_width = self.content_height * target_ratio
-            else:
-                # Screen is narrower, use width as constraint (minus toolbar)
-                toolbar_width = dp(110)
-                available_width = self.screen_width - toolbar_width
-                self.content_width = available_width
-                self.content_height = self.content_width / target_ratio
+            # Content uses screen minus toolbar width
             
             # Recreate toolbar for vertical layout
             if hasattr(self, 'toolbar') and self.toolbar:
@@ -3055,6 +3032,8 @@ class Slideshow(FloatLayout):
         # Update toolbar buttons
         if hasattr(self.toolbar, 'set_right_actions'):
             self._update_toolbar_buttons(self.toolbar)
+        else:
+            self._update_md_toolbar_buttons(self.toolbar)
         
         # Bring toolbar to front
         self._bring_toolbar_to_front()
@@ -3126,7 +3105,9 @@ class Slideshow(FloatLayout):
         if vertical:
             # Position toolbar on right side for vertical layout
             bar.pos_hint = {"right": 1, "top": 1}
-        # else: horizontal toolbar is positioned at top by default
+        else:
+            # Position toolbar at top for horizontal layout
+            bar.pos_hint = {"top": 1}
         self._update_toolbar_buttons(bar)
         return bar
     
