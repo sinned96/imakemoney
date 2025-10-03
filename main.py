@@ -2824,6 +2824,22 @@ class FormatSelectionPopup(FloatLayout):
         self.slideshow.aspect_ratio = aspect_ratio
         self.slideshow.persist_meta()
         self.current_label.text = f"Aktuell: {aspect_ratio}"
+        # Reload images with new aspect ratio filter
+        if self.slideshow.current_mode:
+            mode = self.slideshow.current_mode
+            if mode.name in ("Alle Bilder","Standard"):
+                self.slideshow.images = self.slideshow._scan_global()
+            elif mode.name == "Import":
+                self.slideshow.images = self.slideshow._scan_import()
+            else:
+                self.slideshow.images = self.slideshow._filter_by_aspect_ratio(mode.existing_images())
+            if mode.randomize:
+                from random import shuffle
+                shuffle(self.slideshow.images)
+            # Reset to first image and update display
+            self.slideshow.index = 0
+            self.slideshow.show_current_image(initial=True)
+            self.slideshow.update_info()
         # Show feedback
         from kivy.animation import Animation
         from kivy.clock import Clock
@@ -3058,18 +3074,73 @@ class Slideshow(FloatLayout):
         if not self.current_mode or self.current_mode.name!=target:
             self.set_mode(target, manual=False)
 
+    def _get_image_aspect_ratio(self, image_path):
+        """
+        Get aspect ratio of an image file.
+        
+        Args:
+            image_path (str): Path to the image file
+            
+        Returns:
+            str: "16:9" for horizontal/landscape, "9:16" for vertical/portrait, or None if unable to determine
+        """
+        try:
+            from PIL import Image as PILImage
+            with PILImage.open(image_path) as img:
+                width, height = img.size
+                # Determine if image is more horizontal or vertical
+                if width > height:
+                    return "16:9"  # Horizontal/landscape
+                elif height > width:
+                    return "9:16"  # Vertical/portrait
+                else:
+                    # Square images match current aspect ratio
+                    return self.aspect_ratio
+        except Exception as e:
+            debug_logger.debug(f"Could not determine aspect ratio for {image_path}: {e}")
+            # If we can't determine, include it to be safe
+            return None
+    
+    def _filter_by_aspect_ratio(self, files):
+        """
+        Filter image files by current aspect ratio setting.
+        
+        Args:
+            files (list): List of image file paths
+            
+        Returns:
+            list: Filtered list of image paths matching current aspect ratio
+        """
+        if not files:
+            return []
+        
+        filtered = []
+        for file_path in files:
+            img_ratio = self._get_image_aspect_ratio(file_path)
+            # Include image if:
+            # - We couldn't determine its ratio (img_ratio is None)
+            # - It matches the current aspect ratio
+            if img_ratio is None or img_ratio == self.aspect_ratio:
+                filtered.append(file_path)
+        
+        return filtered
+    
     def _scan_global(self):
         """Scan IMAGE_DIR for AI-generated images"""
         if IMAGE_DIR.exists():
             files=[str(p) for p in IMAGE_DIR.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS]
-            files.sort(); return files
+            files.sort()
+            # Filter by aspect ratio
+            return self._filter_by_aspect_ratio(files)
         return []
     
     def _scan_import(self):
         """Scan IMPORT_DIR for imported images"""
         if IMPORT_DIR.exists():
             files=[str(p) for p in IMPORT_DIR.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS]
-            files.sort(); return files
+            files.sort()
+            # Filter by aspect ratio
+            return self._filter_by_aspect_ratio(files)
         return []
 
     def _check_new_files(self):
@@ -3083,7 +3154,7 @@ class Slideshow(FloatLayout):
             cur=self._scan_import()
         else:
             # For Tag/Nacht and other specific modes, check their assigned images
-            cur=self.current_mode.existing_images()
+            cur=self._filter_by_aspect_ratio(self.current_mode.existing_images())
             
         if cur!=self.images:
             self.images=cur
@@ -3101,7 +3172,7 @@ class Slideshow(FloatLayout):
         elif mode.name == "Import":
             self.images=self._scan_import()
         else:
-            self.images=mode.existing_images()
+            self.images=self._filter_by_aspect_ratio(mode.existing_images())
         if mode.randomize: shuffle(self.images)
         self.index=0
         self.show_current_image(initial=True)
