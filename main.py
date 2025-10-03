@@ -599,18 +599,46 @@ class RegisterScreen(FloatLayout):
 
 # ---- CustomAppBar ----
 class CustomAppBar(BoxLayout):
-    def __init__(self, title="App", **kwargs):
-        super().__init__(orientation="horizontal", size_hint=(1,None), height=dp(60), **kwargs)
+    def __init__(self, title="App", vertical=False, **kwargs):
+        # Determine orientation and sizing based on vertical parameter
+        if vertical:
+            orientation = "vertical"
+            size_hint = (None, 1)
+            width = dp(110)
+            height = None
+        else:
+            orientation = "horizontal"
+            size_hint = (1, None)
+            width = None
+            height = dp(60)
+        
+        super().__init__(orientation=orientation, size_hint=size_hint, **kwargs)
+        
+        if width is not None:
+            self.width = width
+        if height is not None:
+            self.height = height
+            
+        self.vertical = vertical
+        
         with self.canvas.before:
             Color(0.12,0.12,0.14,1)
             self.bg=Rectangle(pos=self.pos,size=self.size)
         self.bind(pos=self._upd_bg,size=self._upd_bg)
         self._title_label=Label(text=("" if HIDE_TOOLBAR_TITLE else title),
-                                color=(1,1,1,1), size_hint_x=1,
-                                halign='left', valign='middle')
+                                color=(1,1,1,1), 
+                                size_hint_x=1 if not vertical else None,
+                                size_hint_y=None if not vertical else 0.15,
+                                halign='center' if vertical else 'left', 
+                                valign='middle')
         self._title_label.bind(size=lambda inst,*a:setattr(inst,"text_size",inst.size))
         self.add_widget(self._title_label)
-        self._buttons_box=BoxLayout(size_hint=(None,1)); self._buttons_box.width=0
+        
+        if vertical:
+            self._buttons_box=BoxLayout(orientation="vertical", size_hint=(1, None))
+            self._buttons_box.height=0
+        else:
+            self._buttons_box=BoxLayout(size_hint=(None,1)); self._buttons_box.width=0
         self.add_widget(self._buttons_box)
         self.opacity=1
         self.disabled=False
@@ -622,14 +650,28 @@ class CustomAppBar(BoxLayout):
     @title.setter
     def title(self,v): self._title_label.text = "" if HIDE_TOOLBAR_TITLE else v
     def set_right_actions(self, items):
-        self._buttons_box.clear_widgets(); total_w=0
+        self._buttons_box.clear_widgets()
+        total_size = 0
         for text,cb in items:
-            btn=Button(text=text,size_hint=(None,1),width=dp(110),
-                       background_normal='',background_color=(0.20,0.22,0.26,1),
-                       color=(1,1,1,1),font_size=dp(16))
-            btn.bind(on_release=lambda inst,c=cb:c())
-            self._buttons_box.add_widget(btn); total_w+=btn.width
-        self._buttons_box.width=total_w
+            if self.vertical:
+                btn=Button(text=text,size_hint=(1,None),height=dp(60),
+                           background_normal='',background_color=(0.20,0.22,0.26,1),
+                           color=(1,1,1,1),font_size=dp(14))
+                btn.bind(on_release=lambda inst,c=cb:c())
+                self._buttons_box.add_widget(btn)
+                total_size += btn.height
+            else:
+                btn=Button(text=text,size_hint=(None,1),width=dp(110),
+                           background_normal='',background_color=(0.20,0.22,0.26,1),
+                           color=(1,1,1,1),font_size=dp(16))
+                btn.bind(on_release=lambda inst,c=cb:c())
+                self._buttons_box.add_widget(btn)
+                total_size += btn.width
+        
+        if self.vertical:
+            self._buttons_box.height = total_size
+        else:
+            self._buttons_box.width = total_size
     def fade_in(self,duration=TOOLBAR_FADE_DURATION):
         self.disabled=False
         if self._fade_anim: self._fade_anim.stop(self)
@@ -2825,14 +2867,8 @@ class FormatSelectionPopup(FloatLayout):
         self.slideshow.persist_meta()
         self.current_label.text = f"Aktuell: {aspect_ratio}"
         
-        # Dynamically resize window based on aspect ratio
-        from kivy.core.window import Window
-        if aspect_ratio == "16:9":
-            # Horizontal format: wider window
-            Window.size = (1280, 720)
-        elif aspect_ratio == "9:16":
-            # Vertical format: taller window
-            Window.size = (720, 1280)
+        # Apply new layout based on aspect ratio
+        self.slideshow._apply_layout()
         
         # Reload images with new aspect ratio filter
         if self.slideshow.current_mode:
@@ -2888,12 +2924,17 @@ class Slideshow(FloatLayout):
         self.global_brightness_override = meta.get("global_brightness", None)
         self.aspect_ratio = meta.get("aspect_ratio", "16:9")
         
-        # Set initial window size based on aspect ratio
+        # Detect screen size and enable fullscreen
         from kivy.core.window import Window
-        if self.aspect_ratio == "16:9":
-            Window.size = (1280, 720)
-        elif self.aspect_ratio == "9:16":
-            Window.size = (720, 1280)
+        self.screen_width = Window.width
+        self.screen_height = Window.height
+        
+        # Enable fullscreen
+        Window.fullscreen = 'auto'
+        
+        # After enabling fullscreen, get actual screen dimensions
+        # Use a callback to get the correct screen dimensions after fullscreen is enabled
+        Clock.schedule_once(lambda dt: self._setup_window_size(), 0.1)
 
         self._toolbar_timer=None
         self._toolbar_anim=None
@@ -2954,6 +2995,70 @@ class Slideshow(FloatLayout):
         self.scheduler_event=Clock.schedule_interval(lambda dt:self.auto_scheduler(), SCHEDULER_INTERVAL_SEC)
         self._show_toolbar_immediate()
 
+    def _setup_window_size(self):
+        """Setup window size after fullscreen is enabled"""
+        from kivy.core.window import Window
+        # Get actual screen dimensions
+        self.screen_width = Window.width
+        self.screen_height = Window.height
+        
+        # Apply layout based on aspect ratio
+        self._apply_layout()
+
+    def _apply_layout(self):
+        """Apply layout based on current aspect ratio"""
+        from kivy.core.window import Window
+        
+        # Determine target dimensions based on aspect ratio and screen size
+        screen_ratio = self.screen_width / self.screen_height
+        
+        if self.aspect_ratio == "16:9":
+            # Horizontal layout: toolbar at bottom
+            # Use 16:9 aspect ratio within available screen space
+            target_ratio = 16 / 9
+            if screen_ratio > target_ratio:
+                # Screen is wider than 16:9, use height as constraint
+                self.content_height = self.screen_height
+                self.content_width = self.content_height * target_ratio
+            else:
+                # Screen is narrower than 16:9, use width as constraint
+                self.content_width = self.screen_width
+                self.content_height = self.content_width / target_ratio
+            
+            # Recreate toolbar for horizontal layout
+            if hasattr(self, 'toolbar') and self.toolbar:
+                self.remove_widget(self.toolbar)
+            self.toolbar = self._create_toolbar(vertical=False)
+            self.add_widget(self.toolbar)
+            
+        elif self.aspect_ratio == "9:16":
+            # Vertical layout: toolbar on right side
+            # Use 9:16 aspect ratio within available screen space
+            target_ratio = 9 / 16
+            if screen_ratio > target_ratio:
+                # Screen is wider, use height as constraint
+                self.content_height = self.screen_height
+                self.content_width = self.content_height * target_ratio
+            else:
+                # Screen is narrower, use width as constraint (minus toolbar)
+                toolbar_width = dp(110)
+                available_width = self.screen_width - toolbar_width
+                self.content_width = available_width
+                self.content_height = self.content_width / target_ratio
+            
+            # Recreate toolbar for vertical layout
+            if hasattr(self, 'toolbar') and self.toolbar:
+                self.remove_widget(self.toolbar)
+            self.toolbar = self._create_toolbar(vertical=True)
+            self.add_widget(self.toolbar)
+        
+        # Update toolbar buttons
+        if hasattr(self.toolbar, 'set_right_actions'):
+            self._update_toolbar_buttons(self.toolbar)
+        
+        # Bring toolbar to front
+        self._bring_toolbar_to_front()
+
     # Persistenz
     def persist_meta(self):
         meta = {
@@ -2990,23 +3095,38 @@ class Slideshow(FloatLayout):
         img_widget.size=(new_w,new_h)
         img_widget.pos=((win_w-new_w)/2,(win_h-new_h)/2)
 
-    def _create_toolbar(self):
+    def _create_toolbar(self, vertical=False):
         if AppBarClass:
-            bar=AppBarClass(title=("" if HIDE_TOOLBAR_TITLE else "Slideshow"),
-                            elevation=8,pos_hint={"top":1})
-            self._update_md_toolbar_buttons(bar)
-            def md_fade_in(self_,duration=TOOLBAR_FADE_DURATION):
-                self_.disabled=False
-                Animation.cancel_all(self_,'opacity')
-                Animation(opacity=1,d=duration,t='out_quad').start(self_)
-            def md_fade_out(self_,duration=TOOLBAR_FADE_DURATION):
-                Animation.cancel_all(self_,'opacity')
-                def _dis(*_): self_.disabled=True
-                a=Animation(opacity=0,d=duration,t='in_quad'); a.bind(on_complete=_dis); a.start(self_)
-            bar.fade_in=types.MethodType(md_fade_in,bar)
-            bar.fade_out=types.MethodType(md_fade_out,bar)
-            return bar
-        bar=CustomAppBar(title=("Slideshow" if not HIDE_TOOLBAR_TITLE else ""))
+            # KivyMD toolbar doesn't support vertical orientation easily
+            # For vertical mode, fall back to CustomAppBar
+            if vertical:
+                bar=CustomAppBar(title=("Slideshow" if not HIDE_TOOLBAR_TITLE else ""), vertical=True)
+                # Position toolbar on right side
+                bar.pos_hint = {"right": 1, "top": 1}
+                self._update_toolbar_buttons(bar)
+                return bar
+            else:
+                bar=AppBarClass(title=("" if HIDE_TOOLBAR_TITLE else "Slideshow"),
+                                elevation=8,pos_hint={"top":1})
+                self._update_md_toolbar_buttons(bar)
+                def md_fade_in(self_,duration=TOOLBAR_FADE_DURATION):
+                    self_.disabled=False
+                    Animation.cancel_all(self_,'opacity')
+                    Animation(opacity=1,d=duration,t='out_quad').start(self_)
+                def md_fade_out(self_,duration=TOOLBAR_FADE_DURATION):
+                    Animation.cancel_all(self_,'opacity')
+                    def _dis(*_): self_.disabled=True
+                    a=Animation(opacity=0,d=duration,t='in_quad'); a.bind(on_complete=_dis); a.start(self_)
+                bar.fade_in=types.MethodType(md_fade_in,bar)
+                bar.fade_out=types.MethodType(md_fade_out,bar)
+                return bar
+        
+        # CustomAppBar supports both horizontal and vertical
+        bar=CustomAppBar(title=("Slideshow" if not HIDE_TOOLBAR_TITLE else ""), vertical=vertical)
+        if vertical:
+            # Position toolbar on right side for vertical layout
+            bar.pos_hint = {"right": 1, "top": 1}
+        # else: horizontal toolbar is positioned at top by default
         self._update_toolbar_buttons(bar)
         return bar
     
