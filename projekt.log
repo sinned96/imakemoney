@@ -143,3 +143,5 @@ OSError: libmtdev.so.1: cannot open shared object file: No such file or director
 [2025-09-24 14:31:19,656] INFO [kivy]: Window: Provider: x11(['window_sdl2'] ignored)
 [2025-10-02 13:47:53,634] INFO [PythonServer]: Using JSON transcript (method: google_speech_api, real: True)
 [2025-10-02 13:47:53,637] INFO [PythonServer]: Using JSON transcript (method: google_speech_api, real: True)
+[2025-10-03 11:19:19,376] INFO [PythonServer]: Using JSON transcript (method: google_speech_api, real: True)
+[2025-10-03 11:19:19,379] INFO [PythonServer]: Using JSON transcript (method: google_speech_api, real: True)
