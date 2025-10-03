@@ -2963,6 +2963,7 @@ class Slideshow(FloatLayout):
         self.img_b.bind(texture=lambda *_: (self._resize_image(self.img_b), self._update_debug_overlay()))
         self.bind(size=lambda *_: (self._resize_image(self.img_a), self._resize_image(self.img_b)))
 
+        # Create initial toolbar (will be recreated with correct orientation in _apply_layout)
         self.toolbar=self._create_toolbar()
         self.add_widget(self.toolbar)
 
@@ -3029,13 +3030,7 @@ class Slideshow(FloatLayout):
             self.toolbar = self._create_toolbar(vertical=True)
             self.add_widget(self.toolbar)
         
-        # Update toolbar buttons
-        if hasattr(self.toolbar, 'set_right_actions'):
-            self._update_toolbar_buttons(self.toolbar)
-        else:
-            self._update_md_toolbar_buttons(self.toolbar)
-        
-        # Bring toolbar to front
+        # Bring toolbar to front (buttons are already set in _create_toolbar)
         self._bring_toolbar_to_front()
 
     # Persistenz
