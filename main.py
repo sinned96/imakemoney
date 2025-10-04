@@ -609,8 +609,8 @@ class VerticalButton(Button):
         self.canvas.before.clear()
         with self.canvas.before:
             PushMatrix()
-            # Rotate 90 degrees clockwise around the button's center
-            Rotate(angle=-90, origin=self.center)
+            # Rotate 180 degrees to make text readable from bottom to top
+            Rotate(angle=180, origin=self.center)
         
         self.canvas.after.clear()
         with self.canvas.after:
@@ -2980,8 +2980,8 @@ class Slideshow(FloatLayout):
         self.bind(pos=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)),
                   size=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)))
 
-        self.img_a = Image(opacity=1, color=(1,1,1,1))
-        self.img_b = Image(opacity=0, color=(1,1,1,1))
+        self.img_a = Image(opacity=1, color=(1,1,1,1), allow_stretch=True, keep_ratio=False)
+        self.img_b = Image(opacity=0, color=(1,1,1,1), allow_stretch=True, keep_ratio=False)
         self.active_img = self.img_a
         self.back_img = self.img_b
         self.add_widget(self.img_a)
@@ -3091,17 +3091,33 @@ class Slideshow(FloatLayout):
     # Upscaling / Resize
     def _resize_image(self,img_widget):
         if not img_widget.texture: return
-        win_w,win_h=self.width,self.height
+        
+        # Calculate available space, accounting for toolbar
+        win_w = self.width
+        win_h = self.height
+        
+        # In 9:16 mode, toolbar is on the right side, so subtract its width
+        if self.aspect_ratio == "9:16" and hasattr(self, 'toolbar') and self.toolbar:
+            toolbar_width = self.toolbar.width if hasattr(self.toolbar, 'width') else dp(110)
+            win_w = self.width - toolbar_width
+        # In 16:9 mode, toolbar is at the bottom, so subtract its height
+        elif self.aspect_ratio == "16:9" and hasattr(self, 'toolbar') and self.toolbar:
+            toolbar_height = self.toolbar.height if hasattr(self.toolbar, 'height') else dp(60)
+            win_h = self.height - toolbar_height
+        
         tex_w,tex_h=img_widget.texture.size
         if tex_w==0 or tex_h==0: return
+        
         if IMAGE_SCALE_MODE=="stretch":
-            # For stretch mode, fill entire window
+            # For stretch mode, fill entire available window space
             img_widget.size=(win_w,win_h); img_widget.pos=(0,0); return
-        # For other modes, calculate manual scaling
+        
+        # For other modes, calculate manual scaling to fit in available space
         ratio_w=win_w/tex_w; ratio_h=win_h/tex_h
         scale=max(ratio_w,ratio_h) if IMAGE_SCALE_MODE=="cover" else min(ratio_w,ratio_h)
         new_w=tex_w*scale; new_h=tex_h*scale
         img_widget.size=(new_w,new_h)
+        # Center the image in the available space
         img_widget.pos=((win_w-new_w)/2,(win_h-new_h)/2)
 
     def _create_toolbar(self, vertical=False):
