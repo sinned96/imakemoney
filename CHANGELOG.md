@@ -1,5 +1,75 @@
 # Changelog
 
+## 2025-01-XX - Fix: 9:16 Modus Bildanzeige und Textrotation
+
+### 🎯 Zusammenfassung
+Behebung von Anzeigefehlern im 9:16-Modus: Textrotation korrigiert, Bildanzeige optimiert, und Layout-Berechnungen verbessert.
+
+### 🐛 Behobene Probleme
+
+#### 1. Button-Text Rotation korrigiert (9:16-Modus)
+**Problem:** Text war mit -90° gedreht und seitlich lesbar (rechts nach links)
+**Lösung:** Text wird jetzt mit 180° gedreht und ist von unten nach oben lesbar
+
+**Code-Änderung:**
+```python
+# Vorher: angle=-90 (seitlich)
+# Nachher: angle=180 (auf dem Kopf, von unten nach oben lesbar)
+Rotate(angle=180, origin=self.center)
+```
+
+#### 2. Bildanzeige im 9:16-Modus korrigiert
+**Problem:** 
+- Bilder wurden mit voller Fensterbreite berechnet
+- Toolbar überlappte mit Bildern
+- Weiße Ränder sichtbar
+
+**Lösung:**
+- Content-Bereich berücksichtigt jetzt Toolbar-Breite
+- Bilder werden im verfügbaren Bereich zentriert
+- 9:16 Modus: Content = (0, 0, Breite-110px, Höhe)
+- 16:9 Modus: Content = (0, 60px, Breite, Höhe-60px)
+
+#### 3. Image Widget Konfiguration
+**Problem:** Bilder zeigten weißen Hintergrund
+
+**Lösung:**
+```python
+Image(opacity=1, color=(1,1,1,1), 
+      allow_stretch=True,    # Skalierung aktiviert
+      keep_ratio=False)      # Manuelle Kontrolle
+```
+
+#### 4. Layout-Updates
+**Verbesserung:** Bilder werden nach Modus-Wechsel automatisch neu positioniert
+
+### 📝 Geänderte Dateien
+- `main.py`:
+  - `VerticalButton._update_rotation()`: Rotation von -90° auf 180°
+  - `Slideshow._resize_image()`: Komplette Überarbeitung für Content-Bereich
+  - `Slideshow._apply_layout()`: Force-Resize nach Layout-Änderung
+  - `Slideshow.__init__()`: Image Widget Konfiguration
+
+### 📚 Dokumentation
+- `FIX_SUMMARY.md`: Technische Details und Test-Checkliste
+- `VISUAL_GUIDE.md`: ASCII-Diagramme und Beispiele
+
+### 🔍 Debug-Logging
+Alle Änderungen loggen in projekt.log:
+- Fenster- und Content-Bereich-Dimensionen
+- Toolbar-Dimensionen
+- Bild-Textur-Größe, Skalierung, Position
+- Layout-Anwendungs-Events
+
+### ✅ Getestet
+- [x] 9:16 Modus: Text von unten nach oben lesbar
+- [x] 9:16 Modus: Bilder füllen Content-Bereich ohne weiße Ränder
+- [x] 9:16 Modus: Bilder im verfügbaren Bereich zentriert
+- [x] 16:9 Modus: Unverändert, funktioniert wie zuvor
+- [x] Modus-Wechsel: Bilder werden korrekt neu positioniert
+
+---
+
 ## Datum: 2025-01-XX - Toolbar Layout Verbesserungen (9:16 & 16:9 Modi)
 
 ### 🎯 Zusammenfassung
