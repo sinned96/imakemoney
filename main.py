@@ -598,6 +598,24 @@ class RegisterScreen(FloatLayout):
         Clock.schedule_once(lambda dt:self.on_done(),0.8)
 
 # ---- CustomAppBar ----
+class VerticalButton(Button):
+    """Button with vertically rotated text for 9:16 mode toolbar"""
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.bind(pos=self._update_rotation, size=self._update_rotation)
+        
+    def _update_rotation(self, *args):
+        # Clear and redraw canvas with rotation
+        self.canvas.before.clear()
+        with self.canvas.before:
+            PushMatrix()
+            # Rotate 90 degrees clockwise around the button's center
+            Rotate(angle=-90, origin=self.center)
+        
+        self.canvas.after.clear()
+        with self.canvas.after:
+            PopMatrix()
+
 class CustomAppBar(BoxLayout):
     def __init__(self, title="App", vertical=False, **kwargs):
         # Determine orientation and sizing based on vertical parameter
@@ -654,9 +672,10 @@ class CustomAppBar(BoxLayout):
         total_size = 0
         for text,cb in items:
             if self.vertical:
-                btn=Button(text=text,size_hint=(1,None),height=dp(60),
-                           background_normal='',background_color=(0.20,0.22,0.26,1),
-                           color=(1,1,1,1),font_size=dp(14))
+                # Use VerticalButton for 9:16 mode with rotated text
+                btn=VerticalButton(text=text,size_hint=(1,None),height=dp(60),
+                                   background_normal='',background_color=(0.20,0.22,0.26,1),
+                                   color=(1,1,1,1),font_size=dp(14))
                 btn.bind(on_release=lambda inst,c=cb:c())
                 self._buttons_box.add_widget(btn)
                 total_size += btn.height
@@ -2863,9 +2882,18 @@ class FormatSelectionPopup(FloatLayout):
         self.bg.size = self.size
     
     def _select_format(self, aspect_ratio):
+        from kivy.core.window import Window
+        
         self.slideshow.aspect_ratio = aspect_ratio
         self.slideshow.persist_meta()
         self.current_label.text = f"Aktuell: {aspect_ratio}"
+        
+        # Adjust window size when not in fullscreen mode
+        if not Window.fullscreen:
+            if aspect_ratio == "16:9":
+                Window.size = (1280, 720)  # Horizontal
+            elif aspect_ratio == "9:16":
+                Window.size = (720, 1280)  # Vertical
         
         # Apply new layout based on aspect ratio
         self.slideshow._apply_layout()
@@ -3003,6 +3031,13 @@ class Slideshow(FloatLayout):
         self.screen_width = Window.width
         self.screen_height = Window.height
         
+        # Set initial window size based on aspect ratio when not in fullscreen
+        if not Window.fullscreen:
+            if self.aspect_ratio == "16:9":
+                Window.size = (1280, 720)
+            elif self.aspect_ratio == "9:16":
+                Window.size = (720, 1280)
+        
         # Apply layout based on aspect ratio
         self._apply_layout()
 
@@ -3080,8 +3115,9 @@ class Slideshow(FloatLayout):
                 self._update_toolbar_buttons(bar)
                 return bar
             else:
+                # Position toolbar at bottom for 16:9 mode
                 bar=AppBarClass(title=("" if HIDE_TOOLBAR_TITLE else "Slideshow"),
-                                elevation=8,pos_hint={"top":1})
+                                elevation=8,pos_hint={"bottom":1})
                 self._update_md_toolbar_buttons(bar)
                 def md_fade_in(self_,duration=TOOLBAR_FADE_DURATION):
                     self_.disabled=False
@@ -3098,11 +3134,11 @@ class Slideshow(FloatLayout):
         # CustomAppBar supports both horizontal and vertical
         bar=CustomAppBar(title=("Slideshow" if not HIDE_TOOLBAR_TITLE else ""), vertical=vertical)
         if vertical:
-            # Position toolbar on right side for vertical layout
+            # Position toolbar on right side for vertical layout (9:16 mode)
             bar.pos_hint = {"right": 1, "top": 1}
         else:
-            # Position toolbar at top for horizontal layout
-            bar.pos_hint = {"top": 1}
+            # Position toolbar at bottom for horizontal layout (16:9 mode)
+            bar.pos_hint = {"bottom": 1}
         self._update_toolbar_buttons(bar)
         return bar
     
