@@ -1,6 +1,93 @@
-# Changelog - Repository Cleanup & Format Switching Fix
+# Changelog
 
-## Datum: 2024-10-03
+## Datum: 2025-01-XX - Toolbar Layout Verbesserungen (9:16 & 16:9 Modi)
+
+### 🎯 Zusammenfassung
+Verbesserung der Toolbar-Darstellung für 9:16 und 16:9 Modi mit vertikaler Textrotation und optimierter Positionierung.
+
+### ✅ Neue Features
+
+#### 1. Vertikale Textrotation für 9:16-Modus Toolbar
+**Feature:** Toolbar-Buttons im 9:16-Modus zeigen jetzt vertikal gedrehten Text.
+
+**Implementierung:**
+- Neue `VerticalButton` Klasse mit -90° Textrotation
+- Text wird von unten nach oben/oben nach unten gedreht angezeigt
+- Toolbar bleibt auf der rechten Seite positioniert
+- Verbesserte visuelle Darstellung im Hochformat
+
+**Geänderte Dateien:**
+- `main.py`:
+  - Neue `VerticalButton` Klasse hinzugefügt
+  - `CustomAppBar.set_right_actions()`: Verwendet VerticalButton im vertikalen Modus
+
+**Code-Änderungen:**
+```python
+class VerticalButton(Button):
+    """Button mit vertikal gedrehtem Text für 9:16-Modus Toolbar"""
+    def _update_rotation(self, *args):
+        with self.canvas.before:
+            PushMatrix()
+            Rotate(angle=-90, origin=self.center)  # 90° im Uhrzeigersinn
+        with self.canvas.after:
+            PopMatrix()
+```
+
+#### 2. Toolbar-Positionierung am unteren Rand für 16:9-Modus
+**Feature:** Im 16:9-Modus wird die Toolbar jetzt am unteren Bildschirmrand angezeigt.
+
+**Implementierung:**
+- Toolbar-Position geändert von `{"top": 1}` zu `{"bottom": 1}`
+- Gilt für beide Toolbar-Typen (KivyMD AppBar und CustomAppBar)
+- Bessere Zugänglichkeit im Querformat
+
+**Geänderte Dateien:**
+- `main.py`:
+  - `_create_toolbar()`: Toolbar-Positionierung aktualisiert
+
+**Code-Änderungen:**
+```python
+# In _create_toolbar():
+if vertical:
+    # 9:16: Toolbar rechts
+    bar.pos_hint = {"right": 1, "top": 1}
+else:
+    # 16:9: Toolbar unten
+    bar.pos_hint = {"bottom": 1}
+```
+
+#### 3. Verbesserte Fenstergrößen-Anpassung
+**Feature:** Fenstergrößen-Anpassung jetzt auch beim initialen Start und Format-Wechsel (außerhalb Fullscreen-Modus).
+
+**Implementierung:**
+- Window-Resize in `_select_format()` hinzugefügt
+- Window-Resize in `_setup_window_size()` hinzugefügt
+- Prüfung auf Fullscreen-Modus vor Resize
+- 16:9 → 1280x720, 9:16 → 720x1280
+
+**Geänderte Dateien:**
+- `main.py`:
+  - `FormatSelectionPopup._select_format()`: Window-Resize-Logik
+  - `Slideshow._setup_window_size()`: Initiale Window-Größe
+
+### ✨ Vorteile
+
+1. **Bessere UX im 9:16-Modus**: Vertikal gedrehter Text ist leichter lesbar auf vertikaler Toolbar
+2. **Optimierte Bedienung im 16:9-Modus**: Toolbar am unteren Rand ist ergonomischer
+3. **Nahtlose Format-Umschaltung**: Dynamische Anpassung ohne Neustart
+4. **Volle Bilddarstellung**: Bilder werden korrekt im jeweiligen Format angezeigt (9:16 oder 16:9)
+
+### 📋 Technische Details
+
+**Bestätigte Funktionalität:**
+- ✓ Bilder werden bereits korrekt skaliert (1920x1080 für 16:9, 1080x1920 für 9:16)
+- ✓ `vertex_ai_image_workflow.py` verwendet dynamische Aspect-Ratio aus `image_meta.json`
+- ✓ Keine Cropping-Probleme bei Bildgenerierung
+- ✓ Layout passt sich sofort beim Format-Wechsel an
+
+---
+
+## Datum: 2024-10-03 - Repository Cleanup & Format Switching Fix
 
 ### 🎯 Zusammenfassung
 Behebung von Problemen mit der dynamischen Formatumschaltung und umfassende Repository-Aufräumung.
