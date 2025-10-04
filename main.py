@@ -3045,6 +3045,8 @@ class Slideshow(FloatLayout):
         """Apply layout based on current aspect ratio"""
         from kivy.core.window import Window
         
+        debug_logger.info(f"Applying layout for aspect ratio: {self.aspect_ratio}, window size: {Window.width}x{Window.height}")
+        
         if self.aspect_ratio == "16:9":
             # Horizontal layout: toolbar at top (or bottom)
             # Content uses full screen space
@@ -3054,6 +3056,7 @@ class Slideshow(FloatLayout):
                 self.remove_widget(self.toolbar)
             self.toolbar = self._create_toolbar(vertical=False)
             self.add_widget(self.toolbar)
+            debug_logger.info("Created horizontal toolbar for 16:9 mode")
             
         elif self.aspect_ratio == "9:16":
             # Vertical layout: toolbar on right side
@@ -3064,9 +3067,16 @@ class Slideshow(FloatLayout):
                 self.remove_widget(self.toolbar)
             self.toolbar = self._create_toolbar(vertical=True)
             self.add_widget(self.toolbar)
+            debug_logger.info("Created vertical toolbar for 9:16 mode")
         
         # Bring toolbar to front (buttons are already set in _create_toolbar)
         self._bring_toolbar_to_front()
+        
+        # Force resize of current images
+        if hasattr(self, 'img_a') and self.img_a:
+            self._resize_image(self.img_a)
+        if hasattr(self, 'img_b') and self.img_b:
+            self._resize_image(self.img_b)
 
     # Persistenz
     def persist_meta(self):
@@ -3102,12 +3112,14 @@ class Slideshow(FloatLayout):
         if self.aspect_ratio == "9:16" and hasattr(self, 'toolbar') and self.toolbar:
             toolbar_width = self.toolbar.width if hasattr(self.toolbar, 'width') else dp(110)
             content_w = self.width - toolbar_width
+            debug_logger.debug(f"9:16 mode: window={self.width}x{self.height}, toolbar_width={toolbar_width}, content={content_w}x{content_h}")
             # Content starts at x=0, toolbar is on the right
         # In 16:9 mode, toolbar is at the bottom, so subtract its height
         elif self.aspect_ratio == "16:9" and hasattr(self, 'toolbar') and self.toolbar:
             toolbar_height = self.toolbar.height if hasattr(self.toolbar, 'height') else dp(60)
             content_h = self.height - toolbar_height
             content_y = toolbar_height
+            debug_logger.debug(f"16:9 mode: window={self.width}x{self.height}, toolbar_height={toolbar_height}, content={content_w}x{content_h}")
             # Content starts above the toolbar
         
         tex_w,tex_h=img_widget.texture.size
@@ -3117,6 +3129,7 @@ class Slideshow(FloatLayout):
             # For stretch mode, fill entire available content space
             img_widget.size=(content_w,content_h)
             img_widget.pos=(content_x,content_y)
+            debug_logger.debug(f"Stretch mode: img size={img_widget.size}, pos={img_widget.pos}")
             return
         
         # For other modes, calculate manual scaling to fit in available space
@@ -3126,6 +3139,7 @@ class Slideshow(FloatLayout):
         img_widget.size=(new_w,new_h)
         # Center the image in the available content space
         img_widget.pos=(content_x + (content_w-new_w)/2, content_y + (content_h-new_h)/2)
+        debug_logger.debug(f"{IMAGE_SCALE_MODE} mode: texture={tex_w}x{tex_h}, scale={scale:.2f}, img size={new_w:.0f}x{new_h:.0f}, pos=({img_widget.pos[0]:.0f},{img_widget.pos[1]:.0f})")
 
     def _create_toolbar(self, vertical=False):
         if AppBarClass:
