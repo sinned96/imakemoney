@@ -3093,32 +3093,39 @@ class Slideshow(FloatLayout):
         if not img_widget.texture: return
         
         # Calculate available space, accounting for toolbar
-        win_w = self.width
-        win_h = self.height
+        content_x = 0  # Starting x position for content
+        content_y = 0  # Starting y position for content
+        content_w = self.width
+        content_h = self.height
         
         # In 9:16 mode, toolbar is on the right side, so subtract its width
         if self.aspect_ratio == "9:16" and hasattr(self, 'toolbar') and self.toolbar:
             toolbar_width = self.toolbar.width if hasattr(self.toolbar, 'width') else dp(110)
-            win_w = self.width - toolbar_width
+            content_w = self.width - toolbar_width
+            # Content starts at x=0, toolbar is on the right
         # In 16:9 mode, toolbar is at the bottom, so subtract its height
         elif self.aspect_ratio == "16:9" and hasattr(self, 'toolbar') and self.toolbar:
             toolbar_height = self.toolbar.height if hasattr(self.toolbar, 'height') else dp(60)
-            win_h = self.height - toolbar_height
+            content_h = self.height - toolbar_height
+            content_y = toolbar_height
+            # Content starts above the toolbar
         
         tex_w,tex_h=img_widget.texture.size
         if tex_w==0 or tex_h==0: return
         
         if IMAGE_SCALE_MODE=="stretch":
-            # For stretch mode, fill entire available window space
-            img_widget.size=(win_w,win_h); img_widget.pos=(0,0); return
+            # For stretch mode, fill entire available content space
+            img_widget.size=(content_w,content_h)
+            img_widget.pos=(content_x,content_y)
+            return
         
         # For other modes, calculate manual scaling to fit in available space
-        ratio_w=win_w/tex_w; ratio_h=win_h/tex_h
+        ratio_w=content_w/tex_w; ratio_h=content_h/tex_h
         scale=max(ratio_w,ratio_h) if IMAGE_SCALE_MODE=="cover" else min(ratio_w,ratio_h)
         new_w=tex_w*scale; new_h=tex_h*scale
         img_widget.size=(new_w,new_h)
-        # Center the image in the available space
-        img_widget.pos=((win_w-new_w)/2,(win_h-new_h)/2)
+        # Center the image in the available content space
+        img_widget.pos=(content_x + (content_w-new_w)/2, content_y + (content_h-new_h)/2)
 
     def _create_toolbar(self, vertical=False):
         if AppBarClass:
