@@ -931,11 +931,20 @@ class ImageLightboxPopup(FloatLayout):
             texture = CoreImage(image_path, nocache=True).texture
             
             # Full-size image centered on screen
-            self.img=Image(texture=texture,
-                          size_hint=(None,None),
-                          pos_hint={'center_x':0.5,'center_y':0.5},
-                          allow_stretch=True,
-                          keep_ratio=True)
+            # Use fit_mode='cover' for Kivy 2.3+, fallback to keep_ratio/allow_stretch for older versions
+            import kivy
+            kivy_version = tuple(map(int, kivy.__version__.split('.')[:2]))
+            if kivy_version >= (2, 3):
+                self.img=Image(texture=texture,
+                              size_hint=(None,None),
+                              pos_hint={'center_x':0.5,'center_y':0.5},
+                              fit_mode='cover')
+            else:
+                self.img=Image(texture=texture,
+                              size_hint=(None,None),
+                              pos_hint={'center_x':0.5,'center_y':0.5},
+                              allow_stretch=True,
+                              keep_ratio=True)
             
             # Bind to window size to scale image appropriately
             from kivy.core.window import Window
@@ -3048,8 +3057,18 @@ class Slideshow(FloatLayout):
         self.bind(pos=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)),
                   size=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)))
 
-        self.img_a = Image(opacity=1, color=(1,1,1,1), allow_stretch=True, keep_ratio=True)
-        self.img_b = Image(opacity=0, color=(1,1,1,1), allow_stretch=True, keep_ratio=True)
+        # Create image widgets with proper fit mode for Kivy 2.3+
+        # Use fit_mode='cover' for newer Kivy versions, fallback to keep_ratio/allow_stretch for older versions
+        import kivy
+        kivy_version = tuple(map(int, kivy.__version__.split('.')[:2]))
+        if kivy_version >= (2, 3):
+            # Kivy 2.3+: use fit_mode='cover' (replaces deprecated keep_ratio/allow_stretch)
+            self.img_a = Image(opacity=1, color=(1,1,1,1), fit_mode='cover')
+            self.img_b = Image(opacity=0, color=(1,1,1,1), fit_mode='cover')
+        else:
+            # Older Kivy: use deprecated but functional keep_ratio/allow_stretch
+            self.img_a = Image(opacity=1, color=(1,1,1,1), allow_stretch=True, keep_ratio=True)
+            self.img_b = Image(opacity=0, color=(1,1,1,1), allow_stretch=True, keep_ratio=True)
         self.active_img = self.img_a
         self.back_img = self.img_b
         self.add_widget(self.img_a)

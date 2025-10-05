@@ -9,6 +9,7 @@ import threading
 import select
 import traceback  # Added for better error reporting
 import logging
+import json  # Required for reading image_meta.json
 
 def setup_projekt_logging():
     """Setup unified logging for projekt.log and console output"""
@@ -33,6 +34,11 @@ def setup_projekt_logging():
             logging.StreamHandler()
         ]
     )
+    
+    # Suppress PIL debug noise - set PIL loggers to WARNING
+    logging.getLogger('PIL').setLevel(logging.WARNING)
+    logging.getLogger('PIL.PngImagePlugin').setLevel(logging.WARNING)
+    
     return logging.getLogger(__name__)
 
 # Initialize logger
