@@ -811,7 +811,8 @@ def get_next_index(directory, prefix):
 
 def scale_image_to_1920x1080(image_path, preserve_aspect_ratio=True, logger=None):
     """
-    Scale an image to 1920x1080 pixels using Pillow with LANCZOS resampling.
+    Scale an image to target size based on aspect ratio from image_meta.json.
+    Legacy function for backward compatibility - now aspect-ratio aware.
     
     Args:
         image_path (str): Path to the image file
@@ -831,25 +832,45 @@ def scale_image_to_1920x1080(image_path, preserve_aspect_ratio=True, logger=None
     if not PILLOW_AVAILABLE:
         log("Pillow not available - image scaling skipped", "WARNING")
         return False
+    
+    # Read aspect ratio from image_meta.json
+    aspect_ratio = "16:9"  # Default
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        meta_path = os.path.join(script_dir, "image_meta.json")
+        if os.path.exists(meta_path):
+            with open(meta_path, 'r', encoding='utf-8') as f:
+                meta = json.load(f)
+                aspect_ratio = meta.get("aspect_ratio", "16:9")
+                log(f"Aspect ratio from image_meta.json: {aspect_ratio}")
+    except Exception as e:
+        log(f"Could not read aspect ratio from image_meta.json: {e}, using default 16:9", "WARNING")
+    
+    # Determine target size based on aspect ratio
+    if aspect_ratio == "9:16":
+        target_size = (1080, 1920)  # Vertical format
+    else:
+        target_size = (1920, 1080)  # Horizontal format (default)
         
     try:
         with Image.open(image_path) as img:
             original_size = img.size
-            target_size = (1920, 1080)
             
             # Skip scaling if already the correct size
             if original_size == target_size:
-                log(f"Image already 1920x1080, skipping scaling: {image_path}")
+                log(f"Image already {target_size[0]}x{target_size[1]}, skipping scaling: {image_path}")
                 return True
+            
+            log(f"Scaling image: aspect_ratio={aspect_ratio}, input_size={original_size}, output_size={target_size}")
             
             if preserve_aspect_ratio:
                 # Use ImageOps.fit to maintain aspect ratio and fill the target size
                 scaled_img = ImageOps.fit(img, target_size, Image.Resampling.LANCZOS)
-                log(f"Image scaled to 1920x1080 with aspect ratio preserved: {original_size} -> {target_size}")
+                log(f"Image scaled to {target_size[0]}x{target_size[1]} with aspect ratio preserved: {original_size} -> {target_size}")
             else:
                 # Use resize to stretch to exact dimensions
                 scaled_img = img.resize(target_size, Image.Resampling.LANCZOS)
-                log(f"Image resized to 1920x1080 (stretched): {original_size} -> {target_size}")
+                log(f"Image resized to {target_size[0]}x{target_size[1]} (stretched): {original_size} -> {target_size}")
             
             # Save the scaled image back to the same path
             scaled_img.save(image_path, "PNG")

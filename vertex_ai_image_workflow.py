@@ -56,6 +56,11 @@ def setup_projekt_logging():
             logging.StreamHandler()
         ]
     )
+    
+    # Suppress PIL debug noise - set PIL loggers to WARNING
+    logging.getLogger('PIL').setLevel(logging.WARNING)
+    logging.getLogger('PIL.PngImagePlugin').setLevel(logging.WARNING)
+    
     return logging.getLogger(__name__)
 
 # Initialize logger
