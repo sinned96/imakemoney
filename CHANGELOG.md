@@ -1,46 +1,59 @@
 # Changelog
 
-## 2025-01-XX - Fix: 9:16 End-to-End Korrekturen (Workflow, Anzeige, Doppelklick)
+## 2025-01-XX - Fix: 9:16 End-to-End Korrekturen (Workflow, Anzeige, Doppelklick) - UPDATED
 
 ### 🎯 Zusammenfassung
-Vollständige End-to-End Behebung der 9:16-Probleme: Workflow-Skalierung, Textrotation, Bildanzeige und Doppelklick-Hänger korrigiert.
+Vollständige End-to-End Behebung der 9:16-Probleme: Workflow-Skalierung optimiert (keine unnötige Skalierung), Textrotation korrigiert (270°), Bildanzeige und Doppelklick-Hänger bereits korrigiert.
 
 ### 🐛 Behobene Probleme
 
-#### 1. Workflow-Skalierung (9:16 wird nicht mehr auf 16:9 gezwungen)
+#### 1. Workflow-Skalierung (9:16 behält Originalgröße wenn Ratio stimmt) - UPDATED
 **Problem:** 
-- Generierte 9:16-Bilder wurden automatisch auf 1920x1080 (16:9) skaliert
-- Dies führte zu falschen Formaten und Weißflächen
-- Ursache war hardcodierte 1920x1080 Skalierung in Post-Processing
+- Generierte 9:16-Bilder (z.B. 768x1408) wurden IMMER auf 1080x1920 oder 1920x1080 skaliert
+- Auch wenn das Seitenverhältnis bereits korrekt war
+- Dies führte zu unnötigem Qualitätsverlust und falscher Ausgabe
+- Logs zeigten: "Image scaled to 1920x1080 … (768, 1408) -> (1920, 1080)"
 
 **Lösung:**
-- `PythonServer.py`: `scale_image_to_1920x1080()` liest jetzt aspect_ratio aus image_meta.json
-  - 16:9 → 1920x1080
-  - 9:16 → 1080x1920
-- `vertex_ai_image_workflow.py`: Aspect-aware Skalierung bereits implementiert, PIL-Logging unterdrückt
-- Logging zeigt jetzt: aspect_ratio, input_size, output_size, scaled=yes/no
+- `PythonServer.py` & `vertex_ai_image_workflow.py`: Neue intelligente Skalierung
+  - Prüft zuerst das Seitenverhältnis der Eingabe
+  - 5% Toleranz für Seitenverhältnis-Vergleich
+  - Wenn Ratio stimmt (z.B. 768x1408 für 9:16): KEINE Skalierung, Originalgröße beibehalten
+  - Wenn Ratio falsch: Skaliere auf Zielgröße (1080x1920 für 9:16, 1920x1080 für 16:9)
+- Enhanced Logging zeigt jetzt: aspect_ratio_request, raw_output_size, final_saved_size, scaling_applied=True/False
 
 **Code-Änderung:**
 ```python
-# Liest aspect_ratio aus image_meta.json
-if aspect_ratio == "9:16":
-    target_size = (1080, 1920)  # Vertikal
+# Berechne aktuelles Seitenverhältnis
+current_ratio = width / height
+target_ratio = 9.0/16.0  # für 9:16 oder 16.0/9.0 für 16:9
+ratio_diff = abs(current_ratio - target_ratio) / target_ratio
+
+# Nur skalieren wenn Ratio falsch (>5% Unterschied)
+if ratio_diff < 0.05:  # 5% Toleranz
+    # Seitenverhältnis bereits korrekt, Originalgröße behalten
+    return True  # Keine Skalierung
 else:
-    target_size = (1920, 1080)  # Horizontal
+    # Skaliere auf Zielgröße
+    if aspect_ratio == "9:16":
+        target_size = (1080, 1920)
+    else:
+        target_size = (1920, 1080)
 ```
 
-#### 2. Button-Text Rotation korrigiert (9:16-Modus)
+#### 2. Button-Text Rotation korrigiert (9:16-Modus) - UPDATED
 **Problem:** 
-- Text war mit 180° gedreht und auf dem Kopf
-- Text sollte parallel zum Bildschirmrand und ohne Clipping sein
+- Text war mit 90° gedreht (von unten nach oben lesbar)
+- Sollte aber 270° (-90°) sein für natürliche Leserichtung (von oben nach unten)
+- Text sollte exakt parallel zum Bildschirmrand sein
 
-**Lösung:** Text wird jetzt mit 90° gedreht und ist von unten nach oben lesbar (parallel zum rechten Rand)
+**Lösung:** Text wird jetzt mit 270° (-90°) gedreht und ist von oben nach unten lesbar (natürliche Leserichtung)
 
 **Code-Änderung:**
 ```python
-# Vorher: angle=180 (auf dem Kopf)
-# Nachher: angle=90 (vertikal, von unten nach oben)
-Rotate(angle=90, origin=self.center)
+# Vorher: angle=90 (von unten nach oben)
+# Nachher: angle=270 (-90°, von oben nach unten, natürliche Richtung)
+Rotate(angle=270, origin=self.center)
 # + Extra Padding verhindert Text-Clipping
 ```
 

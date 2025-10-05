@@ -600,12 +600,12 @@ class RegisterScreen(FloatLayout):
 # ---- CustomAppBar ----
 class VerticalButton(Button):
     """Button with vertically rotated text for 9:16 mode toolbar"""
-    def __init__(self, rotation_angle=90, **kwargs):
+    def __init__(self, rotation_angle=270, **kwargs):
         """
         Args:
             rotation_angle: Angle to rotate text (90 or 270 degrees)
                            90 = text readable from bottom to top
-                           270 = text readable from top to bottom
+                           270 = text readable from top to bottom (preferred for right-side menu)
         """
         super().__init__(**kwargs)
         self.rotation_angle = rotation_angle
@@ -618,8 +618,9 @@ class VerticalButton(Button):
         self.canvas.before.clear()
         with self.canvas.before:
             PushMatrix()
-            # Rotate 90 degrees to make text readable from bottom to top (parallel to screen edge)
+            # Rotate 270 degrees (-90°) to make text readable from top to bottom (parallel to screen edge)
             # This ensures text is vertical and readable when toolbar is on the right side
+            # Text flows naturally downward, matching natural reading direction
             Rotate(angle=self.rotation_angle, origin=self.center)
         
         self.canvas.after.clear()
@@ -682,10 +683,10 @@ class CustomAppBar(BoxLayout):
         total_size = 0
         for text,cb in items:
             if self.vertical:
-                # Use VerticalButton for 9:16 mode with 90° rotation (text parallel to screen edge)
-                # Text will be readable from bottom to top
+                # Use VerticalButton for 9:16 mode with 270° rotation (text parallel to screen edge)
+                # Text will be readable from top to bottom (natural reading direction)
                 btn=VerticalButton(text=text,size_hint=(1,None),height=dp(70),
-                                   rotation_angle=90,  # 90° rotation for proper vertical text
+                                   rotation_angle=270,  # 270° rotation (-90°) for proper vertical text
                                    background_normal='',background_color=(0.20,0.22,0.26,1),
                                    color=(1,1,1,1),font_size=dp(14))
                 btn.bind(on_release=lambda inst,c=cb:c())

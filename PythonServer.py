@@ -846,39 +846,62 @@ def scale_image_to_1920x1080(image_path, preserve_aspect_ratio=True, logger=None
     except Exception as e:
         log(f"Could not read aspect ratio from image_meta.json: {e}, using default 16:9", "WARNING")
     
-    # Determine target size based on aspect ratio
+    # Determine target aspect ratio
     if aspect_ratio == "9:16":
-        target_size = (1080, 1920)  # Vertical format
+        target_ratio = 9.0 / 16.0  # Width / Height for vertical format
+        target_size = (1080, 1920)  # Optional target size if scaling needed
+        log(f"Target aspect ratio: 9:16 (vertical format)")
     else:
-        target_size = (1920, 1080)  # Horizontal format (default)
+        target_ratio = 16.0 / 9.0  # Width / Height for horizontal format
+        target_size = (1920, 1080)  # Optional target size if scaling needed
+        log(f"Target aspect ratio: 16:9 (horizontal format)")
         
     try:
         with Image.open(image_path) as img:
             original_size = img.size
+            original_width, original_height = original_size
             
-            # Skip scaling if already the correct size
-            if original_size == target_size:
-                log(f"Image already {target_size[0]}x{target_size[1]}, skipping scaling: {image_path}")
+            # Calculate current aspect ratio
+            if original_height == 0:
+                log(f"Invalid image dimensions: {original_size}", "ERROR")
+                return False
+            
+            current_ratio = original_width / original_height
+            
+            # Check if aspect ratio is already correct (with 5% tolerance)
+            ratio_diff = abs(current_ratio - target_ratio) / target_ratio
+            
+            log(f"Image analysis: aspect_ratio_request={aspect_ratio}, raw_output_size={original_size}, "
+                f"current_ratio={current_ratio:.3f}, target_ratio={target_ratio:.3f}, "
+                f"ratio_diff={ratio_diff:.1%}")
+            
+            # If aspect ratio is already correct (within tolerance), keep original size
+            if ratio_diff < 0.05:  # 5% tolerance
+                log(f"Aspect ratio already correct ({ratio_diff:.1%} difference), "
+                    f"final_saved_size={original_size}, scaling_applied=False")
                 return True
             
-            log(f"Scaling image: aspect_ratio={aspect_ratio}, input_size={original_size}, output_size={target_size}")
+            # Aspect ratio is wrong, need to scale
+            log(f"Aspect ratio mismatch ({ratio_diff:.1%} difference), scaling to {target_size}")
             
             if preserve_aspect_ratio:
                 # Use ImageOps.fit to maintain aspect ratio and fill the target size
                 scaled_img = ImageOps.fit(img, target_size, Image.Resampling.LANCZOS)
-                log(f"Image scaled to {target_size[0]}x{target_size[1]} with aspect ratio preserved: {original_size} -> {target_size}")
+                log(f"Scaling with preserved aspect ratio")
             else:
                 # Use resize to stretch to exact dimensions
                 scaled_img = img.resize(target_size, Image.Resampling.LANCZOS)
-                log(f"Image resized to {target_size[0]}x{target_size[1]} (stretched): {original_size} -> {target_size}")
+                log(f"Scaling without preserving aspect ratio (may distort)")
             
             # Save the scaled image back to the same path
             scaled_img.save(image_path, "PNG")
-            log(f"Scaled image saved: {image_path}")
+            log(f"Image scaled: aspect_ratio_request={aspect_ratio}, "
+                f"raw_output_size={original_size}, final_saved_size={target_size}, "
+                f"scaling_applied=True")
             return True
             
     except Exception as e:
-        log(f"Error scaling image {image_path}: {e}", "ERROR")
+        log(f"Error processing image {image_path}: {e}", "ERROR")
         return False
 
 def generate_image_imagen4(prompt, image_count=1, bilder_dir=BILDER_DIR, output_prefix="bild", logger=None, aspect_ratio="16:9"):

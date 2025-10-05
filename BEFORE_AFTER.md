@@ -70,26 +70,26 @@ Rotate(angle=180, origin=self.center)  # Upside down
 
 #### ✅ AFTER
 ```
-Rotation: 90° (text vertical, bottom-to-top)
+Rotation: 270° (text vertical, top-to-bottom)
 ┌─────┐
 │  Z  │  ← "Zeiten" readable ✅
-│  e  │     (when viewing from bottom)
+│  e  │     (natural reading direction)
 │  i  │
 │  t  │
 │  e  │
 │  n  │
 ├─────┤
 Text clipping: No (padding added) ✅
-Readable: From bottom to top ✅
+Readable: From top to bottom ✅ (natural direction)
 ```
 
 **Code (After)**:
 ```python
-Rotate(angle=90, origin=self.center)  # Vertical, bottom-to-top
+Rotate(angle=270, origin=self.center)  # Vertical, top-to-bottom (-90°)
 self.padding = [dp(10), dp(5)]  # Prevent clipping
 ```
 
-**How to read**: Stand to the right of the screen and the text flows naturally upward.
+**How to read**: Text flows naturally downward from top to bottom (natural reading direction).
 
 ---
 
@@ -218,16 +218,17 @@ self.img_a = Image(allow_stretch=True, keep_ratio=True)
 ### Workflow Scaling
 | Aspect | Before | After |
 |--------|--------|-------|
-| 9:16 Image Size | 1920x1080 ❌ | 1080x1920 ✅ |
-| 16:9 Image Size | 1920x1080 ✅ | 1920x1080 ✅ |
+| 9:16 Image Size | Always scaled to 1920x1080 ❌ | Keeps original if ratio correct ✅ |
+| 16:9 Image Size | Always scaled to 1920x1080 | Keeps original if ratio correct ✅ |
 | Reads Config | No ❌ | Yes ✅ |
-| Logging | Basic | Enhanced with aspect_ratio ✅ |
+| Ratio Check | No ❌ | Yes (5% tolerance) ✅ |
+| Logging | Basic | Enhanced (aspect_ratio_request, raw_output_size, final_saved_size, scaling_applied) ✅ |
 
 ### Menu Rotation (9:16)
 | Aspect | Before | After |
 |--------|--------|-------|
-| Rotation | 180° (upside down) ❌ | 90° (vertical) ✅ |
-| Readability | Upside down ❌ | Bottom-to-top ✅ |
+| Rotation | 180° (upside down) ❌ | 270° (vertical, -90°) ✅ |
+| Readability | Upside down ❌ | Top-to-bottom (natural) ✅ |
 | Text Clipping | Yes ❌ | No ✅ |
 | Padding | No | Yes (10px, 5px) ✅ |
 
