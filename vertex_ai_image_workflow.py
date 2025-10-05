@@ -99,6 +99,7 @@ def get_aspect_ratio_from_meta():
 def scale_image_to_target_size(image_path, aspect_ratio="16:9", preserve_aspect_ratio=True):
     """
     Scale an image to target size based on aspect ratio using Pillow with LANCZOS resampling.
+    Now preserves original size if aspect ratio is already correct.
     
     Args:
         image_path (str): Path to the image file
@@ -107,38 +108,69 @@ def scale_image_to_target_size(image_path, aspect_ratio="16:9", preserve_aspect_
                                     If False, uses resize which may distort the image.
     
     Returns:
-        bool: True if scaling was successful, False otherwise
+        bool: True if scaling was successful or skipped (correct ratio), False otherwise
     """
-    # Determine target size based on aspect ratio
+    # Determine target aspect ratio
     if aspect_ratio == "9:16":
-        target_size = (1080, 1920)  # Vertical format
-        logger.info(f"Starting image scaling to 1080x1920 (9:16): {image_path}")
+        target_ratio = 9.0 / 16.0  # Width / Height for vertical format
+        target_size = (1080, 1920)  # Optional target size if scaling needed
+        logger.info(f"Target aspect ratio: 9:16 (vertical format)")
     else:  # Default to 16:9
-        target_size = (1920, 1080)  # Horizontal format
-        logger.info(f"Starting image scaling to 1920x1080 (16:9): {image_path}")
+        target_ratio = 16.0 / 9.0  # Width / Height for horizontal format
+        target_size = (1920, 1080)  # Optional target size if scaling needed
+        logger.info(f"Target aspect ratio: 16:9 (horizontal format)")
     
     try:
         with Image.open(image_path) as img:
-            logger.info(f"Original image size: {img.size}")
+            original_size = img.size
+            original_width, original_height = original_size
+            
+            # Calculate current aspect ratio
+            if original_height == 0:
+                logger.error(f"Invalid image dimensions: {original_size}")
+                return False
+            
+            current_ratio = original_width / original_height
+            
+            # Check if aspect ratio is already correct (with 5% tolerance)
+            ratio_diff = abs(current_ratio - target_ratio) / target_ratio
+            
+            logger.info(f"Image analysis: aspect_ratio_request={aspect_ratio}, raw_output_size={original_size}, "
+                       f"current_ratio={current_ratio:.3f}, target_ratio={target_ratio:.3f}, "
+                       f"ratio_diff={ratio_diff:.1%}")
+            
+            # If aspect ratio is already correct (within tolerance), keep original size
+            if ratio_diff < 0.05:  # 5% tolerance
+                logger.info(f"Aspect ratio already correct ({ratio_diff:.1%} difference), "
+                           f"final_saved_size={original_size}, scaling_applied=False")
+                print(f"Bild hat bereits korrektes Seitenverhältnis ({aspect_ratio}), "
+                     f"Originalgröße beibehalten: {original_size}")
+                return True
+            
+            # Aspect ratio is wrong, need to scale
+            logger.info(f"Aspect ratio mismatch ({ratio_diff:.1%} difference), scaling to {target_size}")
             
             if preserve_aspect_ratio:
                 # Use ImageOps.fit to maintain aspect ratio and fill the target size
                 scaled_img = ImageOps.fit(img, target_size, Image.Resampling.LANCZOS)
-                logger.info("Scaling with preserved aspect ratio")
+                logger.info(f"Scaling with preserved aspect ratio")
             else:
                 # Use resize to stretch to exact dimensions
                 scaled_img = img.resize(target_size, Image.Resampling.LANCZOS)
-                logger.info("Scaling without preserving aspect ratio")
+                logger.info(f"Scaling without preserving aspect ratio (may distort)")
             
             # Save the scaled image back to the same path
             scaled_img.save(image_path, "PNG")
-            logger.info(f"Image successfully scaled to {target_size}: {image_path}")
-            print(f"Bild erfolgreich auf {target_size[0]}x{target_size[1]} skaliert: {image_path}")
+            logger.info(f"Image scaled: aspect_ratio_request={aspect_ratio}, "
+                       f"raw_output_size={original_size}, final_saved_size={target_size}, "
+                       f"scaling_applied=True")
+            print(f"Bild auf {target_size[0]}x{target_size[1]} ({aspect_ratio}) skaliert: "
+                 f"{original_size} -> {target_size}")
             return True
             
     except Exception as e:
-        logger.error(f"Error scaling image {image_path}: {e}")
-        print(f"Fehler beim Skalieren des Bildes {image_path}: {e}")
+        logger.error(f"Error processing image {image_path}: {e}")
+        print(f"Fehler beim Verarbeiten des Bildes {image_path}: {e}")
         return False
 
 def scale_image_to_1920x1080(image_path, preserve_aspect_ratio=True):
