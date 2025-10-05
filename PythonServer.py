@@ -1039,11 +1039,11 @@ def generate_image_imagen4(prompt, image_count=1, bilder_dir=BILDER_DIR, output_
                 file_size = len(img_data)
                 log(f"[SUCCESS] Image {i+1} saved: {fname} ({file_size:,} bytes)")
                 
-                # Scale the image to 1920x1080 to fill screen completely
+                # Scale the image to target size based on aspect ratio (16:9 or 9:16)
                 if scale_image_to_1920x1080(fname, preserve_aspect_ratio=True, logger=logger):
-                    log(f"[SUCCESS] Image {i+1} scaled to 1920x1080 to eliminate black bars")
+                    log(f"[SUCCESS] Image {i+1} scaled to target aspect ratio")
                 else:
-                    log(f"[WARNING] Image {i+1} could not be scaled - black bars may appear", "WARNING")
+                    log(f"[WARNING] Image {i+1} could not be scaled", "WARNING")
                 
                 generated_files.append(fname)
                 
@@ -1103,9 +1103,9 @@ def _create_demo_images(bilder_dir, output_prefix, image_count, logger=None):
                 
                 log(f"[SUCCESS] Demo image created: {fname}")
                 
-                # Scale the demo image to 1920x1080
+                # Scale the demo image to target size based on aspect ratio
                 if scale_image_to_1920x1080(fname, preserve_aspect_ratio=True, logger=logger):
-                    log(f"[SUCCESS] Demo image scaled to 1920x1080")
+                    log(f"[SUCCESS] Demo image scaled to target aspect ratio")
                 
                 generated_files.append(fname)
         else:
