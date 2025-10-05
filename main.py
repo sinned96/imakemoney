@@ -600,8 +600,17 @@ class RegisterScreen(FloatLayout):
 # ---- CustomAppBar ----
 class VerticalButton(Button):
     """Button with vertically rotated text for 9:16 mode toolbar"""
-    def __init__(self, **kwargs):
+    def __init__(self, rotation_angle=90, **kwargs):
+        """
+        Args:
+            rotation_angle: Angle to rotate text (90 or 270 degrees)
+                           90 = text readable from bottom to top
+                           270 = text readable from top to bottom
+        """
         super().__init__(**kwargs)
+        self.rotation_angle = rotation_angle
+        # Add extra padding to prevent text clipping
+        self.padding = [dp(10), dp(5)]
         self.bind(pos=self._update_rotation, size=self._update_rotation)
         
     def _update_rotation(self, *args):
@@ -609,8 +618,9 @@ class VerticalButton(Button):
         self.canvas.before.clear()
         with self.canvas.before:
             PushMatrix()
-            # Rotate 180 degrees to make text readable from bottom to top
-            Rotate(angle=180, origin=self.center)
+            # Rotate 90 degrees to make text readable from bottom to top (parallel to screen edge)
+            # This ensures text is vertical and readable when toolbar is on the right side
+            Rotate(angle=self.rotation_angle, origin=self.center)
         
         self.canvas.after.clear()
         with self.canvas.after:
@@ -672,8 +682,10 @@ class CustomAppBar(BoxLayout):
         total_size = 0
         for text,cb in items:
             if self.vertical:
-                # Use VerticalButton for 9:16 mode with rotated text
-                btn=VerticalButton(text=text,size_hint=(1,None),height=dp(60),
+                # Use VerticalButton for 9:16 mode with 90° rotation (text parallel to screen edge)
+                # Text will be readable from bottom to top
+                btn=VerticalButton(text=text,size_hint=(1,None),height=dp(70),
+                                   rotation_angle=90,  # 90° rotation for proper vertical text
                                    background_normal='',background_color=(0.20,0.22,0.26,1),
                                    color=(1,1,1,1),font_size=dp(14))
                 btn.bind(on_release=lambda inst,c=cb:c())
@@ -911,19 +923,35 @@ class ImageLightboxPopup(FloatLayout):
         # Main container for image
         container=FloatLayout()
         
-        # Full-size image centered on screen
-        self.img=Image(source=image_path,
-                      size_hint=(None,None),
-                      pos_hint={'center_x':0.5,'center_y':0.5},
-                      allow_stretch=True,
-                      keep_ratio=True)
-        
-        # Bind to window size to scale image appropriately
-        from kivy.core.window import Window
-        self.img.size=(Window.width*0.9, Window.height*0.9)
-        Window.bind(size=self._update_image_size)
-        
-        container.add_widget(self.img)
+        # Try to load the image with error handling and nocache
+        try:
+            from kivy.core.image import Image as CoreImage
+            # Load with nocache to prevent memory issues
+            texture = CoreImage(image_path, nocache=True).texture
+            
+            # Full-size image centered on screen
+            self.img=Image(texture=texture,
+                          size_hint=(None,None),
+                          pos_hint={'center_x':0.5,'center_y':0.5},
+                          allow_stretch=True,
+                          keep_ratio=True)
+            
+            # Bind to window size to scale image appropriately
+            from kivy.core.window import Window
+            self.img.size=(Window.width*0.9, Window.height*0.9)
+            Window.bind(size=self._update_image_size)
+            
+            container.add_widget(self.img)
+            debug_logger.info(f"Lightbox opened successfully for: {image_path}")
+        except Exception as e:
+            debug_logger.error(f"Failed to load image in lightbox: {image_path}, error: {e}")
+            # Show error message instead
+            error_label=Label(text=f"Fehler beim Laden des Bildes:\n{str(e)}",
+                            size_hint=(0.8, 0.5),
+                            pos_hint={'center_x':0.5,'center_y':0.5},
+                            font_size=dp(18),
+                            color=(1,0.3,0.3,1))
+            container.add_widget(error_label)
         
         # Close button in top-right corner
         close_btn=Button(text="✕",
@@ -954,12 +982,13 @@ class ImageLightboxPopup(FloatLayout):
     
     def _update_image_size(self, window, size):
         """Update image size when window is resized"""
-        self.img.size=(size[0]*0.9, size[1]*0.9)
+        if hasattr(self, 'img'):
+            self.img.size=(size[0]*0.9, size[1]*0.9)
     
     def _on_touch(self, instance, touch):
         """Handle touch events - close on background click"""
         # Check if touch is on the image or close button
-        if self.img.collide_point(*touch.pos):
+        if hasattr(self, 'img') and self.img.collide_point(*touch.pos):
             return False  # Don't close if clicking on image
         # Close if clicking on background
         self._close()
@@ -967,10 +996,14 @@ class ImageLightboxPopup(FloatLayout):
     
     def _close(self):
         """Close the lightbox"""
-        from kivy.core.window import Window
-        Window.unbind(size=self._update_image_size)
-        if self.parent:
-            self.parent.remove_widget(self)
+        try:
+            from kivy.core.window import Window
+            Window.unbind(size=self._update_image_size)
+            if self.parent:
+                self.parent.remove_widget(self)
+            debug_logger.info(f"Lightbox closed for: {self.image_path}")
+        except Exception as e:
+            debug_logger.error(f"Error closing lightbox: {e}")
 
 # ---- Globale Settings Hierarchie ----
 class SettingsRootPopup(FloatLayout):
@@ -2365,6 +2398,8 @@ class ImageTile(BoxLayout):
         # Double-click/tap detection
         self.last_touch_time=0
         self.double_click_threshold=0.3  # seconds
+        self.is_lightbox_open=False  # Flag to prevent multiple opens
+        self._scheduled_lightbox=None  # For throttling lightbox opens
         
         with self.canvas.before:
             Color(0.18,0.18,0.20,1)
@@ -2401,8 +2436,8 @@ class ImageTile(BoxLayout):
             
             # Check if this is a double-click/tap
             if time_since_last < self.double_click_threshold:
-                # Double-click detected! Open lightbox
-                self._open_lightbox()
+                # Double-click detected! Open lightbox with debounce
+                self._open_lightbox_debounced()
                 self.last_touch_time = 0  # Reset to prevent triple-click
                 return True
             else:
@@ -2412,16 +2447,48 @@ class ImageTile(BoxLayout):
         # Continue normal touch handling
         return super().on_touch_down(touch)
     
+    def _open_lightbox_debounced(self):
+        """Open lightbox with throttling to prevent multiple opens"""
+        # Cancel any pending scheduled lightbox open
+        if self._scheduled_lightbox:
+            Clock.unschedule(self._scheduled_lightbox)
+        
+        # Check if lightbox is already open
+        if self.is_lightbox_open:
+            debug_logger.debug(f"Lightbox already open, ignoring double-click for: {self.path}")
+            return
+        
+        # Schedule lightbox open with 250ms throttle
+        self._scheduled_lightbox = Clock.schedule_once(lambda dt: self._open_lightbox(), 0.25)
+        debug_logger.debug(f"Scheduled lightbox open for: {self.path}")
+    
     def _open_lightbox(self):
         """Open the lightbox to display full-size image"""
-        # Find the root parent to add the lightbox overlay
-        root = self
-        while root.parent is not None:
-            root = root.parent
-        
-        # Create and add lightbox popup
-        lightbox = ImageLightboxPopup(self.path)
-        root.add_widget(lightbox)
+        try:
+            # Set flag to prevent multiple opens
+            self.is_lightbox_open = True
+            
+            # Find the root parent to add the lightbox overlay
+            root = self
+            while root.parent is not None:
+                root = root.parent
+            
+            # Create and add lightbox popup
+            lightbox = ImageLightboxPopup(self.path)
+            
+            # Bind to lightbox removal to reset flag
+            def on_lightbox_removed(*args):
+                self.is_lightbox_open = False
+                debug_logger.debug(f"Lightbox closed, flag reset for: {self.path}")
+            
+            # Hook into the lightbox's parent property to detect when it's removed
+            lightbox.bind(parent=lambda inst, val: on_lightbox_removed() if val is None else None)
+            
+            root.add_widget(lightbox)
+            debug_logger.info(f"Lightbox opened for: {self.path}")
+        except Exception as e:
+            debug_logger.error(f"Error opening lightbox for {self.path}: {e}")
+            self.is_lightbox_open = False  # Reset flag on error
     def _short(self,name,maxlen=18):
         return name if len(name)<=maxlen else name[:maxlen-3]+"..."
     def _upd(self,*a):
@@ -2980,8 +3047,8 @@ class Slideshow(FloatLayout):
         self.bind(pos=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)),
                   size=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)))
 
-        self.img_a = Image(opacity=1, color=(1,1,1,1), allow_stretch=True, keep_ratio=False)
-        self.img_b = Image(opacity=0, color=(1,1,1,1), allow_stretch=True, keep_ratio=False)
+        self.img_a = Image(opacity=1, color=(1,1,1,1), allow_stretch=True, keep_ratio=True)
+        self.img_b = Image(opacity=0, color=(1,1,1,1), allow_stretch=True, keep_ratio=True)
         self.active_img = self.img_a
         self.back_img = self.img_b
         self.add_widget(self.img_a)

@@ -1,53 +1,109 @@
 # Changelog
 
-## 2025-01-XX - Fix: 9:16 Modus Bildanzeige und Textrotation
+## 2025-01-XX - Fix: 9:16 End-to-End Korrekturen (Workflow, Anzeige, Doppelklick)
 
 ### 🎯 Zusammenfassung
-Behebung von Anzeigefehlern im 9:16-Modus: Textrotation korrigiert, Bildanzeige optimiert, und Layout-Berechnungen verbessert.
+Vollständige End-to-End Behebung der 9:16-Probleme: Workflow-Skalierung, Textrotation, Bildanzeige und Doppelklick-Hänger korrigiert.
 
 ### 🐛 Behobene Probleme
 
-#### 1. Button-Text Rotation korrigiert (9:16-Modus)
-**Problem:** Text war mit -90° gedreht und seitlich lesbar (rechts nach links)
-**Lösung:** Text wird jetzt mit 180° gedreht und ist von unten nach oben lesbar
+#### 1. Workflow-Skalierung (9:16 wird nicht mehr auf 16:9 gezwungen)
+**Problem:** 
+- Generierte 9:16-Bilder wurden automatisch auf 1920x1080 (16:9) skaliert
+- Dies führte zu falschen Formaten und Weißflächen
+- Ursache war hardcodierte 1920x1080 Skalierung in Post-Processing
+
+**Lösung:**
+- `PythonServer.py`: `scale_image_to_1920x1080()` liest jetzt aspect_ratio aus image_meta.json
+  - 16:9 → 1920x1080
+  - 9:16 → 1080x1920
+- `vertex_ai_image_workflow.py`: Aspect-aware Skalierung bereits implementiert, PIL-Logging unterdrückt
+- Logging zeigt jetzt: aspect_ratio, input_size, output_size, scaled=yes/no
 
 **Code-Änderung:**
 ```python
-# Vorher: angle=-90 (seitlich)
-# Nachher: angle=180 (auf dem Kopf, von unten nach oben lesbar)
-Rotate(angle=180, origin=self.center)
+# Liest aspect_ratio aus image_meta.json
+if aspect_ratio == "9:16":
+    target_size = (1080, 1920)  # Vertikal
+else:
+    target_size = (1920, 1080)  # Horizontal
 ```
 
-#### 2. Bildanzeige im 9:16-Modus korrigiert
+#### 2. Button-Text Rotation korrigiert (9:16-Modus)
 **Problem:** 
-- Bilder wurden mit voller Fensterbreite berechnet
-- Toolbar überlappte mit Bildern
-- Weiße Ränder sichtbar
+- Text war mit 180° gedreht und auf dem Kopf
+- Text sollte parallel zum Bildschirmrand und ohne Clipping sein
+
+**Lösung:** Text wird jetzt mit 90° gedreht und ist von unten nach oben lesbar (parallel zum rechten Rand)
+
+**Code-Änderung:**
+```python
+# Vorher: angle=180 (auf dem Kopf)
+# Nachher: angle=90 (vertikal, von unten nach oben)
+Rotate(angle=90, origin=self.center)
+# + Extra Padding verhindert Text-Clipping
+```
+
+#### 3. Bildanzeige im 9:16-Modus korrigiert
+**Problem:** 
+- Weißer Hintergrund sichtbar trotz dunklem Canvas
+- Bilder werden nicht korrekt im 9:16-Container angezeigt
 
 **Lösung:**
-- Content-Bereich berücksichtigt jetzt Toolbar-Breite
-- Bilder werden im verfügbaren Bereich zentriert
+- Image Widget verwendet jetzt `keep_ratio=True` statt `False`
+- Dies verhindert Verzerrungen und Weißflächen
+- Content-Bereich berücksichtigt korrekt Toolbar-Breite
 - 9:16 Modus: Content = (0, 0, Breite-110px, Höhe)
 - 16:9 Modus: Content = (0, 60px, Breite, Höhe-60px)
 
-#### 3. Image Widget Konfiguration
-**Problem:** Bilder zeigten weißen Hintergrund
-
-**Lösung:**
+**Code-Änderung:**
 ```python
+# Vorher: keep_ratio=False (manuelle Kontrolle, anfällig für Fehler)
+# Nachher: keep_ratio=True (automatische Aspect-Ratio Erhaltung)
 Image(opacity=1, color=(1,1,1,1), 
-      allow_stretch=True,    # Skalierung aktiviert
-      keep_ratio=False)      # Manuelle Kontrolle
+      allow_stretch=True, keep_ratio=True)
 ```
 
-#### 4. Layout-Updates
-**Verbesserung:** Bilder werden nach Modus-Wechsel automatisch neu positioniert
+#### 4. Doppelklick-Hänger behoben (Galerie)
+**Problem:**
+- Doppelklick auf Galerie-Bilder ließ die App hängen
+- Fehlende Debounce/Async-Loading/Logging
+- Mehrfache Lightbox-Öffnungen möglich
+
+**Lösung:**
+- Debounce mit 250ms Throttle implementiert
+- `is_lightbox_open` Flag verhindert mehrfache Öffnungen
+- Try/Except mit Logging für Texture-Laden
+- CoreImage mit `nocache=True` verwendet
+- Proper cleanup bei Lightbox-Schließen
+
+**Code-Änderung:**
+```python
+# Debounce mit Clock.schedule_once
+self._scheduled_lightbox = Clock.schedule_once(lambda dt: self._open_lightbox(), 0.25)
+
+# Prevent multiple opens
+if self.is_lightbox_open:
+    return
+
+# Load with nocache
+from kivy.core.image import Image as CoreImage
+texture = CoreImage(image_path, nocache=True).texture
+```
 
 ### 📝 Geänderte Dateien
+- `PythonServer.py`:
+  - `scale_image_to_1920x1080()`: Aspect-aware Skalierung basierend auf image_meta.json
+  - Logging zeigt aspect_ratio, input_size, output_size
+- `vertex_ai_image_workflow.py`:
+  - `setup_projekt_logging()`: PIL-Logging auf WARNING gesetzt (unterdrückt Debug-Noise)
 - `main.py`:
-  - `VerticalButton._update_rotation()`: Rotation von -90° auf 180°
-  - `Slideshow._resize_image()`: Komplette Überarbeitung für Content-Bereich
-  - `Slideshow._apply_layout()`: Force-Resize nach Layout-Änderung
+  - `VerticalButton._update_rotation()`: Rotation von 180° auf 90° (mit konfigurierbarem Winkel)
+  - `VerticalButton.__init__()`: Extra Padding für Anti-Clipping
+  - `CustomAppBar.set_right_actions()`: 90° Rotation für vertikale Buttons
+  - `Slideshow.__init__()`: Image Widgets verwenden jetzt `keep_ratio=True`
+  - `ImageLightboxPopup`: Komplette Überarbeitung mit Error-Handling und nocache
+  - `ImageTile`: Debounce-Mechanismus und is_lightbox_open Flag
   - `Slideshow.__init__()`: Image Widget Konfiguration
 
 ### 📚 Dokumentation
@@ -61,12 +117,27 @@ Alle Änderungen loggen in projekt.log:
 - Bild-Textur-Größe, Skalierung, Position
 - Layout-Anwendungs-Events
 
-### ✅ Getestet
-- [x] 9:16 Modus: Text von unten nach oben lesbar
-- [x] 9:16 Modus: Bilder füllen Content-Bereich ohne weiße Ränder
-- [x] 9:16 Modus: Bilder im verfügbaren Bereich zentriert
-- [x] 16:9 Modus: Unverändert, funktioniert wie zuvor
-- [x] Modus-Wechsel: Bilder werden korrekt neu positioniert
+### ✅ Tests durchführen
+Manuelle Tests empfohlen:
+- [ ] 9:16 Bildgenerierung: Erzeuge ein Bild im 9:16-Modus → sollte 1080x1920 sein (kein 1920x1080)
+- [ ] 9:16 Anzeige: Bilder füllen Content-Bereich ohne weiße Ränder
+- [ ] 9:16 Menü: Text vertikal von unten nach oben lesbar, parallel zum rechten Rand
+- [ ] 9:16 Menü: Kein Text-Clipping, alle Buchstaben sichtbar
+- [ ] 16:9 Modus: Menü unten, Text horizontal, keine Rotation
+- [ ] 16:9 Bildgenerierung: Erzeuge ein Bild im 16:9-Modus → sollte 1920x1080 sein
+- [ ] Doppelklick: Galerie-Bild doppelklicken → Lightbox öffnet ohne Freeze
+- [ ] Doppelklick: Mehrfacher schneller Doppelklick → nur eine Lightbox öffnet
+- [ ] Format-Wechsel: Zwischen 9:16 und 16:9 wechseln → Bilder neu positioniert, Layout korrekt
+
+### 🔍 Log-Überprüfung
+Prüfe `projekt.log` nach Bildgenerierung:
+```
+[INFO] Aspect ratio from image_meta.json: 9:16
+[INFO] Scaling image: aspect_ratio=9:16, input_size=(768, 1408), output_size=(1080, 1920)
+[INFO] Image scaled to 1080x1920 with aspect ratio preserved: (768, 1408) -> (1080, 1920)
+```
+
+Falls noch 1920x1080 erscheint, prüfe ob image_meta.json korrekt ist und aspect_ratio="9:16" enthält.
 
 ---
 

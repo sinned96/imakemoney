@@ -56,6 +56,11 @@ def setup_projekt_logging():
             logging.StreamHandler()
         ]
     )
+    
+    # Suppress PIL debug noise - set PIL loggers to WARNING
+    logging.getLogger('PIL').setLevel(logging.WARNING)
+    logging.getLogger('PIL.PngImagePlugin').setLevel(logging.WARNING)
+    
     return logging.getLogger(__name__)
 
 # Initialize logger
@@ -299,13 +304,13 @@ def main():
                 logger.info(f"Image successfully saved: {img_path}")
                 print(f"Bild erfolgreich gespeichert: {img_path}")
                 
-                # Scale the image to 1920x1080 to fill screen completely
+                # Scale the image to target size based on aspect ratio from image_meta.json
                 if scale_image_to_1920x1080(img_path, preserve_aspect_ratio=True):
-                    logger.info("Image scaled to 1920x1080 successfully")
-                    print("Bild wurde auf 1920x1080 skaliert und füllt nun den Bildschirm komplett aus")
+                    logger.info("Image scaled to target aspect ratio successfully")
+                    print("Bild wurde auf Ziel-Seitenverhältnis skaliert")
                 else:
                     logger.warning("Image scaling failed")
-                    print("Warnung: Bild konnte nicht skaliert werden, schwarze Balken können auftreten")
+                    print("Warnung: Bild konnte nicht skaliert werden")
             else:
                 logger.warning(f"No image in Vertex AI response: {data}")
                 print("Kein Bild in der Antwort:", data)
