@@ -45,6 +45,11 @@ def setup_debug_logging():
             logging.StreamHandler()
         ]
     )
+    
+    # Suppress PIL debug noise - set PIL loggers to WARNING
+    logging.getLogger('PIL').setLevel(logging.WARNING)
+    logging.getLogger('PIL.PngImagePlugin').setLevel(logging.WARNING)
+    
     return logging.getLogger(__name__)
 
 # Initialize debug logger
@@ -940,20 +945,22 @@ class ImageLightboxPopup(FloatLayout):
             texture = CoreImage(image_path, nocache=True).texture
             
             # Full-size image centered on screen
-            # Use fit_mode='cover' for Kivy 2.3+, fallback to keep_ratio/allow_stretch for older versions
+            # Use fit_mode='contain' for lightbox to show full image without cropping
             import kivy
             kivy_version = tuple(map(int, kivy.__version__.split('.')[:2]))
             if kivy_version >= (2, 3):
                 self.img=Image(texture=texture,
                               size_hint=(None,None),
                               pos_hint={'center_x':0.5,'center_y':0.5},
-                              fit_mode='cover')
+                              fit_mode='contain',
+                              mipmap=True)
             else:
                 self.img=Image(texture=texture,
                               size_hint=(None,None),
                               pos_hint={'center_x':0.5,'center_y':0.5},
                               allow_stretch=True,
-                              keep_ratio=True)
+                              keep_ratio=True,
+                              mipmap=True)
             
             # Bind to window size to scale image appropriately
             from kivy.core.window import Window
@@ -1032,8 +1039,16 @@ class SettingsRootPopup(FloatLayout):
         with self.canvas.before:
             Color(0,0,0,0.55); self.bg=Rectangle(pos=self.pos,size=self.size)
         self.bind(pos=self._upd,size=self._upd)
+        
+        # Adapt panel size based on aspect ratio
+        aspect = slideshow.aspect_ratio if slideshow else "16:9"
+        if aspect == "9:16":
+            panel_size = (dp(450), dp(520))  # Portrait: narrower and slightly taller
+        else:
+            panel_size = (dp(500), dp(480))  # Landscape: default size
+        
         panel=BoxLayout(orientation='vertical',size_hint=(None,None),
-                        size=(dp(500),dp(480)),
+                        size=panel_size,
                         pos_hint={'center_x':0.5,'center_y':0.5},
                         padding=dp(24),spacing=dp(18))
         
@@ -1136,11 +1151,18 @@ class AufnahmePopup(FloatLayout):
             self.bg = Rectangle(pos=self.pos, size=self.size)
         self.bind(pos=self._update_bg, size=self._update_bg)
         
-        # Main panel - make it larger to accommodate output display
+        # Main panel - adapt size based on aspect ratio for portrait/landscape compatibility
+        # In portrait mode (9:16), use narrower panel; in landscape (16:9), use wider panel
+        aspect = slideshow.aspect_ratio if slideshow else "16:9"
+        if aspect == "9:16":
+            panel_size = (dp(500), dp(600))  # Portrait: narrower width, taller height
+        else:
+            panel_size = (dp(600), dp(500))  # Landscape: wider width, shorter height
+        
         self.panel = BoxLayout(
             orientation='vertical',
             size_hint=(None, None),
-            size=(dp(600), dp(500)),
+            size=panel_size,
             pos_hint={'center_x': 0.5, 'center_y': 0.5},
             padding=dp(20),
             spacing=dp(15)
@@ -2311,8 +2333,16 @@ class GeneralSettingsPopup(FloatLayout):
         with self.canvas.before:
             Color(0,0,0,0.55); self.bg=Rectangle(pos=self.pos,size=self.size)
         self.bind(pos=self._upd,size=self._upd)
+        
+        # Adapt panel size based on aspect ratio
+        aspect = slideshow.aspect_ratio if slideshow else "16:9"
+        if aspect == "9:16":
+            panel_size = (dp(460), dp(450))  # Portrait: narrower
+        else:
+            panel_size = (dp(520), dp(420))  # Landscape: default size
+        
         panel=BoxLayout(orientation='vertical',size_hint=(None,None),
-                        size=(dp(520),dp(420)),
+                        size=panel_size,
                         pos_hint={'center_x':0.5,'center_y':0.5},
                         padding=dp(22),spacing=dp(16))
         with panel.canvas.before:
@@ -2363,8 +2393,16 @@ class GlobalDurationPopup(FloatLayout):
         with self.canvas.before:
             Color(0,0,0,0.55); self.bg=Rectangle(pos=self.pos,size=self.size)
         self.bind(pos=self._upd,size=self._upd)
+        
+        # Adapt panel size based on aspect ratio
+        aspect = slideshow.aspect_ratio if slideshow else "16:9"
+        if aspect == "9:16":
+            panel_size = (dp(460), dp(400))  # Portrait: narrower
+        else:
+            panel_size = (dp(520), dp(380))  # Landscape: default size
+        
         panel=BoxLayout(orientation='vertical',size_hint=(None,None),
-                        size=(dp(520),dp(380)),
+                        size=panel_size,
                         pos_hint={'center_x':0.5,'center_y':0.5},
                         padding=dp(22),spacing=dp(16))
         with panel.canvas.before:
@@ -2484,13 +2522,21 @@ class ImageTile(BoxLayout):
     def _open_lightbox(self):
         """Open the lightbox to display full-size image"""
         try:
+            # Guard: check if lightbox is already open
+            if self.is_lightbox_open:
+                debug_logger.debug(f"Lightbox already open, skipping for: {self.path}")
+                return
+            
             # Set flag to prevent multiple opens
             self.is_lightbox_open = True
             
-            # Find the root parent to add the lightbox overlay
-            root = self
-            while root.parent is not None:
-                root = root.parent
+            # Get root widget directly from app to avoid blocking while loop
+            from kivy.app import App
+            app = App.get_running_app()
+            if not app or not app.root:
+                debug_logger.error("Cannot open lightbox: app root not available")
+                self.is_lightbox_open = False
+                return
             
             # Create and add lightbox popup
             lightbox = ImageLightboxPopup(self.path)
@@ -2503,7 +2549,7 @@ class ImageTile(BoxLayout):
             # Hook into the lightbox's parent property to detect when it's removed
             lightbox.bind(parent=lambda inst, val: on_lightbox_removed() if val is None else None)
             
-            root.add_widget(lightbox)
+            app.root.add_widget(lightbox)
             debug_logger.info(f"Lightbox opened for: {self.path}")
         except Exception as e:
             debug_logger.error(f"Error opening lightbox for {self.path}: {e}")
@@ -3069,17 +3115,17 @@ class Slideshow(FloatLayout):
                   size=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)))
 
         # Create image widgets with proper fit mode for Kivy 2.3+
-        # Use fit_mode='cover' for newer Kivy versions, fallback to keep_ratio/allow_stretch for older versions
+        # Use fit_mode='cover' with mipmap for better quality
         import kivy
         kivy_version = tuple(map(int, kivy.__version__.split('.')[:2]))
         if kivy_version >= (2, 3):
             # Kivy 2.3+: use fit_mode='cover' (replaces deprecated keep_ratio/allow_stretch)
-            self.img_a = Image(opacity=1, color=(1,1,1,1), fit_mode='cover')
-            self.img_b = Image(opacity=0, color=(1,1,1,1), fit_mode='cover')
+            self.img_a = Image(opacity=1, color=(1,1,1,1), fit_mode='cover', mipmap=True)
+            self.img_b = Image(opacity=0, color=(1,1,1,1), fit_mode='cover', mipmap=True)
         else:
             # Older Kivy: use deprecated but functional keep_ratio/allow_stretch
-            self.img_a = Image(opacity=1, color=(1,1,1,1), allow_stretch=True, keep_ratio=True)
-            self.img_b = Image(opacity=0, color=(1,1,1,1), allow_stretch=True, keep_ratio=True)
+            self.img_a = Image(opacity=1, color=(1,1,1,1), allow_stretch=True, keep_ratio=True, mipmap=True)
+            self.img_b = Image(opacity=0, color=(1,1,1,1), allow_stretch=True, keep_ratio=True, mipmap=True)
         self.active_img = self.img_a
         self.back_img = self.img_b
         self.add_widget(self.img_a)
@@ -3210,34 +3256,24 @@ class Slideshow(FloatLayout):
         if self.aspect_ratio == "9:16" and hasattr(self, 'toolbar') and self.toolbar:
             toolbar_width = self.toolbar.width if hasattr(self.toolbar, 'width') else dp(110)
             content_w = self.width - toolbar_width
-            debug_logger.debug(f"9:16 mode: window={self.width}x{self.height}, toolbar_width={toolbar_width}, content={content_w}x{content_h}")
             # Content starts at x=0, toolbar is on the right
         # In 16:9 mode, toolbar is at the bottom, so subtract its height
         elif self.aspect_ratio == "16:9" and hasattr(self, 'toolbar') and self.toolbar:
             toolbar_height = self.toolbar.height if hasattr(self.toolbar, 'height') else dp(60)
             content_h = self.height - toolbar_height
             content_y = toolbar_height
-            debug_logger.debug(f"16:9 mode: window={self.width}x{self.height}, toolbar_height={toolbar_height}, content={content_w}x{content_h}")
             # Content starts above the toolbar
         
-        tex_w,tex_h=img_widget.texture.size
-        if tex_w==0 or tex_h==0: return
+        # With fit_mode='cover' (Kivy 2.3+), the Image widget handles scaling automatically
+        # We only need to set the size to fill the available content area
+        # The widget will center and scale the texture to cover the area without manual math
+        img_widget.size = (content_w, content_h)
+        img_widget.pos = (content_x, content_y)
         
-        if IMAGE_SCALE_MODE=="stretch":
-            # For stretch mode, fill entire available content space
-            img_widget.size=(content_w,content_h)
-            img_widget.pos=(content_x,content_y)
-            debug_logger.debug(f"Stretch mode: img size={img_widget.size}, pos={img_widget.pos}")
-            return
-        
-        # For other modes, calculate manual scaling to fit in available space
-        ratio_w=content_w/tex_w; ratio_h=content_h/tex_h
-        scale=max(ratio_w,ratio_h) if IMAGE_SCALE_MODE=="cover" else min(ratio_w,ratio_h)
-        new_w=tex_w*scale; new_h=tex_h*scale
-        img_widget.size=(new_w,new_h)
-        # Center the image in the available content space
-        img_widget.pos=(content_x + (content_w-new_w)/2, content_y + (content_h-new_h)/2)
-        debug_logger.debug(f"{IMAGE_SCALE_MODE} mode: texture={tex_w}x{tex_h}, scale={scale:.2f}, img size={new_w:.0f}x{new_h:.0f}, pos=({img_widget.pos[0]:.0f},{img_widget.pos[1]:.0f})")
+        # Debug: log texture and display sizes for verification
+        if img_widget.texture:
+            tex_w, tex_h = img_widget.texture.size
+            debug_logger.debug(f"Image display: texture={tex_w}x{tex_h}, display size={content_w:.0f}x{content_h:.0f}, pos=({content_x:.0f},{content_y:.0f})")
 
     def _create_toolbar(self, vertical=False):
         if AppBarClass:
