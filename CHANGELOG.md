@@ -1,5 +1,52 @@
 # Changelog
 
+## 2025-01-XX - Feature: Automatischer Vollbildstart (Fullscreen beim App-Start)
+
+### 🎯 Zusammenfassung
+Die App startet jetzt IMMER im echten Vollbild-Modus (ohne Fensterrahmen/Leiste), ohne Neustart oder Benutzerinteraktion erforderlich.
+
+### ✅ Neue Features
+
+#### Automatischer Vollbildstart
+**Feature:** App startet direkt im Vollbild-Modus beim Programmstart
+
+**Implementierung:**
+- `Config.set('graphics', 'fullscreen', 'auto')` vor Kivy-App-Initialisierung (Zeile 123)
+- Konfiguration wird VOR Import der Kivy-Widgets gesetzt
+- Fallback in `Slideshow.__init__()` falls Config nicht wirksam (Zeile 3048)
+- Funktioniert mit beiden Orientierungen (16:9 und 9:16)
+- Raspberry Pi/SDL2 kompatibel
+
+**Geänderte Dateien:**
+- `main.py`:
+  - Zeile 120-127: Config-Import und Fullscreen-Konfiguration vor Kivy-Imports
+  - Zeile 3046-3049: Fallback-Logik mit `if not Window.fullscreen:` Check
+
+**Code-Änderung:**
+```python
+# Configure Kivy settings BEFORE importing any Kivy modules
+from kivy.config import Config
+# Set fullscreen mode to 'auto' for true fullscreen without window decorations
+Config.set('graphics', 'fullscreen', 'auto')
+# Set window provider for Raspberry Pi/SDL2 compatibility
+Config.set('graphics', 'window_state', 'visible')
+# Write config to ensure it persists
+Config.write()
+```
+
+**Prüfung:**
+- Starte die App: `python main.py`
+- App sollte sofort im Vollbild erscheinen (keine Fensterrahmen)
+- Wechsel zwischen 16:9 und 9:16 funktioniert weiterhin
+- Keine weißen/schwarzen Zwischenflächen beim Start
+
+**Technische Details:**
+- Config muss VOR allen Kivy-Widget-Imports gesetzt werden
+- `Window.size`-Setzungen sind bereits mit `if not Window.fullscreen:` geschützt
+- Orientation-Umschaltung bleibt dynamisch und funktional
+
+---
+
 ## 2025-01-XX - Fix: 9:16 End-to-End Korrekturen (Workflow, Anzeige, Doppelklick) - UPDATED
 
 ### 🎯 Zusammenfassung
