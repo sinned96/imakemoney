@@ -152,6 +152,116 @@ from kivy.uix.slider import Slider
 from kivy.uix.widget import Widget
 from kivy.app import App
 from kivy.core.window import Window
+from kivy.graphics import Translate, Rotate as CanvasRotate
+from kivy.uix.modalview import ModalView
+
+# ------------------ ORIENTATION PROVIDER ------------------
+class OrientationProvider:
+    """Singleton that manages the current orientation state"""
+    _instance = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance.aspect_ratio = "16:9"
+            cls._instance.rotation_angle = 0  # 0 for 16:9, 90 for 9:16
+        return cls._instance
+    
+    def set_orientation(self, aspect_ratio):
+        """Set the current aspect ratio and calculate rotation angle"""
+        self.aspect_ratio = aspect_ratio
+        self.rotation_angle = 90 if aspect_ratio == "9:16" else 0
+    
+    def get_rotation_angle(self):
+        """Get the current rotation angle"""
+        return self.rotation_angle
+    
+    def is_portrait(self):
+        """Check if we're in portrait mode"""
+        return self.aspect_ratio == "9:16"
+
+# ------------------ ROTATING ROOT ------------------
+class RotatingRoot(FloatLayout):
+    """Root widget that applies canvas rotation for portrait mode"""
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.orientation_provider = OrientationProvider()
+        self._rotation_instruction = None
+        self._translate_instruction = None
+        self.bind(size=self._update_rotation, pos=self._update_rotation)
+    
+    def _update_rotation(self, *args):
+        """Apply rotation transform based on orientation"""
+        angle = self.orientation_provider.get_rotation_angle()
+        
+        # Clear existing rotation instructions
+        self.canvas.before.clear()
+        
+        if angle != 0:
+            # Portrait mode: rotate 90° CW
+            # Transform: Translate(width, 0) then Rotate(90°, origin=(0,0))
+            with self.canvas.before:
+                PushMatrix()
+                Translate(self.width, 0, 0)
+                CanvasRotate(angle=angle, origin=(0, 0))
+            
+            with self.canvas.after:
+                PopMatrix()
+        else:
+            # Landscape mode: no rotation (identity transform)
+            with self.canvas.before:
+                PushMatrix()
+            with self.canvas.after:
+                PopMatrix()
+    
+    def apply_rotation(self):
+        """Force update of rotation (call after orientation change)"""
+        self._update_rotation()
+
+# ------------------ ROTATED MODAL VIEW ------------------
+class RotatedModalView(ModalView):
+    """ModalView that rotates with the orientation"""
+    def __init__(self, **kwargs):
+        self.orientation_provider = OrientationProvider()
+        
+        # In portrait mode, swap width and height for proper sizing
+        if self.orientation_provider.is_portrait():
+            # Swap size_hint if provided
+            if 'size_hint' in kwargs:
+                w, h = kwargs['size_hint']
+                kwargs['size_hint'] = (h, w)
+            # Swap size if provided
+            if 'size' in kwargs:
+                w, h = kwargs['size']
+                kwargs['size'] = (h, w)
+        
+        super().__init__(**kwargs)
+        self.bind(size=self._update_rotation, pos=self._update_rotation)
+        self._update_rotation()
+    
+    def _update_rotation(self, *args):
+        """Apply rotation transform based on orientation"""
+        angle = self.orientation_provider.get_rotation_angle()
+        
+        # Clear existing rotation
+        self.canvas.before.clear()
+        self.canvas.after.clear()
+        
+        if angle != 0:
+            # Portrait mode: rotate 90° CW to match root rotation
+            with self.canvas.before:
+                PushMatrix()
+                Translate(self.width, 0, 0)
+                CanvasRotate(angle=angle, origin=(0, 0))
+            
+            with self.canvas.after:
+                PopMatrix()
+        else:
+            # Landscape mode: no rotation
+            with self.canvas.before:
+                PushMatrix()
+            with self.canvas.after:
+                PopMatrix()
 
 # ------------------ KONFIG ------------------
 APP_DIR = Path(__file__).parent
@@ -938,46 +1048,40 @@ class ImageLightboxPopup(FloatLayout):
         # Main container for image
         container=FloatLayout()
         
-        # Try to load the image with error handling and nocache
-        try:
-            from kivy.core.image import Image as CoreImage
-            # Load with nocache to prevent memory issues
-            texture = CoreImage(image_path, nocache=True).texture
-            
-            # Full-size image centered on screen
-            # Use fit_mode='contain' for lightbox to show full image without cropping
-            import kivy
-            kivy_version = tuple(map(int, kivy.__version__.split('.')[:2]))
-            if kivy_version >= (2, 3):
-                self.img=Image(texture=texture,
-                              size_hint=(None,None),
-                              pos_hint={'center_x':0.5,'center_y':0.5},
-                              fit_mode='contain',
-                              mipmap=True)
-            else:
-                self.img=Image(texture=texture,
-                              size_hint=(None,None),
-                              pos_hint={'center_x':0.5,'center_y':0.5},
-                              allow_stretch=True,
-                              keep_ratio=True,
-                              mipmap=True)
-            
-            # Bind to window size to scale image appropriately
-            from kivy.core.window import Window
-            self.img.size=(Window.width*0.9, Window.height*0.9)
-            Window.bind(size=self._update_image_size)
-            
-            container.add_widget(self.img)
-            debug_logger.info(f"Lightbox opened successfully for: {image_path}")
-        except Exception as e:
-            debug_logger.error(f"Failed to load image in lightbox: {image_path}, error: {e}")
-            # Show error message instead
-            error_label=Label(text=f"Fehler beim Laden des Bildes:\n{str(e)}",
-                            size_hint=(0.8, 0.5),
-                            pos_hint={'center_x':0.5,'center_y':0.5},
-                            font_size=dp(18),
-                            color=(1,0.3,0.3,1))
-            container.add_widget(error_label)
+        # Create image widget with fit_mode='contain' to show full image without cropping
+        import kivy
+        kivy_version = tuple(map(int, kivy.__version__.split('.')[:2]))
+        if kivy_version >= (2, 3):
+            self.img=Image(size_hint=(1, 1),
+                          fit_mode='contain',
+                          mipmap=True)
+        else:
+            self.img=Image(size_hint=(1, 1),
+                          allow_stretch=True,
+                          keep_ratio=True,
+                          mipmap=True)
+        
+        # Load image via source (not texture) on UI thread to avoid white images
+        # Schedule the actual loading to happen on next frame
+        def load_image(dt):
+            try:
+                self.img.source = image_path
+                self.img.reload()
+                debug_logger.info(f"Lightbox image loaded: {image_path}")
+            except Exception as e:
+                debug_logger.error(f"Failed to load image in lightbox: {image_path}, error: {e}")
+                # Show error message instead
+                error_label=Label(text=f"Fehler beim Laden des Bildes:\n{str(e)}",
+                                size_hint=(0.8, 0.5),
+                                pos_hint={'center_x':0.5,'center_y':0.5},
+                                font_size=dp(18),
+                                color=(1,0.3,0.3,1))
+                container.add_widget(error_label)
+        
+        from kivy.clock import Clock
+        Clock.schedule_once(load_image, 0)
+        
+        container.add_widget(self.img)
         
         # Close button in top-right corner
         close_btn=Button(text="✕",
@@ -1006,11 +1110,6 @@ class ImageLightboxPopup(FloatLayout):
         # Click anywhere on background to close
         self.bind(on_touch_down=self._on_touch)
     
-    def _update_image_size(self, window, size):
-        """Update image size when window is resized"""
-        if hasattr(self, 'img'):
-            self.img.size=(size[0]*0.9, size[1]*0.9)
-    
     def _on_touch(self, instance, touch):
         """Handle touch events - close on background click"""
         # Check if touch is on the image or close button
@@ -1023,8 +1122,6 @@ class ImageLightboxPopup(FloatLayout):
     def _close(self):
         """Close the lightbox"""
         try:
-            from kivy.core.window import Window
-            Window.unbind(size=self._update_image_size)
             if self.parent:
                 self.parent.remove_widget(self)
             debug_logger.info(f"Lightbox closed for: {self.image_path}")
@@ -3020,6 +3117,15 @@ class FormatSelectionPopup(FloatLayout):
         self.slideshow.persist_meta()
         self.current_label.text = f"Aktuell: {aspect_ratio}"
         
+        # Update OrientationProvider to trigger global rotation
+        orientation_provider = OrientationProvider()
+        orientation_provider.set_orientation(aspect_ratio)
+        
+        # Apply rotation to root widget
+        app = App.get_running_app()
+        if hasattr(app, 'root_widget') and isinstance(app.root_widget, RotatingRoot):
+            app.root_widget.apply_rotation()
+        
         # Adjust window size when not in fullscreen mode
         if not Window.fullscreen:
             if aspect_ratio == "16:9":
@@ -3083,6 +3189,10 @@ class Slideshow(FloatLayout):
         self.global_interval_override = meta.get("global_interval", None)
         self.global_brightness_override = meta.get("global_brightness", None)
         self.aspect_ratio = meta.get("aspect_ratio", "16:9")
+        
+        # Initialize OrientationProvider with current aspect ratio
+        orientation_provider = OrientationProvider()
+        orientation_provider.set_orientation(self.aspect_ratio)
         
         # Detect screen size and enable fullscreen
         from kivy.core.window import Window
@@ -3269,11 +3379,6 @@ class Slideshow(FloatLayout):
         # The widget will center and scale the texture to cover the area without manual math
         img_widget.size = (content_w, content_h)
         img_widget.pos = (content_x, content_y)
-        
-        # Debug: log texture and display sizes for verification
-        if img_widget.texture:
-            tex_w, tex_h = img_widget.texture.size
-            debug_logger.debug(f"Image display: texture={tex_w}x{tex_h}, display size={content_w:.0f}x{content_h:.0f}, pos=({content_x:.0f},{content_y:.0f})")
 
     def _create_toolbar(self, vertical=False):
         if AppBarClass:
@@ -3779,7 +3884,7 @@ if KIVYMD_OK:
             self.theme_cls.theme_style="Dark"
             self.theme_cls.primary_palette="Blue"
             self.mode_manager=ModeManager(MODES_PATH)
-            self.root_widget=FloatLayout()
+            self.root_widget=RotatingRoot()
             self.slideshow=None
             self.show_login()
             return self.root_widget
@@ -3802,7 +3907,7 @@ else:
     class KioskMDApp(App):
         def build(self):
             self.mode_manager=ModeManager(MODES_PATH)
-            self.root_widget=FloatLayout()
+            self.root_widget=RotatingRoot()
             self.slideshow=None
             self.show_login()
             return self.root_widget
