@@ -117,6 +117,15 @@ def generate_qr_code_image(data, size=(300, 300)):
         debug_logger.error(f"Error generating QR code: {e}")
         return None
 
+# Configure Kivy settings BEFORE importing any Kivy modules
+from kivy.config import Config
+# Set fullscreen mode to 'auto' for true fullscreen without window decorations
+Config.set('graphics', 'fullscreen', 'auto')
+# Set window provider for Raspberry Pi/SDL2 compatibility
+Config.set('graphics', 'window_state', 'visible')
+# Write config to ensure it persists
+Config.write()
+
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -3034,8 +3043,10 @@ class Slideshow(FloatLayout):
         self.screen_width = Window.width
         self.screen_height = Window.height
         
-        # Enable fullscreen
-        Window.fullscreen = 'auto'
+        # Enable fullscreen as fallback if not already set by Config
+        # (Config.set should have already set this before app initialization)
+        if not Window.fullscreen:
+            Window.fullscreen = 'auto'
         
         # After enabling fullscreen, get actual screen dimensions
         # Use a callback to get the correct screen dimensions after fullscreen is enabled
