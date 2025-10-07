@@ -1053,47 +1053,72 @@ class ImageLightboxPopup(RotatedModalView):
                           keep_ratio=True,
                           mipmap=True)
         
-        # Load image via source (not texture) on UI thread to avoid white images
-        # Schedule the actual loading to happen on next frame
+        # Load image robustly - clear state first, then load via CoreImage (primary) or source (fallback)
         def load_image(dt):
-            try:
-                self.img.source = image_path
-                self.img.reload()
-                
-                # If texture is still None after reload, try CoreImage fallback
-                def check_texture(dt2):
-                    if self.img.texture is None:
-                        debug_logger.warning(f"Texture still None after reload, trying CoreImage fallback")
-                        try:
-                            from kivy.core.image import Image as CoreImage
-                            core_img = CoreImage(image_path, nocache=True)
-                            if core_img and core_img.texture:
-                                self.img.texture = core_img.texture
-                                debug_logger.info(f"Lightbox image loaded via CoreImage fallback: {image_path}")
-                            else:
-                                raise Exception("CoreImage returned no texture")
-                        except Exception as e2:
-                            debug_logger.error(f"CoreImage fallback also failed: {e2}")
-                            error_label=Label(text=f"Fehler beim Laden des Bildes:\n{str(e2)}",
-                                            size_hint=(0.8, 0.5),
-                                            pos_hint={'center_x':0.5,'center_y':0.5},
-                                            font_size=dp(18),
-                                            color=(1,0.3,0.3,1))
-                            container.add_widget(error_label)
-                    else:
-                        debug_logger.info(f"Lightbox image loaded successfully: {image_path}")
-                
-                from kivy.clock import Clock
-                Clock.schedule_once(check_texture, 0.1)
-            except Exception as e:
-                debug_logger.error(f"Failed to load image in lightbox: {image_path}, error: {e}")
-                # Show error message instead
-                error_label=Label(text=f"Fehler beim Laden des Bildes:\n{str(e)}",
-                                size_hint=(0.8, 0.5),
-                                pos_hint={'center_x':0.5,'center_y':0.5},
-                                font_size=dp(18),
-                                color=(1,0.3,0.3,1))
+            import os
+            
+            # Clear previous state
+            self.img.source = ""
+            self.img.texture = None
+            
+            # Check if file exists
+            file_exists = os.path.exists(image_path)
+            debug_logger.info(f"Loading lightbox image: path={image_path}, exists={file_exists}")
+            
+            if not file_exists:
+                debug_logger.error(f"Lightbox image file does not exist: {image_path}")
+                error_label = Label(text=f"Fehler: Bild nicht gefunden\n{Path(image_path).name}",
+                                  size_hint=(0.8, 0.5),
+                                  pos_hint={'center_x': 0.5, 'center_y': 0.5},
+                                  font_size=dp(18),
+                                  color=(1, 0.3, 0.3, 1))
                 container.add_widget(error_label)
+                return
+            
+            # Primary path: load via CoreImage for better control
+            try:
+                from kivy.core.image import Image as CoreImage
+                core_img = CoreImage(image_path, nocache=True)
+                
+                if core_img and core_img.texture:
+                    self.img.texture = core_img.texture
+                    tex_size = core_img.texture.size
+                    debug_logger.info(f"Lightbox image loaded via CoreImage: texture_size={tex_size}")
+                else:
+                    raise Exception("CoreImage returned no texture")
+                    
+            except Exception as e:
+                # Fallback: use widget.source with reload
+                debug_logger.warning(f"CoreImage failed for lightbox {image_path}: {e}, trying fallback")
+                try:
+                    self.img.source = image_path
+                    self.img.reload()
+                    
+                    # Verify texture loaded
+                    def check_fallback(dt2):
+                        if self.img.texture:
+                            tex_size = self.img.texture.size
+                            debug_logger.info(f"Lightbox image loaded via fallback: texture_size={tex_size}")
+                        else:
+                            debug_logger.error(f"Lightbox fallback also failed: texture is None for {image_path}")
+                            error_label = Label(text=f"Fehler beim Laden des Bildes:\nKeine Textur verfügbar",
+                                              size_hint=(0.8, 0.5),
+                                              pos_hint={'center_x': 0.5, 'center_y': 0.5},
+                                              font_size=dp(18),
+                                              color=(1, 0.3, 0.3, 1))
+                            container.add_widget(error_label)
+                    
+                    from kivy.clock import Clock
+                    Clock.schedule_once(check_fallback, 0.1)
+                    
+                except Exception as e2:
+                    debug_logger.error(f"Both CoreImage and fallback failed for lightbox {image_path}: {e2}")
+                    error_label = Label(text=f"Fehler beim Laden des Bildes:\n{str(e2)}",
+                                      size_hint=(0.8, 0.5),
+                                      pos_hint={'center_x': 0.5, 'center_y': 0.5},
+                                      font_size=dp(18),
+                                      color=(1, 0.3, 0.3, 1))
+                    container.add_widget(error_label)
         
         from kivy.clock import Clock
         Clock.schedule_once(load_image, 0)
