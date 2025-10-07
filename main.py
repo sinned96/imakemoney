@@ -3643,30 +3643,130 @@ class Slideshow(FloatLayout):
         path=self.images[self.index % len(self.images)]
         self.current_original_path=path
         self.current_display_path=path
-        self.back_img.source=path
-        self.back_img.opacity=0
-        self.back_img.reload()
-        Clock.schedule_once(lambda dt:(self._resize_image(self.back_img), self._update_debug_overlay(), self._apply_current_brightness()))
-        if initial:
-            self.active_img.opacity=0
-            self.back_img.opacity=1
-            self.active_img,self.back_img=self.back_img,self.active_img
-            self._apply_current_brightness()
-            self._update_debug_overlay()
-            return
-        effect_override=self.image_effect_overrides.get(path)
-        effect=effect_override if effect_override else self._choose_effect()
-        mapping={
-            "fade":self._apply_fade,
-            "slide_left":lambda nw,ow:self._apply_slide(nw,ow,'left'),
-            "slide_right":lambda nw,ow:self._apply_slide(nw,ow,'right'),
-            "zoom_in":self._apply_zoom_in,
-            "zoom_pan":self._apply_zoom_pan,
-            "rotate":self._apply_rotate,
-            "blitz":self._apply_blitz,
-            "none":self._apply_none
-        }
-        mapping.get(effect,self._apply_fade)(self.back_img,self.active_img)
+        
+        # Robust image loading: clear previous state and schedule load on next frame
+        self._load_image_robust(self.back_img, path, initial)
+    
+    def _load_image_robust(self, img_widget, path, initial=False):
+        """
+        Robustly load an image into a widget, handling portrait/landscape correctly.
+        
+        Args:
+            img_widget: The Image widget to load into
+            path: Path to the image file
+            initial: Whether this is the initial load (no transition)
+        """
+        import os
+        
+        # Step 1: Clear previous state to avoid stale textures
+        img_widget.source = ""
+        img_widget.texture = None
+        img_widget.opacity = 0
+        
+        # Force canvas update
+        img_widget.canvas.ask_update()
+        
+        # Step 2: Schedule load on next frame to avoid race with previous draw
+        def _do_load(dt):
+            # Check if file exists
+            file_exists = os.path.exists(path)
+            debug_logger.info(f"Loading image: path={path}, exists={file_exists}, aspect_mode={self.aspect_ratio}")
+            
+            if not file_exists:
+                debug_logger.error(f"Image file does not exist: {path}")
+                return
+            
+            # Step 3: Primary path - load via CoreImage for better control
+            try:
+                from kivy.core.image import Image as CoreImage
+                core_img = CoreImage(path, nocache=True)
+                
+                if core_img and core_img.texture:
+                    img_widget.texture = core_img.texture
+                    tex_size = core_img.texture.size
+                    widget_size = img_widget.size
+                    debug_logger.info(f"Image loaded via CoreImage: texture_size={tex_size}, widget_size={widget_size}, aspect_mode={self.aspect_ratio}")
+                    
+                    # Schedule resize and brightness application
+                    Clock.schedule_once(lambda dt2: (
+                        self._resize_image(img_widget),
+                        self._update_debug_overlay(),
+                        self._apply_current_brightness()
+                    ), 0)
+                    
+                    # Handle initial vs transition
+                    if initial:
+                        self.active_img.opacity = 0
+                        img_widget.opacity = 1
+                        self.active_img, self.back_img = self.back_img, self.active_img
+                    else:
+                        # Apply transition effect
+                        effect_override = self.image_effect_overrides.get(path)
+                        effect = effect_override if effect_override else self._choose_effect()
+                        mapping = {
+                            "fade": self._apply_fade,
+                            "slide_left": lambda nw, ow: self._apply_slide(nw, ow, 'left'),
+                            "slide_right": lambda nw, ow: self._apply_slide(nw, ow, 'right'),
+                            "zoom_in": self._apply_zoom_in,
+                            "zoom_pan": self._apply_zoom_pan,
+                            "rotate": self._apply_rotate,
+                            "blitz": self._apply_blitz,
+                            "none": self._apply_none
+                        }
+                        mapping.get(effect, self._apply_fade)(img_widget, self.active_img)
+                else:
+                    raise Exception("CoreImage returned no texture")
+                    
+            except Exception as e:
+                # Step 4: Fallback - use widget.source with reload
+                debug_logger.warning(f"CoreImage failed for {path}: {e}, trying fallback with widget.source")
+                try:
+                    # Add cache-bust parameter with timestamp
+                    import time
+                    cache_bust_path = f"{path}?t={int(time.time() * 1000)}"
+                    img_widget.source = cache_bust_path
+                    img_widget.reload()
+                    
+                    # Verify texture loaded
+                    def _check_fallback(dt2):
+                        if img_widget.texture:
+                            tex_size = img_widget.texture.size
+                            widget_size = img_widget.size
+                            debug_logger.info(f"Image loaded via fallback: texture_size={tex_size}, widget_size={widget_size}, aspect_mode={self.aspect_ratio}")
+                            
+                            Clock.schedule_once(lambda dt3: (
+                                self._resize_image(img_widget),
+                                self._update_debug_overlay(),
+                                self._apply_current_brightness()
+                            ), 0)
+                            
+                            if initial:
+                                self.active_img.opacity = 0
+                                img_widget.opacity = 1
+                                self.active_img, self.back_img = self.back_img, self.active_img
+                            else:
+                                effect_override = self.image_effect_overrides.get(path)
+                                effect = effect_override if effect_override else self._choose_effect()
+                                mapping = {
+                                    "fade": self._apply_fade,
+                                    "slide_left": lambda nw, ow: self._apply_slide(nw, ow, 'left'),
+                                    "slide_right": lambda nw, ow: self._apply_slide(nw, ow, 'right'),
+                                    "zoom_in": self._apply_zoom_in,
+                                    "zoom_pan": self._apply_zoom_pan,
+                                    "rotate": self._apply_rotate,
+                                    "blitz": self._apply_blitz,
+                                    "none": self._apply_none
+                                }
+                                mapping.get(effect, self._apply_fade)(img_widget, self.active_img)
+                        else:
+                            debug_logger.error(f"Fallback also failed: texture is None for {path}")
+                    
+                    Clock.schedule_once(_check_fallback, 0.1)
+                    
+                except Exception as e2:
+                    debug_logger.error(f"Both CoreImage and fallback failed for {path}: {e2}")
+        
+        Clock.schedule_once(_do_load, 0)
 
     # Effekte
     def _apply_slide(self,new_widget,old_widget,direction='left'):
