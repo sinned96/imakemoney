@@ -2170,9 +2170,8 @@ class AufnahmePopup(RotatedModalView):
         debug_logger.info("Auto-closing popup and switching to gallery")
         
         # Close this popup
-        if self.parent:
-            self.parent.remove_widget(self)
-            debug_logger.info("Removed popup from parent widget")
+        self.dismiss()
+        debug_logger.info("Dismissed popup")
         
         # Switch to gallery if slideshow reference is available
         if self.slideshow:
