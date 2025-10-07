@@ -196,23 +196,20 @@ class RotatingRoot(FloatLayout):
         
         # Clear existing rotation instructions
         self.canvas.before.clear()
+        self.canvas.after.clear()
         
-        if angle != 0:
-            # Portrait mode: rotate 90° CW
-            # Transform: Translate(width, 0) then Rotate(90°, origin=(0,0))
-            with self.canvas.before:
-                PushMatrix()
+        # ALWAYS push/pop matrix in both portrait and landscape to maintain balance
+        with self.canvas.before:
+            PushMatrix()
+            if angle != 0:
+                # Portrait mode: rotate 90° CW
+                # Transform: Translate(width, 0) then Rotate(90°, origin=(0,0))
                 Translate(self.width, 0, 0)
                 CanvasRotate(angle=angle, origin=(0, 0))
-            
-            with self.canvas.after:
-                PopMatrix()
-        else:
-            # Landscape mode: no rotation (identity transform)
-            with self.canvas.before:
-                PushMatrix()
-            with self.canvas.after:
-                PopMatrix()
+            # In landscape mode (angle==0), just Push without transforms
+        
+        with self.canvas.after:
+            PopMatrix()
     
     def apply_rotation(self):
         """Force update of rotation (call after orientation change)"""
@@ -247,21 +244,17 @@ class RotatedModalView(ModalView):
         self.canvas.before.clear()
         self.canvas.after.clear()
         
-        if angle != 0:
-            # Portrait mode: rotate 90° CW to match root rotation
-            with self.canvas.before:
-                PushMatrix()
+        # ALWAYS push/pop matrix in both portrait and landscape to maintain balance
+        with self.canvas.before:
+            PushMatrix()
+            if angle != 0:
+                # Portrait mode: rotate 90° CW to match root rotation
                 Translate(self.width, 0, 0)
                 CanvasRotate(angle=angle, origin=(0, 0))
-            
-            with self.canvas.after:
-                PopMatrix()
-        else:
-            # Landscape mode: no rotation
-            with self.canvas.before:
-                PushMatrix()
-            with self.canvas.after:
-                PopMatrix()
+            # In landscape mode (angle==0), just Push without transforms
+        
+        with self.canvas.after:
+            PopMatrix()
 
 # ------------------ KONFIG ------------------
 APP_DIR = Path(__file__).parent
@@ -860,20 +853,19 @@ def save_image_meta(meta):
         print("[META] Speichern fehlgeschlagen:", e)
 
 # ---- Image Settings Popup (per Bild) ----
-class ImageSettingsPopup(FloatLayout):
+class ImageSettingsPopup(RotatedModalView):
     def __init__(self, image_path, slideshow, on_close=None, on_deleted=None, **kw):
+        kw.setdefault('size_hint', (None, None))
+        kw.setdefault('size', (dp(500), dp(720)))
+        kw.setdefault('auto_dismiss', False)
         super().__init__(**kw)
         self.image_path=image_path
         self.slideshow=slideshow
         self.on_close=on_close
         self.on_deleted=on_deleted
-        with self.canvas.before:
-            Color(0,0,0,0.65)
-            self.bg=Rectangle(pos=self.pos,size=self.size)
-        self.bind(pos=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)))
-        panel=BoxLayout(orientation='vertical',size_hint=(None,None),
-                        size=(dp(500),dp(720)),
-                        pos_hint={'center_x':0.5,'center_y':0.5},
+        self.background_color = (0, 0, 0, 0.65)
+        self.background = ''
+        panel=BoxLayout(orientation='vertical',size_hint=(1, 1),
                         padding=dp(20),spacing=dp(14))
         with panel.canvas.before:
             Color(0.16,0.16,0.2,0.97)
@@ -1030,20 +1022,20 @@ class ImageSettingsPopup(FloatLayout):
         self._close()
     def _close(self):
         if self.on_close: self.on_close()
-        if self.parent: self.parent.remove_widget(self)
+        self.dismiss()
 
-class ImageLightboxPopup(FloatLayout):
+class ImageLightboxPopup(RotatedModalView):
     """Lightbox overlay for displaying full-size images"""
     def __init__(self, image_path, **kw):
+        # Set ModalView properties before calling super().__init__
+        kw.setdefault('size_hint', (1, 1))
+        kw.setdefault('auto_dismiss', True)
         super().__init__(**kw)
         self.image_path=image_path
         
-        # Dark overlay background
-        with self.canvas.before:
-            Color(0,0,0,0.9)
-            self.bg=Rectangle(pos=self.pos,size=self.size)
-        self.bind(pos=lambda *a:setattr(self.bg,'pos',self.pos),
-                  size=lambda *a:setattr(self.bg,'size',self.size))
+        # ModalView already provides dark background, but we can customize it
+        self.background_color = (0, 0, 0, 0.9)
+        self.background = ''
         
         # Main container for image
         container=FloatLayout()
@@ -1067,7 +1059,32 @@ class ImageLightboxPopup(FloatLayout):
             try:
                 self.img.source = image_path
                 self.img.reload()
-                debug_logger.info(f"Lightbox image loaded: {image_path}")
+                
+                # If texture is still None after reload, try CoreImage fallback
+                def check_texture(dt2):
+                    if self.img.texture is None:
+                        debug_logger.warning(f"Texture still None after reload, trying CoreImage fallback")
+                        try:
+                            from kivy.core.image import Image as CoreImage
+                            core_img = CoreImage(image_path, nocache=True)
+                            if core_img and core_img.texture:
+                                self.img.texture = core_img.texture
+                                debug_logger.info(f"Lightbox image loaded via CoreImage fallback: {image_path}")
+                            else:
+                                raise Exception("CoreImage returned no texture")
+                        except Exception as e2:
+                            debug_logger.error(f"CoreImage fallback also failed: {e2}")
+                            error_label=Label(text=f"Fehler beim Laden des Bildes:\n{str(e2)}",
+                                            size_hint=(0.8, 0.5),
+                                            pos_hint={'center_x':0.5,'center_y':0.5},
+                                            font_size=dp(18),
+                                            color=(1,0.3,0.3,1))
+                            container.add_widget(error_label)
+                    else:
+                        debug_logger.info(f"Lightbox image loaded successfully: {image_path}")
+                
+                from kivy.clock import Clock
+                Clock.schedule_once(check_texture, 0.1)
             except Exception as e:
                 debug_logger.error(f"Failed to load image in lightbox: {image_path}, error: {e}")
                 # Show error message instead
@@ -1122,20 +1139,21 @@ class ImageLightboxPopup(FloatLayout):
     def _close(self):
         """Close the lightbox"""
         try:
-            if self.parent:
-                self.parent.remove_widget(self)
+            self.dismiss()
             debug_logger.info(f"Lightbox closed for: {self.image_path}")
         except Exception as e:
             debug_logger.error(f"Error closing lightbox: {e}")
 
 # ---- Globale Settings Hierarchie ----
-class SettingsRootPopup(FloatLayout):
+class SettingsRootPopup(RotatedModalView):
     def __init__(self, slideshow, **kw):
+        # Set ModalView properties
+        kw.setdefault('size_hint', (None, None))
+        kw.setdefault('auto_dismiss', True)
         super().__init__(**kw)
         self.slideshow=slideshow
-        with self.canvas.before:
-            Color(0,0,0,0.55); self.bg=Rectangle(pos=self.pos,size=self.size)
-        self.bind(pos=self._upd,size=self._upd)
+        self.background_color = (0, 0, 0, 0.55)
+        self.background = ''
         
         # Adapt panel size based on aspect ratio
         aspect = slideshow.aspect_ratio if slideshow else "16:9"
@@ -1144,9 +1162,10 @@ class SettingsRootPopup(FloatLayout):
         else:
             panel_size = (dp(500), dp(480))  # Landscape: default size
         
-        panel=BoxLayout(orientation='vertical',size_hint=(None,None),
-                        size=panel_size,
-                        pos_hint={'center_x':0.5,'center_y':0.5},
+        # Set ModalView size to match panel
+        self.size = panel_size
+        
+        panel=BoxLayout(orientation='vertical',size_hint=(1, 1),
                         padding=dp(24),spacing=dp(18))
         
         with panel.canvas.before:
@@ -1166,16 +1185,14 @@ class SettingsRootPopup(FloatLayout):
         panel.add_widget(make_btn("Bilddauer", self._open_duration))
         panel.add_widget(make_btn("Schließen", self._close))
         self.add_widget(panel)
-    def _upd(self,*a):
-        self.bg.pos=self.pos; self.bg.size=self.size
     def _open_general(self):
-        self.slideshow.open_single(GeneralSettingsPopup(self.slideshow))
+        popup = GeneralSettingsPopup(self.slideshow)
+        popup.open()
     def _open_duration(self):
-        self.slideshow.open_single(GlobalDurationPopup(self.slideshow))
+        popup = GlobalDurationPopup(self.slideshow)
+        popup.open()
     def _close(self):
-        if self.parent: self.parent.remove_widget(self)
-        if self.slideshow.current_overlay is self:
-            self.slideshow.current_overlay=None
+        self.dismiss()
 
 class LoadingSpinner(Widget):
     """A circular loading spinner widget"""
@@ -1221,10 +1238,14 @@ class LoadingSpinner(Widget):
             self.animation.cancel(self)
             self.animation = None
 
-class AufnahmePopup(FloatLayout):
+class AufnahmePopup(RotatedModalView):
     """Popup window for recording functionality with improved error handling"""
     def __init__(self, slideshow=None, **kwargs):
-        super().__init__(**kwargs)
+        # Set ModalView properties before calling super().__init__
+        kw_copy = kwargs.copy()
+        kw_copy.setdefault('size_hint', (None, None))
+        kw_copy.setdefault('auto_dismiss', False)
+        super().__init__(**kw_copy)
         self.slideshow = slideshow  # Reference to parent slideshow for gallery navigation
         self.process = None
         self.is_running = False
@@ -1242,11 +1263,9 @@ class AufnahmePopup(FloatLayout):
         # Audio file path for validation (standardized location)
         self.audio_file_path = Path("/home/pi/Desktop/v2_Tripple S/aufnahme.wav")
         
-        # Background
-        with self.canvas.before:
-            Color(0, 0, 0, 0.7)
-            self.bg = Rectangle(pos=self.pos, size=self.size)
-        self.bind(pos=self._update_bg, size=self._update_bg)
+        # ModalView already provides dark background
+        self.background_color = (0, 0, 0, 0.7)
+        self.background = ''
         
         # Main panel - adapt size based on aspect ratio for portrait/landscape compatibility
         # In portrait mode (9:16), use narrower panel; in landscape (16:9), use wider panel
@@ -1255,6 +1274,9 @@ class AufnahmePopup(FloatLayout):
             panel_size = (dp(500), dp(600))  # Portrait: narrower width, taller height
         else:
             panel_size = (dp(600), dp(500))  # Landscape: wider width, shorter height
+        
+        # Set ModalView size to match panel
+        self.size = panel_size
         
         self.panel = BoxLayout(
             orientation='vertical',
@@ -1545,10 +1567,7 @@ class AufnahmePopup(FloatLayout):
         color = color_map.get(level, 'ffffff')
         self.add_output_text(f"[color={color}]{message}[/color]")
 
-    def _update_bg(self, *args):
-        self.bg.pos = self.pos
-        self.bg.size = self.size
-    
+
     def add_output_text(self, text):
         """Add text to the output display"""
         current = self.output_text.text
@@ -2151,9 +2170,8 @@ class AufnahmePopup(FloatLayout):
         debug_logger.info("Auto-closing popup and switching to gallery")
         
         # Close this popup
-        if self.parent:
-            self.parent.remove_widget(self)
-            debug_logger.info("Removed popup from parent widget")
+        self.dismiss()
+        debug_logger.info("Dismissed popup")
         
         # Switch to gallery if slideshow reference is available
         if self.slideshow:
@@ -2418,19 +2436,12 @@ class AufnahmePopup(FloatLayout):
             self.workflow_status_checker = None
             debug_logger.info("Stopped workflow status checking")
         
-        # Remove from parent
-        if self.parent:
-            self.parent.remove_widget(self)
-            debug_logger.info("Removed popup from parent widget")
+        # Dismiss ModalView
+        self.dismiss()
+        debug_logger.info("Dismissed popup")
 
-class GeneralSettingsPopup(FloatLayout):
+class GeneralSettingsPopup(RotatedModalView):
     def __init__(self, slideshow, **kw):
-        super().__init__(**kw)
-        self.slideshow=slideshow
-        with self.canvas.before:
-            Color(0,0,0,0.55); self.bg=Rectangle(pos=self.pos,size=self.size)
-        self.bind(pos=self._upd,size=self._upd)
-        
         # Adapt panel size based on aspect ratio
         aspect = slideshow.aspect_ratio if slideshow else "16:9"
         if aspect == "9:16":
@@ -2438,9 +2449,16 @@ class GeneralSettingsPopup(FloatLayout):
         else:
             panel_size = (dp(520), dp(420))  # Landscape: default size
         
-        panel=BoxLayout(orientation='vertical',size_hint=(None,None),
-                        size=panel_size,
-                        pos_hint={'center_x':0.5,'center_y':0.5},
+        # Set ModalView properties
+        kw.setdefault('size_hint', (None, None))
+        kw.setdefault('size', panel_size)
+        kw.setdefault('auto_dismiss', True)
+        super().__init__(**kw)
+        self.slideshow=slideshow
+        self.background_color = (0, 0, 0, 0.55)
+        self.background = ''
+        
+        panel=BoxLayout(orientation='vertical',size_hint=(1, 1),
                         padding=dp(22),spacing=dp(16))
         with panel.canvas.before:
             Color(0.18,0.18,0.22,0.97); panel._bg=Rectangle(pos=panel.pos,size=panel.size)
@@ -2469,8 +2487,6 @@ class GeneralSettingsPopup(FloatLayout):
         row.add_widget(save); row.add_widget(back)
         panel.add_widget(row)
         self.add_widget(panel)
-    def _upd(self,*a):
-        self.bg.pos=self.pos; self.bg.size=self.size
     def _save(self):
         val=float(self.b_slider.value)
         if abs(val-1.0)<0.001:
@@ -2481,16 +2497,12 @@ class GeneralSettingsPopup(FloatLayout):
         self.slideshow._apply_current_brightness()
         self._back()
     def _back(self):
-        self.slideshow.open_single(SettingsRootPopup(self.slideshow))
+        self.dismiss()
+        popup = SettingsRootPopup(self.slideshow)
+        popup.open()
 
-class GlobalDurationPopup(FloatLayout):
+class GlobalDurationPopup(RotatedModalView):
     def __init__(self, slideshow, **kw):
-        super().__init__(**kw)
-        self.slideshow=slideshow
-        with self.canvas.before:
-            Color(0,0,0,0.55); self.bg=Rectangle(pos=self.pos,size=self.size)
-        self.bind(pos=self._upd,size=self._upd)
-        
         # Adapt panel size based on aspect ratio
         aspect = slideshow.aspect_ratio if slideshow else "16:9"
         if aspect == "9:16":
@@ -2498,9 +2510,16 @@ class GlobalDurationPopup(FloatLayout):
         else:
             panel_size = (dp(520), dp(380))  # Landscape: default size
         
-        panel=BoxLayout(orientation='vertical',size_hint=(None,None),
-                        size=panel_size,
-                        pos_hint={'center_x':0.5,'center_y':0.5},
+        # Set ModalView properties
+        kw.setdefault('size_hint', (None, None))
+        kw.setdefault('size', panel_size)
+        kw.setdefault('auto_dismiss', True)
+        super().__init__(**kw)
+        self.slideshow=slideshow
+        self.background_color = (0, 0, 0, 0.55)
+        self.background = ''
+        
+        panel=BoxLayout(orientation='vertical',size_hint=(1, 1),
                         padding=dp(22),spacing=dp(16))
         with panel.canvas.before:
             Color(0.18,0.18,0.22,0.97); panel._bg=Rectangle(pos=panel.pos,size=panel.size)
@@ -2527,8 +2546,6 @@ class GlobalDurationPopup(FloatLayout):
         row.add_widget(save); row.add_widget(back)
         panel.add_widget(row)
         self.add_widget(panel)
-    def _upd(self,*a):
-        self.bg.pos=self.pos; self.bg.size=self.size
     def _save(self):
         v=int(self.gl_slider.value)
         self.slideshow.global_interval_override = v if v>0 else None
@@ -2536,7 +2553,9 @@ class GlobalDurationPopup(FloatLayout):
         self.slideshow._reschedule_for_current()
         self._back()
     def _back(self):
-        self.slideshow.open_single(SettingsRootPopup(self.slideshow))
+        self.dismiss()
+        popup = SettingsRootPopup(self.slideshow)
+        popup.open()
 
 # ---- Gallery Editor / Tiles (angepasst) ----
 class ImageTile(BoxLayout):
@@ -2635,18 +2654,18 @@ class ImageTile(BoxLayout):
                 self.is_lightbox_open = False
                 return
             
-            # Create and add lightbox popup
+            # Create and open lightbox popup (ModalView)
             lightbox = ImageLightboxPopup(self.path)
             
-            # Bind to lightbox removal to reset flag
-            def on_lightbox_removed(*args):
+            # Bind to lightbox dismissal to reset flag
+            def on_lightbox_dismissed(*args):
                 self.is_lightbox_open = False
                 debug_logger.debug(f"Lightbox closed, flag reset for: {self.path}")
             
-            # Hook into the lightbox's parent property to detect when it's removed
-            lightbox.bind(parent=lambda inst, val: on_lightbox_removed() if val is None else None)
+            # Hook into the lightbox's on_dismiss event
+            lightbox.bind(on_dismiss=on_lightbox_dismissed)
             
-            app.root.add_widget(lightbox)
+            lightbox.open()
             debug_logger.info(f"Lightbox opened for: {self.path}")
         except Exception as e:
             debug_logger.error(f"Error opening lightbox for {self.path}: {e}")
@@ -2828,7 +2847,7 @@ class GalleryEditor(FloatLayout):
         popup=ImageSettingsPopup(path,self.slideshow,
                                  on_close=None,
                                  on_deleted=lambda p: self._after_delete_refresh())
-        self.add_widget(popup)
+        popup.open()
     def _after_delete_refresh(self):
         self._reload_all_images()
         self._populate()
@@ -2906,15 +2925,15 @@ class GalleryEditor(FloatLayout):
             self.slideshow.current_overlay=None
 
 # ---- TimePicker & ScheduleEditor (wie zuvor) ----
-class TimePickerPopup(FloatLayout):
+class TimePickerPopup(RotatedModalView):
     def __init__(self,title,sh,sm,eh,em,on_save,on_cancel,**kw):
+        kw.setdefault('size_hint', (0.75, 0.7))
+        kw.setdefault('auto_dismiss', False)
         super().__init__(**kw)
         self.on_save=on_save; self.on_cancel=on_cancel
-        with self.canvas.before:
-            Color(0,0,0,0.65); self.bg=Rectangle(pos=self.pos,size=self.size)
-        self.bind(pos=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)))
-        panel=BoxLayout(orientation='vertical',size_hint=(0.75,0.7),
-                        pos_hint={'center_x':0.5,'center_y':0.5},
+        self.background_color = (0, 0, 0, 0.65)
+        self.background = ''
+        panel=BoxLayout(orientation='vertical',size_hint=(1, 1),
                         spacing=dp(14),padding=dp(18))
         with panel.canvas.before:
             Color(0.16,0.16,0.2,0.97); self.pbg=Rectangle(pos=panel.pos,size=panel.size)
@@ -2959,10 +2978,10 @@ class TimePickerPopup(FloatLayout):
         sh,sm=int(self.start_h.value),int(self.start_m.value)
         eh,em=int(self.end_h.value),int(self.end_m.value)
         self.on_save(f"{sh:02d}:{sm:02d}", f"{eh:02d}:{em:02d}")
-        if self.parent: self.parent.remove_widget(self)
+        self.dismiss()
     def _cancel(self):
         self.on_cancel()
-        if self.parent: self.parent.remove_widget(self)
+        self.dismiss()
 
 class ScheduleEditor(FloatLayout):
     def __init__(self, slideshow, **kw):
@@ -3019,7 +3038,7 @@ class ScheduleEditor(FloatLayout):
             picker=TimePickerPopup(f"{name} Zeitfenster",sh,sm,eh,em,
                                    on_save=lambda s,e:self._apply(name,s,e),
                                    on_cancel=lambda:None)
-            self.add_widget(picker)
+            picker.open()
         edit.bind(on_release=open_pick)
         row.add_widget(lbl); row.add_widget(s_lbl); row.add_widget(e_lbl); row.add_widget(edit)
         self.mode_rows[name]={'start':s_lbl,'end':e_lbl}
@@ -3046,18 +3065,18 @@ class ScheduleEditor(FloatLayout):
             self.slideshow.current_overlay=None
 
 # ---- Format Selection Popup ----
-class FormatSelectionPopup(FloatLayout):
+class FormatSelectionPopup(RotatedModalView):
     def __init__(self, slideshow, **kw):
+        # Set ModalView properties
+        kw.setdefault('size_hint', (None, None))
+        kw.setdefault('size', (dp(400), dp(300)))
+        kw.setdefault('auto_dismiss', True)
         super().__init__(**kw)
         self.slideshow = slideshow
-        with self.canvas.before:
-            Color(0, 0, 0, 0.55)
-            self.bg = Rectangle(pos=self.pos, size=self.size)
-        self.bind(pos=self._upd, size=self._upd)
+        self.background_color = (0, 0, 0, 0.55)
+        self.background = ''
         
-        panel = BoxLayout(orientation='vertical', size_hint=(None, None),
-                         size=(dp(400), dp(300)),
-                         pos_hint={'center_x': 0.5, 'center_y': 0.5},
+        panel = BoxLayout(orientation='vertical', size_hint=(1, 1),
                          padding=dp(22), spacing=dp(16))
         with panel.canvas.before:
             Color(0.18, 0.18, 0.22, 0.97)
@@ -3105,10 +3124,6 @@ class FormatSelectionPopup(FloatLayout):
         panel.add_widget(close_btn)
         
         self.add_widget(panel)
-    
-    def _upd(self, *a):
-        self.bg.pos = self.pos
-        self.bg.size = self.size
     
     def _select_format(self, aspect_ratio):
         from kivy.core.window import Window
@@ -3160,10 +3175,7 @@ class FormatSelectionPopup(FloatLayout):
         Clock.schedule_once(lambda dt: setattr(self.current_label, 'color', original_color), 0.5)
     
     def close(self):
-        if self.parent:
-            self.parent.remove_widget(self)
-        if self.slideshow.current_overlay is self:
-            self.slideshow.current_overlay = None
+        self.dismiss()
 
 # ---- Slideshow ----
 class Slideshow(FloatLayout):
@@ -3448,9 +3460,15 @@ class Slideshow(FloatLayout):
 
     def open_gallery(self): self.open_single(GalleryEditor(self))
     def open_schedule_editor(self): self.open_single(ScheduleEditor(self))
-    def open_settings_root(self): self.open_single(SettingsRootPopup(self))
-    def open_aufnahme_popup(self): self.open_single(AufnahmePopup(slideshow=self))
-    def open_format_selection(self): self.open_single(FormatSelectionPopup(self))
+    def open_settings_root(self): 
+        popup = SettingsRootPopup(self)
+        popup.open()
+    def open_aufnahme_popup(self): 
+        popup = AufnahmePopup(slideshow=self)
+        popup.open()
+    def open_format_selection(self): 
+        popup = FormatSelectionPopup(self)
+        popup.open()
     # Note: Image selection is now integrated into the Aufnahme popup
 
     def force_reschedule(self):
