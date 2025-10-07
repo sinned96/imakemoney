@@ -3313,27 +3313,15 @@ class Slideshow(FloatLayout):
         
         debug_logger.info(f"Applying layout for aspect ratio: {self.aspect_ratio}, window size: {Window.width}x{Window.height}")
         
-        if self.aspect_ratio == "16:9":
-            # Horizontal layout: toolbar at top (or bottom)
-            # Content uses full screen space
-            
-            # Recreate toolbar for horizontal layout
-            if hasattr(self, 'toolbar') and self.toolbar:
-                self.remove_widget(self.toolbar)
-            self.toolbar = self._create_toolbar(vertical=False)
-            self.add_widget(self.toolbar)
-            debug_logger.info("Created horizontal toolbar for 16:9 mode")
-            
-        elif self.aspect_ratio == "9:16":
-            # Vertical layout: toolbar on right side
-            # Content uses screen minus toolbar width
-            
-            # Recreate toolbar for vertical layout
-            if hasattr(self, 'toolbar') and self.toolbar:
-                self.remove_widget(self.toolbar)
-            self.toolbar = self._create_toolbar(vertical=True)
-            self.add_widget(self.toolbar)
-            debug_logger.info("Created vertical toolbar for 9:16 mode")
+        # ALWAYS use horizontal toolbar at bottom for BOTH 16:9 and 9:16 modes
+        # Remove old toolbar if exists
+        if hasattr(self, 'toolbar') and self.toolbar:
+            self.remove_widget(self.toolbar)
+        
+        # Create horizontal toolbar (always at bottom, never vertical)
+        self.toolbar = self._create_toolbar(vertical=False)
+        self.add_widget(self.toolbar)
+        debug_logger.info(f"Created horizontal toolbar at bottom for {self.aspect_ratio} mode")
         
         # Bring toolbar to front (buttons are already set in _create_toolbar)
         self._bring_toolbar_to_front()
@@ -3368,19 +3356,14 @@ class Slideshow(FloatLayout):
     def _resize_image(self,img_widget):
         if not img_widget.texture: return
         
-        # Calculate available space, accounting for toolbar
+        # Calculate available space, accounting for toolbar at bottom
         content_x = 0  # Starting x position for content
         content_y = 0  # Starting y position for content
         content_w = self.width
         content_h = self.height
         
-        # In 9:16 mode, toolbar is on the right side, so subtract its width
-        if self.aspect_ratio == "9:16" and hasattr(self, 'toolbar') and self.toolbar:
-            toolbar_width = self.toolbar.width if hasattr(self.toolbar, 'width') else dp(110)
-            content_w = self.width - toolbar_width
-            # Content starts at x=0, toolbar is on the right
-        # In 16:9 mode, toolbar is at the bottom, so subtract its height
-        elif self.aspect_ratio == "16:9" and hasattr(self, 'toolbar') and self.toolbar:
+        # Toolbar is ALWAYS at the bottom for both 16:9 and 9:16 modes
+        if hasattr(self, 'toolbar') and self.toolbar:
             toolbar_height = self.toolbar.height if hasattr(self.toolbar, 'height') else dp(60)
             content_h = self.height - toolbar_height
             content_y = toolbar_height
@@ -3393,40 +3376,29 @@ class Slideshow(FloatLayout):
         img_widget.pos = (content_x, content_y)
 
     def _create_toolbar(self, vertical=False):
+        # ALWAYS create horizontal toolbar at bottom (ignore vertical parameter)
+        # Toolbar text remains horizontal for readability in both orientations
         if AppBarClass:
-            # KivyMD toolbar doesn't support vertical orientation easily
-            # For vertical mode, fall back to CustomAppBar
-            if vertical:
-                bar=CustomAppBar(title=("Slideshow" if not HIDE_TOOLBAR_TITLE else ""), vertical=True)
-                # Position toolbar on right side
-                bar.pos_hint = {"right": 1, "top": 1}
-                self._update_toolbar_buttons(bar)
-                return bar
-            else:
-                # Position toolbar at bottom for 16:9 mode
-                bar=AppBarClass(title=("" if HIDE_TOOLBAR_TITLE else "Slideshow"),
-                                elevation=8,pos_hint={"bottom":1})
-                self._update_md_toolbar_buttons(bar)
-                def md_fade_in(self_,duration=TOOLBAR_FADE_DURATION):
-                    self_.disabled=False
-                    Animation.cancel_all(self_,'opacity')
-                    Animation(opacity=1,d=duration,t='out_quad').start(self_)
-                def md_fade_out(self_,duration=TOOLBAR_FADE_DURATION):
-                    Animation.cancel_all(self_,'opacity')
-                    def _dis(*_): self_.disabled=True
-                    a=Animation(opacity=0,d=duration,t='in_quad'); a.bind(on_complete=_dis); a.start(self_)
-                bar.fade_in=types.MethodType(md_fade_in,bar)
-                bar.fade_out=types.MethodType(md_fade_out,bar)
-                return bar
+            # Position toolbar at bottom for both 16:9 and 9:16 modes
+            bar=AppBarClass(title=("" if HIDE_TOOLBAR_TITLE else "Slideshow"),
+                            elevation=8,pos_hint={"bottom":1})
+            self._update_md_toolbar_buttons(bar)
+            def md_fade_in(self_,duration=TOOLBAR_FADE_DURATION):
+                self_.disabled=False
+                Animation.cancel_all(self_,'opacity')
+                Animation(opacity=1,d=duration,t='out_quad').start(self_)
+            def md_fade_out(self_,duration=TOOLBAR_FADE_DURATION):
+                Animation.cancel_all(self_,'opacity')
+                def _dis(*_): self_.disabled=True
+                a=Animation(opacity=0,d=duration,t='in_quad'); a.bind(on_complete=_dis); a.start(self_)
+            bar.fade_in=types.MethodType(md_fade_in,bar)
+            bar.fade_out=types.MethodType(md_fade_out,bar)
+            return bar
         
-        # CustomAppBar supports both horizontal and vertical
-        bar=CustomAppBar(title=("Slideshow" if not HIDE_TOOLBAR_TITLE else ""), vertical=vertical)
-        if vertical:
-            # Position toolbar on right side for vertical layout (9:16 mode)
-            bar.pos_hint = {"right": 1, "top": 1}
-        else:
-            # Position toolbar at bottom for horizontal layout (16:9 mode)
-            bar.pos_hint = {"bottom": 1}
+        # CustomAppBar in horizontal mode (never vertical)
+        bar=CustomAppBar(title=("Slideshow" if not HIDE_TOOLBAR_TITLE else ""), vertical=False)
+        # Position toolbar at bottom for both 16:9 and 9:16 modes
+        bar.pos_hint = {"bottom": 1}
         self._update_toolbar_buttons(bar)
         return bar
     
