@@ -3067,9 +3067,16 @@ class ScheduleEditor(FloatLayout):
 # ---- Format Selection Popup ----
 class FormatSelectionPopup(RotatedModalView):
     def __init__(self, slideshow, **kw):
+        # Adapt size based on aspect ratio for portrait/landscape compatibility
+        aspect = slideshow.aspect_ratio if slideshow else "16:9"
+        if aspect == "9:16":
+            popup_size = (dp(350), dp(400))  # Portrait: narrower and taller
+        else:
+            popup_size = (dp(400), dp(300))  # Landscape: wider and shorter
+        
         # Set ModalView properties
         kw.setdefault('size_hint', (None, None))
-        kw.setdefault('size', (dp(400), dp(300)))
+        kw.setdefault('size', popup_size)
         kw.setdefault('auto_dismiss', True)
         super().__init__(**kw)
         self.slideshow = slideshow
