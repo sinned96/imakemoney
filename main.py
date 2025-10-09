@@ -2759,7 +2759,9 @@ class GalleryEditor(FloatLayout):
         header.add_widget(self.filter_btn)
         right.add_widget(header)
         from kivy.uix.gridlayout import GridLayout
-        self.gallery_grid=GridLayout(cols=8,spacing=dp(14),padding=dp(6),size_hint_y=None)
+        # Adjust columns based on aspect ratio: fewer columns in portrait (9:16)
+        grid_cols = 5 if slideshow.aspect_ratio == "9:16" else 8
+        self.gallery_grid=GridLayout(cols=grid_cols,spacing=dp(14),padding=dp(6),size_hint_y=None)
         self.gallery_grid.bind(minimum_height=lambda inst,val:setattr(inst,'height',val))
         gs=ScrollView(); gs.add_widget(self.gallery_grid); right.add_widget(gs)
         root.add_widget(left); root.add_widget(right)
