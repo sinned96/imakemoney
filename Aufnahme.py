@@ -249,7 +249,7 @@ except KeyboardInterrupt:
                 # Exit code != 0 but file was created successfully
                 # This is common when stopping recording tools with SIGTERM/SIGINT
                 logger.info(f"Recording process ended with exit code {process_exit_code}, but audio file was saved successfully")
-                print(f"ℹ Info: Recording process ended with exit code {process_exit_code}, but audio file was saved successfully")
+                print(f"[INFO] Info: Recording process ended with exit code {process_exit_code}, but audio file was saved successfully")
                 print("This is normal when stopping recording tools via signal")
             else:
                 # Exit code != 0 AND no valid file created - this is a real error
