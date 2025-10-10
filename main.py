@@ -200,17 +200,18 @@ class RotatingRoot(FloatLayout):
         self.canvas.after.clear()
         
         # ALWAYS push/pop matrix in both portrait and landscape to maintain balance
+        # NOTE: Rotation disabled - using layout-based portrait mode instead
+        # Canvas rotation causes touch coordinate mismatch; layout positioning is used
         with self.canvas.before:
             PushMatrix()
-            if angle != 0:
-                # Portrait mode: rotate 90° CW
-                # Transform: Translate(width, 0) then Rotate(90°, origin=(0,0))
-                Translate(self.width, 0, 0)
-                CanvasRotate(angle=angle, origin=(0, 0))
-            # In landscape mode (angle==0), just Push without transforms
+            # No Translate or Rotate - rotation disabled for layout-based portrait
         
         with self.canvas.after:
             PopMatrix()
+        
+        # Log rotation state
+        if angle != 0:
+            debug_logger.info("Rotation disabled for root (layout-based portrait active)")
     
     def apply_rotation(self):
         """Force update of rotation (call after orientation change)"""
@@ -222,16 +223,8 @@ class RotatedModalView(ModalView):
     def __init__(self, **kwargs):
         self.orientation_provider = OrientationProvider()
         
-        # In portrait mode, swap width and height for proper sizing
-        if self.orientation_provider.is_portrait():
-            # Swap size_hint if provided
-            if 'size_hint' in kwargs:
-                w, h = kwargs['size_hint']
-                kwargs['size_hint'] = (h, w)
-            # Swap size if provided
-            if 'size' in kwargs:
-                w, h = kwargs['size']
-                kwargs['size'] = (h, w)
+        # NOTE: Width/height swapping removed - using layout-based portrait mode
+        # Modals no longer rotate; they are positioned/sized based on layout only
         
         super().__init__(**kwargs)
         self.bind(size=self._update_rotation, pos=self._update_rotation)
@@ -246,16 +239,18 @@ class RotatedModalView(ModalView):
         self.canvas.after.clear()
         
         # ALWAYS push/pop matrix in both portrait and landscape to maintain balance
+        # NOTE: Rotation disabled - using layout-based portrait mode instead
+        # Canvas rotation causes touch coordinate mismatch; layout positioning is used
         with self.canvas.before:
             PushMatrix()
-            if angle != 0:
-                # Portrait mode: rotate 90° CW to match root rotation
-                Translate(self.width, 0, 0)
-                CanvasRotate(angle=angle, origin=(0, 0))
-            # In landscape mode (angle==0), just Push without transforms
+            # No Translate or Rotate - rotation disabled for layout-based portrait
         
         with self.canvas.after:
             PopMatrix()
+        
+        # Log rotation state
+        if angle != 0:
+            debug_logger.info("Rotation disabled for modals (layout-based portrait active)")
     
     def _strip_transforms_from_content(self, widget):
         """
