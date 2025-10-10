@@ -751,7 +751,7 @@ class CustomAppBar(BoxLayout):
         if vertical:
             orientation = "vertical"
             size_hint = (None, 1)
-            width = dp(110)
+            width = dp(108)  # Fixed width for portrait mode (100-108 dp as per requirements)
             height = None
         else:
             orientation = "horizontal"
@@ -3150,9 +3150,16 @@ class ScheduleEditor(FloatLayout):
 # ---- Format Selection Popup ----
 class FormatSelectionPopup(RotatedModalView):
     def __init__(self, slideshow, **kw):
+        # Adapt size based on aspect ratio for portrait/landscape compatibility
+        aspect = slideshow.aspect_ratio if slideshow else "16:9"
+        if aspect == "9:16":
+            popup_size = (dp(350), dp(400))  # Portrait: narrower and taller
+        else:
+            popup_size = (dp(400), dp(300))  # Landscape: wider and shorter
+        
         # Set ModalView properties
         kw.setdefault('size_hint', (None, None))
-        kw.setdefault('size', (dp(400), dp(300)))
+        kw.setdefault('size', popup_size)
         kw.setdefault('auto_dismiss', True)
         super().__init__(**kw)
         self.slideshow = slideshow
@@ -3309,6 +3316,7 @@ class Slideshow(FloatLayout):
         self._toolbar_timer=None
         self._toolbar_anim=None
         self.current_overlay=None
+        self.current_popup=None  # Track currently open popup to prevent multiple opens
 
         self.debug_label=None
         self.current_original_path=None
@@ -3404,15 +3412,10 @@ class Slideshow(FloatLayout):
             self.remove_widget(self.toolbar)
         
         # Create toolbar based on aspect ratio
-        # For 9:16 (portrait): vertical toolbar on right
-        # For 16:9 (landscape): horizontal toolbar at bottom
-        if self.aspect_ratio == "9:16":
-            self.toolbar = self._create_toolbar(vertical=True)
-            debug_logger.info(f"Created toolbar at RIGHT (vertical) for 9:16 mode, width={self.toolbar.width if hasattr(self.toolbar, 'width') else 'auto'}")
-        else:
-            self.toolbar = self._create_toolbar(vertical=False)
-            debug_logger.info(f"Created horizontal toolbar at bottom for {self.aspect_ratio} mode")
-        
+        # 9:16 (portrait): vertical toolbar on RIGHT
+        # 16:9 (landscape): horizontal toolbar at BOTTOM
+        vertical = (self.aspect_ratio == "9:16")
+        self.toolbar = self._create_toolbar(vertical=vertical)
         self.add_widget(self.toolbar)
         
         # Bring toolbar to front (buttons are already set in _create_toolbar)
@@ -3454,18 +3457,19 @@ class Slideshow(FloatLayout):
         content_w = self.width
         content_h = self.height
         
-        # Adjust content area based on toolbar position and orientation
+        # Adjust content area based on toolbar position
         if hasattr(self, 'toolbar') and self.toolbar:
             if self.aspect_ratio == "9:16":
-                # Vertical toolbar on right side - reduce content width
+                # Portrait: vertical toolbar on RIGHT
                 toolbar_width = self.toolbar.width if hasattr(self.toolbar, 'width') else dp(108)
                 content_w = self.width - toolbar_width
-                content_x = 0  # Content starts at left edge
+                # Content starts at x=0, toolbar is on the right
             else:
-                # Horizontal toolbar at bottom - reduce content height
+                # Landscape: horizontal toolbar at BOTTOM
                 toolbar_height = self.toolbar.height if hasattr(self.toolbar, 'height') else dp(60)
                 content_h = self.height - toolbar_height
-                content_y = toolbar_height  # Content starts above the toolbar
+                content_y = toolbar_height
+                # Content starts above the toolbar
         
         # With fit_mode='cover' (Kivy 2.3+), the Image widget handles scaling automatically
         # We only need to set the size to fill the available content area
@@ -3474,13 +3478,11 @@ class Slideshow(FloatLayout):
         img_widget.pos = (content_x, content_y)
 
     def _create_toolbar(self, vertical=False):
+        # Create toolbar based on orientation
+        # 9:16 (portrait): vertical toolbar on RIGHT with rotated text
+        # 16:9 (landscape): horizontal toolbar at BOTTOM
         if AppBarClass:
-            # Position based on orientation
-            if vertical:
-                pos_hint = {"right": 1, "top": 1}
-            else:
-                pos_hint = {"bottom": 1}
-            
+            # KivyMD toolbar always at bottom (doesn't support vertical mode well)
             bar=AppBarClass(title=("" if HIDE_TOOLBAR_TITLE else "Slideshow"),
                             elevation=8, pos_hint=pos_hint)
             self._update_md_toolbar_buttons(bar)
@@ -3496,17 +3498,18 @@ class Slideshow(FloatLayout):
             bar.fade_out=types.MethodType(md_fade_out,bar)
             return bar
         
-        # CustomAppBar with vertical/horizontal mode
+        # CustomAppBar supports both vertical and horizontal modes
         bar=CustomAppBar(title=("Slideshow" if not HIDE_TOOLBAR_TITLE else ""), vertical=vertical)
         
-        # Position based on orientation
+        # Position toolbar based on orientation
         if vertical:
-            # Vertical toolbar on right side for 9:16 mode with fixed width
+            # Portrait: vertical toolbar on right side
             bar.pos_hint = {"right": 1, "top": 1}
-            bar.width = dp(108)  # Fixed width for vertical toolbar
+            debug_logger.info(f"Created toolbar at RIGHT (vertical) for 9:16 mode, width={bar.width}")
         else:
-            # Horizontal toolbar at bottom for 16:9 mode
+            # Landscape: horizontal toolbar at bottom
             bar.pos_hint = {"bottom": 1}
+            debug_logger.info(f"Created toolbar at BOTTOM (horizontal) for 16:9 mode, height={bar.height}")
         
         self._update_toolbar_buttons(bar)
         return bar
@@ -3578,40 +3581,43 @@ class Slideshow(FloatLayout):
         if self.toolbar in self.children:
             self.remove_widget(self.toolbar); self.add_widget(self.toolbar)
 
-    def open_gallery(self):
-        widget = GalleryEditor(self)
-        self.open_single(widget)
-        app = App.get_running_app()
-        if app:
-            app._open_panel = ("gallery", widget)
+    def open_gallery(self): self.open_single(GalleryEditor(self))
+    def open_schedule_editor(self): self.open_single(ScheduleEditor(self))
     
-    def open_schedule_editor(self):
-        widget = ScheduleEditor(self)
-        self.open_single(widget)
-        app = App.get_running_app()
-        if app:
-            app._open_panel = ("schedule", widget)
+    def _toggle_popup(self, popup_class, *args, **kwargs):
+        """Toggle a popup - close if already open, open if closed"""
+        # Check if the same type of popup is already open
+        if self.current_popup and isinstance(self.current_popup, popup_class):
+            # Same popup type is open - close it
+            self.current_popup.dismiss()
+            self.current_popup = None
+            return
+        
+        # Close any other popup that might be open
+        if self.current_popup:
+            self.current_popup.dismiss()
+            self.current_popup = None
+        
+        # Create and open the new popup
+        popup = popup_class(*args, **kwargs)
+        
+        # Bind to on_dismiss to clear the reference
+        def on_popup_dismiss(instance):
+            if self.current_popup == instance:
+                self.current_popup = None
+        popup.bind(on_dismiss=on_popup_dismiss)
+        
+        self.current_popup = popup
+        popup.open()
     
     def open_settings_root(self): 
-        popup = SettingsRootPopup(self)
-        popup.open()
-        app = App.get_running_app()
-        if app:
-            app._open_panel = ("settings", popup)
+        self._toggle_popup(SettingsRootPopup, self)
     
     def open_aufnahme_popup(self): 
-        popup = AufnahmePopup(slideshow=self)
-        popup.open()
-        app = App.get_running_app()
-        if app:
-            app._open_panel = ("aufnahme", popup)
+        self._toggle_popup(AufnahmePopup, slideshow=self)
     
     def open_format_selection(self): 
-        popup = FormatSelectionPopup(self)
-        popup.open()
-        app = App.get_running_app()
-        if app:
-            app._open_panel = ("format", popup)
+        self._toggle_popup(FormatSelectionPopup, self)
     # Note: Image selection is now integrated into the Aufnahme popup
 
     def force_reschedule(self):
