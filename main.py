@@ -1173,25 +1173,33 @@ class ImageLightboxPopup(RotatedModalView):
 # ---- Globale Settings Hierarchie ----
 class SettingsRootPopup(RotatedModalView):
     def __init__(self, slideshow, **kw):
-        # Set ModalView properties
-        kw.setdefault('size_hint', (None, None))
-        kw.setdefault('auto_dismiss', True)
-        super().__init__(**kw)
+        # Set ModalView properties for full-screen with centered content
+        kw_copy = kw.copy()
+        kw_copy.setdefault('size_hint', (1, 1))  # Full screen
+        kw_copy.setdefault('auto_dismiss', True)
+        super().__init__(**kw_copy)
         self.slideshow=slideshow
-        self.background_color = (0, 0, 0, 0.55)
+        self.background_color = (0, 0, 0, 0.7)  # Dim overlay
         self.background = ''
         
-        # Adapt panel size based on aspect ratio
+        # Calculate panel size based on aspect ratio using portrait factors
+        from kivy.core.window import Window
         aspect = slideshow.aspect_ratio if slideshow else "16:9"
         if aspect == "9:16":
-            panel_size = (dp(450), dp(520))  # Portrait: narrower and slightly taller
+            # Portrait mode: apply portrait factors (0.62×w, 0.86×h, min 320×260)
+            content_w = Window.width
+            content_h = Window.height
+            panel_w = max(int(content_w * 0.62), dp(320))
+            panel_h = max(int(content_h * 0.86), dp(260))
+            panel_size = (panel_w, panel_h)
         else:
-            panel_size = (dp(500), dp(480))  # Landscape: default size
+            # Landscape mode: use standard size
+            panel_size = (dp(500), dp(480))
         
-        # Set ModalView size to match panel
-        self.size = panel_size
+        # Use AnchorLayout to center the content panel
+        anchor = AnchorLayout(size_hint=(1, 1), anchor_x='center', anchor_y='center')
         
-        panel=BoxLayout(orientation='vertical',size_hint=(1, 1),
+        panel=BoxLayout(orientation='vertical',size_hint=(None, None),size=panel_size,
                         padding=dp(24),spacing=dp(18))
         
         with panel.canvas.before:
@@ -1210,7 +1218,24 @@ class SettingsRootPopup(RotatedModalView):
         panel.add_widget(make_btn("Allgemein", self._open_general))
         panel.add_widget(make_btn("Bilddauer", self._open_duration))
         panel.add_widget(make_btn("Schließen", self._close))
-        self.add_widget(panel)
+        
+        # Add panel to anchor layout, then add anchor to modal
+        anchor.add_widget(panel)
+        self.add_widget(anchor)
+        
+        # Bind ESC/Back key to dismiss
+        from kivy.core.window import Window
+        Window.bind(on_key_down=self._on_key_down)
+        
+        # Log modal opening
+        debug_logger.info(f"Settings modal open centered size={panel_size[0]}x{panel_size[1]}")
+    def _on_key_down(self, window, key, scancode, codepoint, modifiers):
+        """Handle ESC/Back key to dismiss modal"""
+        if key == 27:  # ESC or Back
+            self._close()
+            return True
+        return False
+    
     def _open_general(self):
         popup = GeneralSettingsPopup(self.slideshow)
         popup.open()
@@ -1218,6 +1243,9 @@ class SettingsRootPopup(RotatedModalView):
         popup = GlobalDurationPopup(self.slideshow)
         popup.open()
     def _close(self):
+        from kivy.core.window import Window
+        Window.unbind(on_key_down=self._on_key_down)
+        debug_logger.info("Settings modal dismissed")
         self.dismiss()
 
 class LoadingSpinner(Widget):
@@ -2525,23 +2553,33 @@ class AufnahmePopup(RotatedModalView):
 
 class GeneralSettingsPopup(RotatedModalView):
     def __init__(self, slideshow, **kw):
-        # Adapt panel size based on aspect ratio
-        aspect = slideshow.aspect_ratio if slideshow else "16:9"
-        if aspect == "9:16":
-            panel_size = (dp(460), dp(450))  # Portrait: narrower
-        else:
-            panel_size = (dp(520), dp(420))  # Landscape: default size
-        
-        # Set ModalView properties
-        kw.setdefault('size_hint', (None, None))
-        kw.setdefault('size', panel_size)
-        kw.setdefault('auto_dismiss', True)
-        super().__init__(**kw)
+        # Set ModalView properties for full-screen with centered content
+        kw_copy = kw.copy()
+        kw_copy.setdefault('size_hint', (1, 1))  # Full screen
+        kw_copy.setdefault('auto_dismiss', True)
+        super().__init__(**kw_copy)
         self.slideshow=slideshow
-        self.background_color = (0, 0, 0, 0.55)
+        self.background_color = (0, 0, 0, 0.7)  # Dim overlay
         self.background = ''
         
-        panel=BoxLayout(orientation='vertical',size_hint=(1, 1),
+        # Calculate panel size based on aspect ratio using portrait factors
+        from kivy.core.window import Window
+        aspect = slideshow.aspect_ratio if slideshow else "16:9"
+        if aspect == "9:16":
+            # Portrait mode: apply portrait factors (0.62×w, 0.86×h, min 320×260)
+            content_w = Window.width
+            content_h = Window.height
+            panel_w = max(int(content_w * 0.62), dp(320))
+            panel_h = max(int(content_h * 0.86), dp(260))
+            panel_size = (panel_w, panel_h)
+        else:
+            # Landscape mode: use standard size
+            panel_size = (dp(520), dp(420))
+        
+        # Use AnchorLayout to center the content panel
+        anchor = AnchorLayout(size_hint=(1, 1), anchor_x='center', anchor_y='center')
+        
+        panel=BoxLayout(orientation='vertical',size_hint=(None, None),size=panel_size,
                         padding=dp(22),spacing=dp(16))
         with panel.canvas.before:
             Color(0.18,0.18,0.22,0.97); panel._bg=Rectangle(pos=panel.pos,size=panel.size)
@@ -2569,7 +2607,25 @@ class GeneralSettingsPopup(RotatedModalView):
         back.bind(on_release=lambda *_: self._back())
         row.add_widget(save); row.add_widget(back)
         panel.add_widget(row)
-        self.add_widget(panel)
+        
+        # Add panel to anchor layout, then add anchor to modal
+        anchor.add_widget(panel)
+        self.add_widget(anchor)
+        
+        # Bind ESC/Back key to dismiss
+        from kivy.core.window import Window
+        Window.bind(on_key_down=self._on_key_down)
+        
+        # Log modal opening
+        debug_logger.info(f"General settings modal open centered size={panel_size[0]}x{panel_size[1]}")
+    
+    def _on_key_down(self, window, key, scancode, codepoint, modifiers):
+        """Handle ESC/Back key to dismiss modal"""
+        if key == 27:  # ESC or Back
+            self._back()
+            return True
+        return False
+    
     def _save(self):
         val=float(self.b_slider.value)
         if abs(val-1.0)<0.001:
@@ -2580,29 +2636,42 @@ class GeneralSettingsPopup(RotatedModalView):
         self.slideshow._apply_current_brightness()
         self._back()
     def _back(self):
+        from kivy.core.window import Window
+        Window.unbind(on_key_down=self._on_key_down)
+        debug_logger.info("General settings modal dismissed")
         self.dismiss()
         popup = SettingsRootPopup(self.slideshow)
         popup.open()
 
 class GlobalDurationPopup(RotatedModalView):
     def __init__(self, slideshow, **kw):
-        # Adapt panel size based on aspect ratio
-        aspect = slideshow.aspect_ratio if slideshow else "16:9"
-        if aspect == "9:16":
-            panel_size = (dp(460), dp(400))  # Portrait: narrower
-        else:
-            panel_size = (dp(520), dp(380))  # Landscape: default size
-        
-        # Set ModalView properties
-        kw.setdefault('size_hint', (None, None))
-        kw.setdefault('size', panel_size)
-        kw.setdefault('auto_dismiss', True)
-        super().__init__(**kw)
+        # Set ModalView properties for full-screen with centered content
+        kw_copy = kw.copy()
+        kw_copy.setdefault('size_hint', (1, 1))  # Full screen
+        kw_copy.setdefault('auto_dismiss', True)
+        super().__init__(**kw_copy)
         self.slideshow=slideshow
-        self.background_color = (0, 0, 0, 0.55)
+        self.background_color = (0, 0, 0, 0.7)  # Dim overlay
         self.background = ''
         
-        panel=BoxLayout(orientation='vertical',size_hint=(1, 1),
+        # Calculate panel size based on aspect ratio using portrait factors
+        from kivy.core.window import Window
+        aspect = slideshow.aspect_ratio if slideshow else "16:9"
+        if aspect == "9:16":
+            # Portrait mode: apply portrait factors (0.62×w, 0.86×h, min 320×260)
+            content_w = Window.width
+            content_h = Window.height
+            panel_w = max(int(content_w * 0.62), dp(320))
+            panel_h = max(int(content_h * 0.86), dp(260))
+            panel_size = (panel_w, panel_h)
+        else:
+            # Landscape mode: use standard size
+            panel_size = (dp(520), dp(380))
+        
+        # Use AnchorLayout to center the content panel
+        anchor = AnchorLayout(size_hint=(1, 1), anchor_x='center', anchor_y='center')
+        
+        panel=BoxLayout(orientation='vertical',size_hint=(None, None),size=panel_size,
                         padding=dp(22),spacing=dp(16))
         with panel.canvas.before:
             Color(0.18,0.18,0.22,0.97); panel._bg=Rectangle(pos=panel.pos,size=panel.size)
@@ -2628,7 +2697,25 @@ class GlobalDurationPopup(RotatedModalView):
         back.bind(on_release=lambda *_: self._back())
         row.add_widget(save); row.add_widget(back)
         panel.add_widget(row)
-        self.add_widget(panel)
+        
+        # Add panel to anchor layout, then add anchor to modal
+        anchor.add_widget(panel)
+        self.add_widget(anchor)
+        
+        # Bind ESC/Back key to dismiss
+        from kivy.core.window import Window
+        Window.bind(on_key_down=self._on_key_down)
+        
+        # Log modal opening
+        debug_logger.info(f"Duration modal open centered size={panel_size[0]}x{panel_size[1]}")
+    
+    def _on_key_down(self, window, key, scancode, codepoint, modifiers):
+        """Handle ESC/Back key to dismiss modal"""
+        if key == 27:  # ESC or Back
+            self._back()
+            return True
+        return False
+    
     def _save(self):
         v=int(self.gl_slider.value)
         self.slideshow.global_interval_override = v if v>0 else None
@@ -2636,6 +2723,9 @@ class GlobalDurationPopup(RotatedModalView):
         self.slideshow._reschedule_for_current()
         self._back()
     def _back(self):
+        from kivy.core.window import Window
+        Window.unbind(on_key_down=self._on_key_down)
+        debug_logger.info("Duration modal dismissed")
         self.dismiss()
         popup = SettingsRootPopup(self.slideshow)
         popup.open()
@@ -2826,7 +2916,18 @@ class GalleryEditor(FloatLayout):
         header.add_widget(self.filter_btn)
         right.add_widget(header)
         from kivy.uix.gridlayout import GridLayout
-        self.gallery_grid=GridLayout(cols=8,spacing=dp(14),padding=dp(6),size_hint_y=None)
+        from kivy.core.window import Window
+        # Adjust gallery columns based on aspect ratio for portrait mode
+        aspect = slideshow.aspect_ratio if slideshow else "16:9"
+        if aspect == "9:16":
+            # Portrait mode: 2-3 columns depending on width
+            gallery_cols = 3 if Window.width > dp(600) else 2
+            gallery_spacing = dp(10)  # Tighter spacing for portrait
+        else:
+            # Landscape mode: 8 columns as before
+            gallery_cols = 8
+            gallery_spacing = dp(14)
+        self.gallery_grid=GridLayout(cols=gallery_cols,spacing=gallery_spacing,padding=dp(6),size_hint_y=None)
         self.gallery_grid.bind(minimum_height=lambda inst,val:setattr(inst,'height',val))
         gs=ScrollView(); gs.add_widget(self.gallery_grid); right.add_widget(gs)
         root.add_widget(left); root.add_widget(right)
@@ -3150,16 +3251,33 @@ class ScheduleEditor(FloatLayout):
 # ---- Format Selection Popup ----
 class FormatSelectionPopup(RotatedModalView):
     def __init__(self, slideshow, **kw):
-        # Set ModalView properties
-        kw.setdefault('size_hint', (None, None))
-        kw.setdefault('size', (dp(400), dp(300)))
-        kw.setdefault('auto_dismiss', True)
-        super().__init__(**kw)
+        # Set ModalView properties for full-screen with centered content
+        kw_copy = kw.copy()
+        kw_copy.setdefault('size_hint', (1, 1))  # Full screen
+        kw_copy.setdefault('auto_dismiss', True)
+        super().__init__(**kw_copy)
         self.slideshow = slideshow
-        self.background_color = (0, 0, 0, 0.55)
+        self.background_color = (0, 0, 0, 0.7)  # Dim overlay
         self.background = ''
         
-        panel = BoxLayout(orientation='vertical', size_hint=(1, 1),
+        # Calculate panel size based on aspect ratio using portrait factors
+        from kivy.core.window import Window
+        aspect = slideshow.aspect_ratio if slideshow else "16:9"
+        if aspect == "9:16":
+            # Portrait mode: apply portrait factors (0.62×w, 0.86×h, min 320×260)
+            content_w = Window.width
+            content_h = Window.height
+            panel_w = max(int(content_w * 0.62), dp(320))
+            panel_h = max(int(content_h * 0.86), dp(260))
+            panel_size = (panel_w, panel_h)
+        else:
+            # Landscape mode: use standard size
+            panel_size = (dp(400), dp(300))
+        
+        # Use AnchorLayout to center the content panel
+        anchor = AnchorLayout(size_hint=(1, 1), anchor_x='center', anchor_y='center')
+        
+        panel = BoxLayout(orientation='vertical', size_hint=(None, None), size=panel_size,
                          padding=dp(22), spacing=dp(16))
         with panel.canvas.before:
             Color(0.18, 0.18, 0.22, 0.97)
@@ -3206,7 +3324,23 @@ class FormatSelectionPopup(RotatedModalView):
         close_btn.bind(on_release=lambda x: self.close())
         panel.add_widget(close_btn)
         
-        self.add_widget(panel)
+        # Add panel to anchor layout, then add anchor to modal
+        anchor.add_widget(panel)
+        self.add_widget(anchor)
+        
+        # Bind ESC/Back key to dismiss
+        from kivy.core.window import Window
+        Window.bind(on_key_down=self._on_key_down)
+        
+        # Log modal opening
+        debug_logger.info(f"Format modal open centered size={panel_size[0]}x{panel_size[1]}")
+    
+    def _on_key_down(self, window, key, scancode, codepoint, modifiers):
+        """Handle ESC/Back key to dismiss modal"""
+        if key == 27:  # ESC or Back
+            self.close()
+            return True
+        return False
     
     def _select_format(self, aspect_ratio):
         from kivy.core.window import Window
@@ -3261,6 +3395,9 @@ class FormatSelectionPopup(RotatedModalView):
         Clock.schedule_once(lambda dt: setattr(self.current_label, 'color', original_color), 0.5)
     
     def close(self):
+        from kivy.core.window import Window
+        Window.unbind(on_key_down=self._on_key_down)
+        debug_logger.info("Format modal dismissed")
         self.dismiss()
 
 # ---- Slideshow ----
@@ -3399,9 +3536,13 @@ class Slideshow(FloatLayout):
         
         debug_logger.info(f"Applying layout for aspect ratio: {self.aspect_ratio}, window size: {Window.width}x{Window.height}")
         
+        # Close any open panels before rebuilding layout
+        self._close_current_panel()
+        
         # Remove old toolbar if exists
         if hasattr(self, 'toolbar') and self.toolbar:
             self.remove_widget(self.toolbar)
+            debug_logger.info("Removed old toolbar before rebuild")
         
         # Create toolbar based on aspect ratio
         # For 9:16 (portrait): vertical toolbar on right
@@ -3414,6 +3555,7 @@ class Slideshow(FloatLayout):
             debug_logger.info(f"Created horizontal toolbar at bottom for {self.aspect_ratio} mode")
         
         self.add_widget(self.toolbar)
+        debug_logger.info("Added toolbar to widget tree")
         
         # Bring toolbar to front (buttons are already set in _create_toolbar)
         self._bring_toolbar_to_front()
@@ -3576,9 +3718,12 @@ class Slideshow(FloatLayout):
 
     def _bring_toolbar_to_front(self):
         if self.toolbar in self.children:
-            self.remove_widget(self.toolbar); self.add_widget(self.toolbar)
+            self.remove_widget(self.toolbar)
+            self.add_widget(self.toolbar)
+            debug_logger.info("Toolbar restacked to front (z-order)")
 
     def open_gallery(self):
+        debug_logger.info("Opening gallery panel")
         widget = GalleryEditor(self)
         self.open_single(widget)
         app = App.get_running_app()
@@ -3586,6 +3731,7 @@ class Slideshow(FloatLayout):
             app._open_panel = ("gallery", widget)
     
     def open_schedule_editor(self):
+        debug_logger.info("Opening schedule editor panel")
         widget = ScheduleEditor(self)
         self.open_single(widget)
         app = App.get_running_app()
@@ -3593,6 +3739,7 @@ class Slideshow(FloatLayout):
             app._open_panel = ("schedule", widget)
     
     def open_settings_root(self): 
+        debug_logger.info("Opening settings panel")
         popup = SettingsRootPopup(self)
         popup.open()
         app = App.get_running_app()
@@ -3600,6 +3747,7 @@ class Slideshow(FloatLayout):
             app._open_panel = ("settings", popup)
     
     def open_aufnahme_popup(self): 
+        debug_logger.info("Opening aufnahme panel")
         popup = AufnahmePopup(slideshow=self)
         popup.open()
         app = App.get_running_app()
@@ -3607,6 +3755,7 @@ class Slideshow(FloatLayout):
             app._open_panel = ("aufnahme", popup)
     
     def open_format_selection(self): 
+        debug_logger.info("Opening format selection panel")
         popup = FormatSelectionPopup(self)
         popup.open()
         app = App.get_running_app()
