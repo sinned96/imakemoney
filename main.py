@@ -256,6 +256,49 @@ class RotatedModalView(ModalView):
         
         with self.canvas.after:
             PopMatrix()
+    
+    def _strip_transforms_from_content(self, widget):
+        """
+        Strip any unintended rotation/scale/translate transforms from modal content.
+        Only the modal itself should rotate; the content inside should not.
+        This is a defensive measure to ensure content is never accidentally rotated.
+        """
+        if not widget:
+            return
+        
+        # Clear any transforms from widget's canvas (except basic drawing operations)
+        # Only remove rotation/scale/translate transforms, keep Color and Rectangle
+        from kivy.graphics import Rotate, Scale, Translate, Matrix, PushMatrix, PopMatrix
+        
+        # Remove transforms from canvas.before
+        to_remove_before = []
+        for instruction in widget.canvas.before:
+            if isinstance(instruction, (Rotate, Scale, Translate, Matrix, PushMatrix, PopMatrix)):
+                to_remove_before.append(instruction)
+        for instruction in to_remove_before:
+            widget.canvas.before.remove(instruction)
+        
+        # Remove transforms from canvas.after
+        to_remove_after = []
+        for instruction in widget.canvas.after:
+            if isinstance(instruction, (Rotate, Scale, Translate, Matrix, PushMatrix, PopMatrix)):
+                to_remove_after.append(instruction)
+        for instruction in to_remove_after:
+            widget.canvas.after.remove(instruction)
+        
+        # Reset any rotation/angle attributes
+        if hasattr(widget, 'rotation'):
+            widget.rotation = 0
+        if hasattr(widget, 'angle'):
+            widget.angle = 0
+        
+        # Recursively strip transforms from children (except for VerticalButton which needs rotation)
+        for child in widget.children:
+            # Skip VerticalButton as it intentionally rotates toolbar labels
+            if not isinstance(child, VerticalButton):
+                self._strip_transforms_from_content(child)
+        
+        debug_logger.debug(f"Stripped transforms from {widget.__class__.__name__}")
 
 # ------------------ KONFIG ------------------
 APP_DIR = Path(__file__).parent
