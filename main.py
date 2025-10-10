@@ -141,6 +141,7 @@ from kivy.clock import Clock
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.anchorlayout import AnchorLayout
 from kivy.uix.image import Image
 from kivy.uix.scrollview import ScrollView
 from kivy.graphics import Color, Rectangle, Line, Rotate, PushMatrix, PopMatrix
@@ -1241,9 +1242,12 @@ class LoadingSpinner(Widget):
 class AufnahmePopup(RotatedModalView):
     """Popup window for recording functionality with improved error handling"""
     def __init__(self, slideshow=None, **kwargs):
-        # Set ModalView properties before calling super().__init__
+        # Proactively remove any legacy sheet instances before opening
+        self._cleanup_legacy_sheets()
+        
+        # Set ModalView properties for full-screen with semi-transparent background
         kw_copy = kwargs.copy()
-        kw_copy.setdefault('size_hint', (None, None))
+        kw_copy.setdefault('size_hint', (1, 1))  # Full screen
         kw_copy.setdefault('auto_dismiss', False)
         super().__init__(**kw_copy)
         self.slideshow = slideshow  # Reference to parent slideshow for gallery navigation
@@ -1263,26 +1267,32 @@ class AufnahmePopup(RotatedModalView):
         # Audio file path for validation (standardized location)
         self.audio_file_path = Path("/home/pi/Desktop/v2_Tripple S/aufnahme.wav")
         
-        # ModalView already provides dark background
+        # ModalView with semi-transparent background
         self.background_color = (0, 0, 0, 0.7)
         self.background = ''
         
-        # Main panel - adapt size based on aspect ratio for portrait/landscape compatibility
-        # In portrait mode (9:16), use narrower panel; in landscape (16:9), use wider panel
+        # Calculate panel size based on aspect ratio using portrait factors
+        # Portrait factors: width=0.62×content width, height=0.86×content height (min w≥320, h≥260)
+        from kivy.core.window import Window
         aspect = slideshow.aspect_ratio if slideshow else "16:9"
         if aspect == "9:16":
-            panel_size = (dp(500), dp(600))  # Portrait: narrower width, taller height
+            # Portrait mode: apply portrait factors
+            content_w = Window.width
+            content_h = Window.height
+            panel_w = max(int(content_w * 0.62), dp(320))
+            panel_h = max(int(content_h * 0.86), dp(260))
+            panel_size = (panel_w, panel_h)
         else:
-            panel_size = (dp(600), dp(500))  # Landscape: wider width, shorter height
+            # Landscape mode: use standard size
+            panel_size = (dp(600), dp(500))
         
-        # Set ModalView size to match panel
-        self.size = panel_size
+        # Use AnchorLayout to center the content panel
+        anchor = AnchorLayout(size_hint=(1, 1), anchor_x='center', anchor_y='center')
         
         self.panel = BoxLayout(
             orientation='vertical',
             size_hint=(None, None),
             size=panel_size,
-            pos_hint={'center_x': 0.5, 'center_y': 0.5},
             padding=dp(20),
             spacing=dp(15)
         )
@@ -1426,7 +1436,51 @@ class AufnahmePopup(RotatedModalView):
         self.close_button.bind(on_press=self.close_popup)
         self.panel.add_widget(self.close_button)
         
-        self.add_widget(self.panel)
+        # Add panel to anchor layout, then add anchor to modal
+        anchor.add_widget(self.panel)
+        self.add_widget(anchor)
+        
+        # Bind ESC/Back key to dismiss
+        self._keyboard = None
+        from kivy.core.window import Window
+        Window.bind(on_key_down=self._on_key_down)
+        
+        # Log modal opening
+        debug_logger.info(f"Aufnahme modal open centered size={panel_size[0]}x{panel_size[1]}")
+    
+    def _cleanup_legacy_sheets(self):
+        """Remove any legacy left sheet instances from root"""
+        from kivy.app import App
+        app = App.get_running_app()
+        removed_count = 0
+        
+        if app and hasattr(app, 'root_widget') and app.root_widget:
+            # Search for widgets with legacy ids or classes
+            children_to_remove = []
+            for child in app.root_widget.children[:]:
+                # Check by class name or widget id
+                widget_class = child.__class__.__name__
+                widget_id = getattr(child, 'id', None)
+                
+                if (widget_class in ['AufnahmeSheet', 'LeftPanel'] or 
+                    widget_id in ['aufnahme_sheet', 'left_sheet']):
+                    children_to_remove.append(child)
+            
+            # Remove found legacy widgets
+            for child in children_to_remove:
+                app.root_widget.remove_widget(child)
+                removed_count += 1
+        
+        if removed_count > 0:
+            debug_logger.info(f"Removed {removed_count} legacy Aufnahme sheet(s)")
+    
+    def _on_key_down(self, window, key, scancode, codepoint, modifiers):
+        """Handle ESC/Back key to dismiss modal"""
+        # ESC key is 27, Back key is 27 on Android
+        if key == 27:  # ESC or Back
+            self.close_popup(None)
+            return True
+        return False
     
     def _validate_audio_file(self):
         """
@@ -2436,9 +2490,13 @@ class AufnahmePopup(RotatedModalView):
             self.workflow_status_checker = None
             debug_logger.info("Stopped workflow status checking")
         
+        # Unbind key handler
+        from kivy.core.window import Window
+        Window.unbind(on_key_down=self._on_key_down)
+        
         # Dismiss ModalView
         self.dismiss()
-        debug_logger.info("Dismissed popup")
+        debug_logger.info("Aufnahme modal dismissed")
 
 class GeneralSettingsPopup(RotatedModalView):
     def __init__(self, slideshow, **kw):
@@ -3139,6 +3197,9 @@ class FormatSelectionPopup(RotatedModalView):
         self.slideshow.persist_meta()
         self.current_label.text = f"Aktuell: {aspect_ratio}"
         
+        # Close any currently open panels before switching aspect ratio
+        self.slideshow._close_current_panel()
+        
         # Update OrientationProvider to trigger global rotation
         orientation_provider = OrientationProvider()
         orientation_provider.set_orientation(aspect_ratio)
@@ -3398,7 +3459,7 @@ class Slideshow(FloatLayout):
         if AppBarClass:
             # KivyMD toolbar always at bottom (doesn't support vertical mode well)
             bar=AppBarClass(title=("" if HIDE_TOOLBAR_TITLE else "Slideshow"),
-                            elevation=8,pos_hint={"bottom":1})
+                            elevation=8, pos_hint=pos_hint)
             self._update_md_toolbar_buttons(bar)
             def md_fade_in(self_,duration=TOOLBAR_FADE_DURATION):
                 self_.disabled=False
@@ -3428,14 +3489,53 @@ class Slideshow(FloatLayout):
         self._update_toolbar_buttons(bar)
         return bar
     
+    def _close_current_panel(self):
+        """Close currently open panel if any"""
+        app = App.get_running_app()
+        if app and hasattr(app, '_open_panel') and app._open_panel:
+            panel_id, panel_instance = app._open_panel
+            if panel_instance and hasattr(panel_instance, 'dismiss'):
+                panel_instance.dismiss()
+            elif panel_instance and hasattr(panel_instance, 'close'):
+                panel_instance.close()
+            elif panel_instance and panel_instance.parent:
+                panel_instance.parent.remove_widget(panel_instance)
+            app._open_panel = None
+            debug_logger.info(f"Closed panel: {panel_id}")
+    
+    def _on_toolbar_item_pressed(self, item_id, open_fn):
+        """
+        Handle toolbar item press with toggle/single-open logic
+        - If same id pressed: close it
+        - If different panel open: close then open new one
+        """
+        app = App.get_running_app()
+        if not app or not hasattr(app, '_open_panel'):
+            # No tracking available, just open
+            open_fn()
+            return
+        
+        current_panel_id = app._open_panel[0] if app._open_panel else None
+        
+        if current_panel_id == item_id:
+            # Same panel - toggle it closed
+            self._close_current_panel()
+        else:
+            # Different panel or no panel - close current then open new
+            if current_panel_id:
+                self._close_current_panel()
+            open_fn()
+            # Track this panel as open
+            # Note: open_fn should update app._open_panel after creating instance
+    
     def _update_md_toolbar_buttons(self, bar):
         """Update KivyMD toolbar buttons"""
         bar.right_action_items=[
-            ["calendar",lambda x:self.open_schedule_editor()],
-            ["record",lambda x:self.open_aufnahme_popup()],  # Unified: use Aufnahme for all recording including images
-            ["aspect-ratio",lambda x:self.open_format_selection()],  # Format selection button
-            ["image-multiple",lambda x:self.open_gallery()],
-            ["cog",lambda x:self.open_settings_root()],
+            ["calendar",lambda x:self._on_toolbar_item_pressed("schedule", self.open_schedule_editor)],
+            ["record",lambda x:self._on_toolbar_item_pressed("aufnahme", self.open_aufnahme_popup)],
+            ["aspect-ratio",lambda x:self._on_toolbar_item_pressed("format", self.open_format_selection)],
+            ["image-multiple",lambda x:self._on_toolbar_item_pressed("gallery", self.open_gallery)],
+            ["cog",lambda x:self._on_toolbar_item_pressed("settings", self.open_settings_root)],
             ["logout",lambda x:self.logout()],
             ["power",lambda x:self.exit_app()],
         ]
@@ -3443,11 +3543,11 @@ class Slideshow(FloatLayout):
     def _update_toolbar_buttons(self, bar):
         """Update toolbar buttons"""
         bar.set_right_actions([
-            ("Zeiten", self.open_schedule_editor),
-            ("Aufnahme", self.open_aufnahme_popup),  # Unified: use Aufnahme for all recording including images
-            ("Format", self.open_format_selection),  # Format selection button
-            ("Galerie", self.open_gallery),
-            ("Einstellungen", self.open_settings_root),
+            ("Zeiten", lambda: self._on_toolbar_item_pressed("schedule", self.open_schedule_editor)),
+            ("Aufnahme", lambda: self._on_toolbar_item_pressed("aufnahme", self.open_aufnahme_popup)),
+            ("Format", lambda: self._on_toolbar_item_pressed("format", self.open_format_selection)),
+            ("Galerie", lambda: self._on_toolbar_item_pressed("gallery", self.open_gallery)),
+            ("Einstellungen", lambda: self._on_toolbar_item_pressed("settings", self.open_settings_root)),
             ("Logout", self.logout),
             ("Exit", self.exit_app),
         ])
@@ -3928,6 +4028,7 @@ if KIVYMD_OK:
             self.mode_manager=ModeManager(MODES_PATH)
             self.root_widget=RotatingRoot()
             self.slideshow=None
+            self._open_panel = None  # Track currently open panel (id, instance)
             self.show_login()
             return self.root_widget
         def clear_root(self): self.root_widget.clear_widgets()
@@ -3951,6 +4052,7 @@ else:
             self.mode_manager=ModeManager(MODES_PATH)
             self.root_widget=RotatingRoot()
             self.slideshow=None
+            self._open_panel = None  # Track currently open panel (id, instance)
             self.show_login()
             return self.root_widget
         def clear_root(self): self.root_widget.clear_widgets()
