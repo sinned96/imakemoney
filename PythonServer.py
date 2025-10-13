@@ -525,7 +525,7 @@ class WorkflowFileWatcher:
                     return
             
             self.log_status(f"[SUCCESS] Audio file validated and stable: {file_size:,} bytes", "INFO")
-            self.log_status("✅ RACE CONDITION PREVENTION: Audio file ready for safe transcription", "INFO")
+            self.log_status("[SUCCESS] RACE CONDITION PREVENTION: Audio file ready for safe transcription", "INFO")
             
             # Step 1: Voice recognition (Transcription)
             self.log_status("Schritt 1/2: Spracherkennung (voiceToGoogle.py)...")

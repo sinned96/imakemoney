@@ -159,7 +159,7 @@ from kivy.uix.modalview import ModalView
 # ------------------ PORTRAIT ROTATION CONFIG ------------------
 # Global rotation configuration for portrait mode (9:16)
 PORTRAIT_ROTATION_DEGREES = -90  # -90 = counterclockwise (left rotation), +90 = clockwise (right rotation)
-PORTRAIT_SCALE_FIT = True  # Scale content to fit window after rotation
+PORTRAIT_SCALE_FIT = False  # Scale content to fit window after rotation (disabled by default to avoid edge cases)
 
 # ------------------ ORIENTATION PROVIDER ------------------
 class OrientationProvider:
@@ -204,6 +204,9 @@ class RotatingSurface(FloatLayout):
     
     The transformation matrix order is: Translate(cx,cy) · Scale · Rotate · Translate(-cx,-cy)
     Touch events receive the inverse transformation to map screen coords to logical coords.
+    
+    Note: Modals use RotatedModalView which applies the same transform independently
+    since ModalView widgets attach to the Window rather than the widget tree.
     """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -242,9 +245,11 @@ class RotatingSurface(FloatLayout):
             # After rotation, logical width and height swap
             # Calculate uniform scale to fit rotated content in window
             if self.width > 0 and self.height > 0:
-                # When rotated -90°, the logical height becomes the physical width
+                # When rotated -90 deg, the logical height becomes the physical width
                 # and logical width becomes the physical height
                 scale = min(self.width / self.height, self.height / self.width)
+                # Apply safe minimum scale clamp to avoid degenerate scaling
+                scale = max(scale, 1e-3)
                 if scale < 1.0:
                     mat.scale(scale, scale, 1)
         
@@ -268,15 +273,16 @@ class RotatingSurface(FloatLayout):
         
         # Log once when rotation is applied
         if not self._rotation_logged:
-            debug_logger.info(f"Applied global rotation {PORTRAIT_ROTATION_DEGREES}° with input transform for 9:16 (center-anchored)")
+            debug_logger.info(f"Applied global rotation {PORTRAIT_ROTATION_DEGREES} deg with input transform for 9:16 (center-anchored)")
             self._rotation_logged = True
     
     def on_touch_down(self, touch):
         """Transform touch coordinates before dispatching to children"""
         if self._inverse_matrix:
             # Apply inverse transform to touch position
+            # Create a callable from the matrix's transform_point method
             touch.push()
-            touch.apply_transform_2d(self._inverse_matrix)
+            touch.apply_transform_2d(lambda x, y: self._inverse_matrix.transform_point(x, y, 0)[:2])
         
         ret = super().on_touch_down(touch)
         
@@ -289,7 +295,7 @@ class RotatingSurface(FloatLayout):
         """Transform touch coordinates before dispatching to children"""
         if self._inverse_matrix:
             touch.push()
-            touch.apply_transform_2d(self._inverse_matrix)
+            touch.apply_transform_2d(lambda x, y: self._inverse_matrix.transform_point(x, y, 0)[:2])
         
         ret = super().on_touch_move(touch)
         
@@ -302,7 +308,7 @@ class RotatingSurface(FloatLayout):
         """Transform touch coordinates before dispatching to children"""
         if self._inverse_matrix:
             touch.push()
-            touch.apply_transform_2d(self._inverse_matrix)
+            touch.apply_transform_2d(lambda x, y: self._inverse_matrix.transform_point(x, y, 0)[:2])
         
         ret = super().on_touch_up(touch)
         
@@ -369,13 +375,105 @@ class RotatingRoot(FloatLayout):
 
 # ------------------ ROTATED MODAL VIEW ------------------
 class RotatedModalView(ModalView):
-    """ModalView that inherits global rotation from parent RotatingSurface"""
+    """ModalView that applies its own rotation transform for portrait mode
+    
+    Since ModalView attaches to the Window (not the widget tree), it doesn't inherit
+    RotatingSurface's canvas transformations. This class applies the same rotation
+    transform directly to the modal's canvas when in portrait mode.
+    """
     def __init__(self, **kwargs):
         self.orientation_provider = OrientationProvider()
+        self._transform_matrix = None
+        self._inverse_matrix = None
         super().__init__(**kwargs)
-        # Log modal opening with rotation info
-        if self.orientation_provider.is_portrait():
-            debug_logger.info("Portrait global rotation active; modals inherit transform")
+        self.bind(size=self._update_modal_transform, pos=self._update_modal_transform)
+    
+    def _update_modal_transform(self, *args):
+        """Apply rotation transform to modal when in portrait mode"""
+        is_portrait = self.orientation_provider.is_portrait()
+        
+        # Clear existing transforms
+        self.canvas.before.clear()
+        self.canvas.after.clear()
+        
+        if not is_portrait:
+            # Landscape mode: no transformation needed
+            self._transform_matrix = None
+            self._inverse_matrix = None
+            return
+        
+        # Portrait mode: apply same rotation as RotatingSurface
+        from kivy.graphics.transformation import Matrix
+        from kivy.graphics import PushMatrix, PopMatrix, MatrixInstruction
+        
+        # Calculate center point for rotation anchor
+        cx, cy = self.center_x, self.center_y
+        
+        # Build transformation matrix: Translate(cx, cy) · Rotate · Translate(-cx, -cy)
+        mat = Matrix()
+        mat.translate(cx, cy, 0)
+        mat.rotate(PORTRAIT_ROTATION_DEGREES * 3.14159265359 / 180.0, 0, 0, 1)
+        mat.translate(-cx, -cy, 0)
+        
+        # Store matrices for touch transformation
+        self._transform_matrix = mat
+        self._inverse_matrix = mat.inverse()
+        
+        # Apply to canvas
+        with self.canvas.before:
+            PushMatrix()
+            matrix_inst = MatrixInstruction()
+            matrix_inst.matrix = mat
+        
+        with self.canvas.after:
+            PopMatrix()
+    
+    def on_touch_down(self, touch):
+        """Transform touch coordinates before dispatching to children"""
+        if self._inverse_matrix:
+            touch.push()
+            touch.apply_transform_2d(lambda x, y: self._inverse_matrix.transform_point(x, y, 0)[:2])
+        
+        ret = super().on_touch_down(touch)
+        
+        if self._inverse_matrix:
+            touch.pop()
+        
+        return ret
+    
+    def on_touch_move(self, touch):
+        """Transform touch coordinates before dispatching to children"""
+        if self._inverse_matrix:
+            touch.push()
+            touch.apply_transform_2d(lambda x, y: self._inverse_matrix.transform_point(x, y, 0)[:2])
+        
+        ret = super().on_touch_move(touch)
+        
+        if self._inverse_matrix:
+            touch.pop()
+        
+        return ret
+    
+    def on_touch_up(self, touch):
+        """Transform touch coordinates before dispatching to children"""
+        if self._inverse_matrix:
+            touch.push()
+            touch.apply_transform_2d(lambda x, y: self._inverse_matrix.transform_point(x, y, 0)[:2])
+        
+        ret = super().on_touch_up(touch)
+        
+        if self._inverse_matrix:
+            touch.pop()
+        
+        return ret
+    
+    def open(self, *args, **kwargs):
+        """Override open to ensure transform is applied after opening"""
+        result = super().open(*args, **kwargs)
+        # Force transform update after modal is opened and sized
+        self._update_modal_transform()
+        debug_logger.info("Modal opened with portrait rotation transform applied")
+        return result
 
 # ------------------ KONFIG ------------------
 APP_DIR = Path(__file__).parent
