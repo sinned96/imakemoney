@@ -144,7 +144,7 @@ from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.anchorlayout import AnchorLayout
 from kivy.uix.image import Image
 from kivy.uix.scrollview import ScrollView
-from kivy.graphics import Color, Rectangle, Line, Rotate, PushMatrix, PopMatrix
+from kivy.graphics import Color, Rectangle, Line, Rotate, PushMatrix, PopMatrix, Scale
 from kivy.uix.button import Button
 from kivy.uix.togglebutton import ToggleButton
 from kivy.uix.label import Label
@@ -758,17 +758,23 @@ class RegisterScreen(FloatLayout):
 PORTRAIT_MODAL_LABEL_ANGLE = -90  # Counterclockwise rotation for portrait mode
 PORTRAIT_MODAL_LABEL_PADDING = (dp(8), dp(6))  # Padding to prevent clipping
 
+# Config constants for portrait toolbar labels
+PORTRAIT_TOOLBAR_LABEL_ANGLE = 270  # Default rotation angle for toolbar labels in 9:16 mode
+PORTRAIT_TOOLBAR_LABEL_FLIP = False  # Whether to flip glyphs (use Scale(1, -1, 1)) if text is upside down
+
 class VerticalButton(Button):
     """Button with vertically rotated text for 9:16 mode toolbar"""
-    def __init__(self, rotation_angle=270, **kwargs):
+    def __init__(self, rotation_angle=None, flip_glyphs=None, **kwargs):
         """
         Args:
-            rotation_angle: Angle to rotate text (90 or 270 degrees)
+            rotation_angle: Angle to rotate text (default uses PORTRAIT_TOOLBAR_LABEL_ANGLE)
                            90 = text readable from bottom to top
                            270 = text readable from top to bottom (preferred for right-side menu)
+            flip_glyphs: Whether to flip text glyphs (default uses PORTRAIT_TOOLBAR_LABEL_FLIP)
         """
         super().__init__(**kwargs)
-        self.rotation_angle = rotation_angle
+        self.rotation_angle = rotation_angle if rotation_angle is not None else PORTRAIT_TOOLBAR_LABEL_ANGLE
+        self.flip_glyphs = flip_glyphs if flip_glyphs is not None else PORTRAIT_TOOLBAR_LABEL_FLIP
         # Add extra padding to prevent text clipping
         self.padding = [dp(10), dp(5)]
         self.bind(pos=self._update_rotation, size=self._update_rotation)
@@ -778,10 +784,13 @@ class VerticalButton(Button):
         self.canvas.before.clear()
         with self.canvas.before:
             PushMatrix()
-            # Rotate 270 degrees (-90°) to make text readable from top to bottom (parallel to screen edge)
+            # Rotate text to make it readable parallel to screen edge
+            # 270° (-90°) makes text readable from top to bottom (natural reading direction)
             # This ensures text is vertical and readable when toolbar is on the right side
-            # Text flows naturally downward, matching natural reading direction
             Rotate(angle=self.rotation_angle, origin=self.center)
+            # Optionally flip glyphs if they appear upside down
+            if self.flip_glyphs:
+                Scale(1, -1, 1, origin=self.center)
         
         self.canvas.after.clear()
         with self.canvas.after:
@@ -804,6 +813,8 @@ class RotatedLabel(Label):
         if rotation_angle != 0:
             self.padding = PORTRAIT_MODAL_LABEL_PADDING
         self.bind(pos=self._update_rotation, size=self._update_rotation)
+        # Schedule initial rotation update to ensure it's applied
+        Clock.schedule_once(self._update_rotation, 0)
         
     def _update_rotation(self, *args):
         # Clear and redraw canvas with rotation
@@ -836,6 +847,8 @@ class RotatedButton(Button):
         if rotation_angle != 0:
             self.padding = PORTRAIT_MODAL_LABEL_PADDING
         self.bind(pos=self._update_rotation, size=self._update_rotation)
+        # Schedule initial rotation update to ensure it's applied
+        Clock.schedule_once(self._update_rotation, 0)
         
     def _update_rotation(self, *args):
         # Clear and redraw canvas with rotation
@@ -905,17 +918,22 @@ class CustomAppBar(BoxLayout):
     def set_right_actions(self, items):
         self._buttons_box.clear_widgets()
         total_size = 0
+        first_button = True
         for text,cb in items:
             if self.vertical:
-                # Use VerticalButton for 9:16 mode with 270° rotation (text parallel to screen edge)
+                # Use VerticalButton for 9:16 mode with configurable rotation (text parallel to screen edge)
                 # Text will be readable from top to bottom (natural reading direction)
                 btn=VerticalButton(text=text,size_hint=(1,None),height=dp(70),
-                                   rotation_angle=270,  # 270° rotation (-90°) for proper vertical text
                                    background_normal='',background_color=(0.20,0.22,0.26,1),
                                    color=(1,1,1,1),font_size=dp(14))
                 btn.bind(on_release=lambda inst,c=cb:c())
                 self._buttons_box.add_widget(btn)
                 total_size += btn.height
+                # Log rotation info for first button only
+                if first_button:
+                    flip_str = " (flipped)" if btn.flip_glyphs else ""
+                    debug_logger.info(f"Toolbar labels rotated for 9:16: angle={btn.rotation_angle}°{flip_str}")
+                    first_button = False
             else:
                 btn=Button(text=text,size_hint=(None,1),width=dp(110),
                            background_normal='',background_color=(0.20,0.22,0.26,1),
