@@ -484,8 +484,8 @@ class WorkflowFileWatcher:
         - cloudKey.json: Google service account credentials (for Vertex AI)
         """
         self.log_status("=== Starting Clean Vertex AI Workflow ===")
-        self.log_status("Streamlined workflow: Recording → Transcription → Vertex AI Image Generation")
-        self.log_status("⚡ ENHANCED: Workflow now waits for complete recording validation before starting")
+        self.log_status("Streamlined workflow: Recording -> Transcription -> Vertex AI Image Generation")
+        self.log_status("ENHANCED: Workflow now waits for complete recording validation before starting")
         
         success_count = 0
         total_steps = 2  # Streamlined to 2 essential steps: Speech Recognition → Vertex AI
