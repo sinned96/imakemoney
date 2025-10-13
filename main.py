@@ -190,8 +190,20 @@ class OrientationProvider:
 class RotatingSurface(FloatLayout):
     """
     Container that applies unified graphics+input transform for portrait mode.
-    Rotates the entire content subtree by PORTRAIT_ROTATION_DEGREES around its center,
-    with input/touch coordinates transformed accordingly so hitboxes remain correct.
+    
+    This widget rotates the entire content subtree by PORTRAIT_ROTATION_DEGREES around 
+    its center, with input/touch coordinates transformed accordingly so hitboxes remain 
+    correct. This solves the issue where individual widget rotations caused misaligned
+    touch targets and inconsistent appearance across different screens.
+    
+    Key features:
+    - Center-anchored rotation: Content rotates around the center point
+    - Touch coordinate transformation: All touch events are properly mapped
+    - Optional scale-to-fit: Content can be scaled to fit within the window
+    - Automatic: Applied only when OrientationProvider.is_portrait() returns True
+    
+    The transformation matrix order is: Translate(cx,cy) · Scale · Rotate · Translate(-cx,-cy)
+    Touch events receive the inverse transformation to map screen coords to logical coords.
     """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
