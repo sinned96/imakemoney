@@ -156,6 +156,11 @@ from kivy.core.window import Window
 from kivy.graphics import Translate, Rotate as CanvasRotate
 from kivy.uix.modalview import ModalView
 
+# ------------------ PORTRAIT ROTATION CONFIG ------------------
+# Global rotation configuration for portrait mode (9:16)
+PORTRAIT_ROTATION_DEGREES = -90  # -90 = counterclockwise (left rotation), +90 = clockwise (right rotation)
+PORTRAIT_SCALE_FIT = True  # Scale content to fit window after rotation
+
 # ------------------ ORIENTATION PROVIDER ------------------
 class OrientationProvider:
     """Singleton that manages the current orientation state"""
@@ -181,119 +186,196 @@ class OrientationProvider:
         """Check if we're in portrait mode"""
         return self.aspect_ratio == "9:16"
 
-# ------------------ ROTATING ROOT ------------------
-class RotatingRoot(FloatLayout):
-    """Root widget that applies canvas rotation for portrait mode"""
+# ------------------ ROTATING SURFACE ------------------
+class RotatingSurface(FloatLayout):
+    """
+    Container that applies unified graphics+input transform for portrait mode.
+    
+    This widget rotates the entire content subtree by PORTRAIT_ROTATION_DEGREES around 
+    its center, with input/touch coordinates transformed accordingly so hitboxes remain 
+    correct. This solves the issue where individual widget rotations caused misaligned
+    touch targets and inconsistent appearance across different screens.
+    
+    Key features:
+    - Center-anchored rotation: Content rotates around the center point
+    - Touch coordinate transformation: All touch events are properly mapped
+    - Optional scale-to-fit: Content can be scaled to fit within the window
+    - Automatic: Applied only when OrientationProvider.is_portrait() returns True
+    
+    The transformation matrix order is: Translate(cx,cy) · Scale · Rotate · Translate(-cx,-cy)
+    Touch events receive the inverse transformation to map screen coords to logical coords.
+    """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.orientation_provider = OrientationProvider()
-        self._rotation_instruction = None
-        self._translate_instruction = None
-        self.bind(size=self._update_rotation, pos=self._update_rotation)
+        self._transform_matrix = None
+        self._inverse_matrix = None
+        self._rotation_logged = False
+        self.bind(size=self._update_transform, pos=self._update_transform)
     
-    def _update_rotation(self, *args):
-        """Apply rotation transform based on orientation"""
-        angle = self.orientation_provider.get_rotation_angle()
+    def _update_transform(self, *args):
+        """Apply rotation and scale transform based on orientation"""
+        is_portrait = self.orientation_provider.is_portrait()
         
-        # Clear existing rotation instructions
+        # Clear existing transforms
         self.canvas.before.clear()
         self.canvas.after.clear()
         
-        # ALWAYS push/pop matrix in both portrait and landscape to maintain balance
-        # NOTE: Rotation disabled - using layout-based portrait mode instead
-        # Canvas rotation causes touch coordinate mismatch; layout positioning is used
+        if not is_portrait:
+            # Landscape mode: no transformation needed
+            self._transform_matrix = None
+            self._inverse_matrix = None
+            return
+        
+        # Portrait mode: apply rotation and optional scale
+        from kivy.graphics.transformation import Matrix
+        
+        # Calculate center point for rotation anchor
+        cx, cy = self.center_x, self.center_y
+        
+        # Build transformation matrix: Translate(cx, cy) · Scale · Rotate · Translate(-cx, -cy)
+        mat = Matrix()
+        mat.translate(cx, cy, 0)
+        
+        # Optional: Scale to fit rotated content within window
+        if PORTRAIT_SCALE_FIT:
+            # After rotation, logical width and height swap
+            # Calculate uniform scale to fit rotated content in window
+            if self.width > 0 and self.height > 0:
+                # When rotated -90°, the logical height becomes the physical width
+                # and logical width becomes the physical height
+                scale = min(self.width / self.height, self.height / self.width)
+                if scale < 1.0:
+                    mat.scale(scale, scale, 1)
+        
+        # Apply rotation
+        mat.rotate(PORTRAIT_ROTATION_DEGREES * 3.14159265359 / 180.0, 0, 0, 1)
+        mat.translate(-cx, -cy, 0)
+        
+        # Store matrices for touch transformation
+        self._transform_matrix = mat
+        self._inverse_matrix = mat.inverse()
+        
+        # Apply to canvas
         with self.canvas.before:
             PushMatrix()
-            # No Translate or Rotate - rotation disabled for layout-based portrait
+            from kivy.graphics import MatrixInstruction
+            self._matrix_instruction = MatrixInstruction()
+            self._matrix_instruction.matrix = mat
         
         with self.canvas.after:
             PopMatrix()
         
-        # Log rotation state
-        if angle != 0:
-            debug_logger.info("Rotation disabled for root (layout-based portrait active)")
+        # Log once when rotation is applied
+        if not self._rotation_logged:
+            debug_logger.info(f"Applied global rotation {PORTRAIT_ROTATION_DEGREES}° with input transform for 9:16 (center-anchored)")
+            self._rotation_logged = True
+    
+    def on_touch_down(self, touch):
+        """Transform touch coordinates before dispatching to children"""
+        if self._inverse_matrix:
+            # Apply inverse transform to touch position
+            touch.push()
+            touch.apply_transform_2d(self._inverse_matrix)
+        
+        ret = super().on_touch_down(touch)
+        
+        if self._inverse_matrix:
+            touch.pop()
+        
+        return ret
+    
+    def on_touch_move(self, touch):
+        """Transform touch coordinates before dispatching to children"""
+        if self._inverse_matrix:
+            touch.push()
+            touch.apply_transform_2d(self._inverse_matrix)
+        
+        ret = super().on_touch_move(touch)
+        
+        if self._inverse_matrix:
+            touch.pop()
+        
+        return ret
+    
+    def on_touch_up(self, touch):
+        """Transform touch coordinates before dispatching to children"""
+        if self._inverse_matrix:
+            touch.push()
+            touch.apply_transform_2d(self._inverse_matrix)
+        
+        ret = super().on_touch_up(touch)
+        
+        if self._inverse_matrix:
+            touch.pop()
+        
+        return ret
+
+# ------------------ ROTATING ROOT ------------------
+class RotatingRoot(FloatLayout):
+    """Root widget that wraps content in RotatingSurface for portrait mode"""
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.orientation_provider = OrientationProvider()
+        self._rotating_surface = None
+        self._content_widget = None
+    
+    def add_widget(self, widget, *args, **kwargs):
+        """Override to wrap content in RotatingSurface when in portrait mode"""
+        is_portrait = self.orientation_provider.is_portrait()
+        
+        # If we're switching orientation, clean up old structure
+        if self._rotating_surface or self._content_widget:
+            self.clear_widgets()
+            self._rotating_surface = None
+            self._content_widget = None
+        
+        if is_portrait:
+            # Portrait mode: wrap content in RotatingSurface
+            if not self._rotating_surface:
+                self._rotating_surface = RotatingSurface()
+                super().add_widget(self._rotating_surface, *args, **kwargs)
+            self._content_widget = widget
+            self._rotating_surface.add_widget(widget)
+        else:
+            # Landscape mode: add content directly
+            self._content_widget = widget
+            super().add_widget(widget, *args, **kwargs)
+    
+    def clear_widgets(self):
+        """Override to properly clean up rotating surface"""
+        if self._rotating_surface:
+            self._rotating_surface.clear_widgets()
+        super().clear_widgets()
+        self._rotating_surface = None
+        self._content_widget = None
     
     def apply_rotation(self):
         """Force update of rotation (call after orientation change)"""
-        self._update_rotation()
+        # When orientation changes, we need to rebuild the widget tree
+        # to properly wrap/unwrap the RotatingSurface
+        if self._content_widget:
+            content = self._content_widget
+            # Clear and re-add to trigger proper wrapping based on new orientation
+            if self._rotating_surface:
+                self._rotating_surface.clear_widgets()
+            super().clear_widgets()
+            self._rotating_surface = None
+            self._content_widget = None
+            self.add_widget(content)
+        elif self._rotating_surface:
+            # Update existing transform
+            self._rotating_surface._update_transform()
 
 # ------------------ ROTATED MODAL VIEW ------------------
 class RotatedModalView(ModalView):
-    """ModalView that rotates with the orientation"""
+    """ModalView that inherits global rotation from parent RotatingSurface"""
     def __init__(self, **kwargs):
         self.orientation_provider = OrientationProvider()
-        
-        # NOTE: Width/height swapping removed - using layout-based portrait mode
-        # Modals no longer rotate; they are positioned/sized based on layout only
-        
         super().__init__(**kwargs)
-        self.bind(size=self._update_rotation, pos=self._update_rotation)
-        self._update_rotation()
-    
-    def _update_rotation(self, *args):
-        """Apply rotation transform based on orientation"""
-        angle = self.orientation_provider.get_rotation_angle()
-        
-        # Clear existing rotation
-        self.canvas.before.clear()
-        self.canvas.after.clear()
-        
-        # ALWAYS push/pop matrix in both portrait and landscape to maintain balance
-        # NOTE: Rotation disabled - using layout-based portrait mode instead
-        # Canvas rotation causes touch coordinate mismatch; layout positioning is used
-        with self.canvas.before:
-            PushMatrix()
-            # No Translate or Rotate - rotation disabled for layout-based portrait
-        
-        with self.canvas.after:
-            PopMatrix()
-        
-        # Log rotation state
-        if angle != 0:
-            debug_logger.info("Rotation disabled for modals (layout-based portrait active)")
-    
-    def _strip_transforms_from_content(self, widget):
-        """
-        Strip any unintended rotation/scale/translate transforms from modal content.
-        Only the modal itself should rotate; the content inside should not.
-        This is a defensive measure to ensure content is never accidentally rotated.
-        """
-        if not widget:
-            return
-        
-        # Clear any transforms from widget's canvas (except basic drawing operations)
-        # Only remove rotation/scale/translate transforms, keep Color and Rectangle
-        from kivy.graphics import Rotate, Scale, Translate, Matrix, PushMatrix, PopMatrix
-        
-        # Remove transforms from canvas.before
-        to_remove_before = []
-        for instruction in widget.canvas.before:
-            if isinstance(instruction, (Rotate, Scale, Translate, Matrix, PushMatrix, PopMatrix)):
-                to_remove_before.append(instruction)
-        for instruction in to_remove_before:
-            widget.canvas.before.remove(instruction)
-        
-        # Remove transforms from canvas.after
-        to_remove_after = []
-        for instruction in widget.canvas.after:
-            if isinstance(instruction, (Rotate, Scale, Translate, Matrix, PushMatrix, PopMatrix)):
-                to_remove_after.append(instruction)
-        for instruction in to_remove_after:
-            widget.canvas.after.remove(instruction)
-        
-        # Reset any rotation/angle attributes
-        if hasattr(widget, 'rotation'):
-            widget.rotation = 0
-        if hasattr(widget, 'angle'):
-            widget.angle = 0
-        
-        # Recursively strip transforms from children (except for VerticalButton which needs rotation)
-        for child in widget.children:
-            # Skip VerticalButton as it intentionally rotates toolbar labels
-            if not isinstance(child, VerticalButton):
-                self._strip_transforms_from_content(child)
-        
-        debug_logger.debug(f"Stripped transforms from {widget.__class__.__name__}")
+        # Log modal opening with rotation info
+        if self.orientation_provider.is_portrait():
+            debug_logger.info("Portrait global rotation active; modals inherit transform")
 
 # ------------------ KONFIG ------------------
 APP_DIR = Path(__file__).parent
@@ -754,115 +836,27 @@ class RegisterScreen(FloatLayout):
         Clock.schedule_once(lambda dt:self.on_done(),0.8)
 
 # ---- CustomAppBar ----
-# Config constants for portrait modal labels
-PORTRAIT_MODAL_LABEL_ANGLE = -90  # Counterclockwise rotation for portrait mode
-PORTRAIT_MODAL_LABEL_PADDING = (dp(8), dp(6))  # Padding to prevent clipping
-
-# Config constants for portrait toolbar labels
-PORTRAIT_TOOLBAR_LABEL_ANGLE = 270  # Default rotation angle for toolbar labels in 9:16 mode
-PORTRAIT_TOOLBAR_LABEL_FLIP = False  # Whether to flip glyphs (use Scale(1, -1, 1)) if text is upside down
-
 class VerticalButton(Button):
-    """Button with vertically rotated text for 9:16 mode toolbar"""
+    """Button for 9:16 mode toolbar - now just a regular Button since global rotation handles orientation"""
     def __init__(self, rotation_angle=None, flip_glyphs=None, **kwargs):
-        """
-        Args:
-            rotation_angle: Angle to rotate text (default uses PORTRAIT_TOOLBAR_LABEL_ANGLE)
-                           90 = text readable from bottom to top
-                           270 = text readable from top to bottom (preferred for right-side menu)
-            flip_glyphs: Whether to flip text glyphs (default uses PORTRAIT_TOOLBAR_LABEL_FLIP)
-        """
+        # Ignore rotation parameters - global rotation handles everything
         super().__init__(**kwargs)
-        self.rotation_angle = rotation_angle if rotation_angle is not None else PORTRAIT_TOOLBAR_LABEL_ANGLE
-        self.flip_glyphs = flip_glyphs if flip_glyphs is not None else PORTRAIT_TOOLBAR_LABEL_FLIP
-        # Add extra padding to prevent text clipping
+        # Add padding for better appearance
         self.padding = [dp(10), dp(5)]
-        self.bind(pos=self._update_rotation, size=self._update_rotation)
-        
-    def _update_rotation(self, *args):
-        # Clear and redraw canvas with rotation
-        self.canvas.before.clear()
-        with self.canvas.before:
-            PushMatrix()
-            # Rotate text to make it readable parallel to screen edge
-            # 270° (-90°) makes text readable from top to bottom (natural reading direction)
-            # This ensures text is vertical and readable when toolbar is on the right side
-            Rotate(angle=self.rotation_angle, origin=self.center)
-            # Optionally flip glyphs if they appear upside down
-            if self.flip_glyphs:
-                Scale(1, -1, 1, origin=self.center)
-        
-        self.canvas.after.clear()
-        with self.canvas.after:
-            PopMatrix()
 
+# RotatedLabel and RotatedButton are now just aliases since global rotation handles everything
+# These are kept for backward compatibility with existing code
 class RotatedLabel(Label):
-    """Label with rotated text for portrait mode modals.
-    
-    Rotates only the text rendering, not the widget container itself,
-    so button hitboxes and layout remain correct.
-    """
+    """Label that used to rotate text - now just a regular Label since global rotation handles it"""
     def __init__(self, rotation_angle=0, **kwargs):
-        """
-        Args:
-            rotation_angle: Angle to rotate text (default 0, use -90 for portrait)
-        """
+        # Ignore rotation_angle parameter - global rotation handles it
         super().__init__(**kwargs)
-        self.rotation_angle = rotation_angle
-        # Add padding to prevent text clipping when rotated
-        if rotation_angle != 0:
-            self.padding = PORTRAIT_MODAL_LABEL_PADDING
-        self.bind(pos=self._update_rotation, size=self._update_rotation)
-        # Schedule initial rotation update to ensure it's applied
-        Clock.schedule_once(self._update_rotation, 0)
-        
-    def _update_rotation(self, *args):
-        # Clear and redraw canvas with rotation
-        self.canvas.before.clear()
-        if self.rotation_angle != 0:
-            with self.canvas.before:
-                PushMatrix()
-                # Rotate around center to keep text centered in widget
-                Rotate(angle=self.rotation_angle, origin=self.center)
-        
-        self.canvas.after.clear()
-        if self.rotation_angle != 0:
-            with self.canvas.after:
-                PopMatrix()
 
 class RotatedButton(Button):
-    """Button with rotated text for portrait mode modals.
-    
-    Rotates only the text rendering, not the button container itself,
-    so hitboxes remain correct and clicks work as expected.
-    """
+    """Button that used to rotate text - now just a regular Button since global rotation handles it"""
     def __init__(self, rotation_angle=0, **kwargs):
-        """
-        Args:
-            rotation_angle: Angle to rotate text (default 0, use -90 for portrait)
-        """
+        # Ignore rotation_angle parameter - global rotation handles it
         super().__init__(**kwargs)
-        self.rotation_angle = rotation_angle
-        # Add padding to prevent text clipping when rotated
-        if rotation_angle != 0:
-            self.padding = PORTRAIT_MODAL_LABEL_PADDING
-        self.bind(pos=self._update_rotation, size=self._update_rotation)
-        # Schedule initial rotation update to ensure it's applied
-        Clock.schedule_once(self._update_rotation, 0)
-        
-    def _update_rotation(self, *args):
-        # Clear and redraw canvas with rotation
-        self.canvas.before.clear()
-        if self.rotation_angle != 0:
-            with self.canvas.before:
-                PushMatrix()
-                # Rotate around center to keep text centered in button
-                Rotate(angle=self.rotation_angle, origin=self.center)
-        
-        self.canvas.after.clear()
-        if self.rotation_angle != 0:
-            with self.canvas.after:
-                PopMatrix()
 
 class CustomAppBar(BoxLayout):
     def __init__(self, title="App", vertical=False, **kwargs):
@@ -918,22 +912,15 @@ class CustomAppBar(BoxLayout):
     def set_right_actions(self, items):
         self._buttons_box.clear_widgets()
         total_size = 0
-        first_button = True
         for text,cb in items:
             if self.vertical:
-                # Use VerticalButton for 9:16 mode with configurable rotation (text parallel to screen edge)
-                # Text will be readable from top to bottom (natural reading direction)
+                # Use VerticalButton for 9:16 mode - global rotation handles orientation
                 btn=VerticalButton(text=text,size_hint=(1,None),height=dp(70),
                                    background_normal='',background_color=(0.20,0.22,0.26,1),
                                    color=(1,1,1,1),font_size=dp(14))
                 btn.bind(on_release=lambda inst,c=cb:c())
                 self._buttons_box.add_widget(btn)
                 total_size += btn.height
-                # Log rotation info for first button only
-                if first_button:
-                    flip_str = " (flipped)" if btn.flip_glyphs else ""
-                    debug_logger.info(f"Toolbar labels rotated for 9:16: angle={btn.rotation_angle}°{flip_str}")
-                    first_button = False
             else:
                 btn=Button(text=text,size_hint=(None,1),width=dp(110),
                            background_normal='',background_color=(0.20,0.22,0.26,1),
@@ -3409,38 +3396,32 @@ class FormatSelectionPopup(RotatedModalView):
         panel.bind(pos=lambda *a: setattr(panel._bg, 'pos', panel.pos),
                   size=lambda *a: setattr(panel._bg, 'size', panel.size))
         
-        # Determine if we should rotate labels (portrait mode)
-        is_portrait = aspect == "9:16"
-        label_rotation = PORTRAIT_MODAL_LABEL_ANGLE if is_portrait else 0
-        
-        # Title label with rotation in portrait mode
+        # Title label - global rotation handles orientation
         title_label = RotatedLabel(
             text="Format", 
             size_hint_y=None, 
             height=dp(54),
             font_size=dp(32), 
             color=(1, 1, 1, 1), 
-            bold=True,
-            rotation_angle=label_rotation
+            bold=True
         )
         panel.add_widget(title_label)
         
-        # Current format display with rotation in portrait mode
+        # Current format display
         current_text = f"Aktuell: {self.slideshow.aspect_ratio}"
         self.current_label = RotatedLabel(
             text=current_text, 
             size_hint_y=None, 
             height=dp(30),
             font_size=dp(18), 
-            color=(0.7, 0.9, 1, 1),
-            rotation_angle=label_rotation
+            color=(0.7, 0.9, 1, 1)
         )
         panel.add_widget(self.current_label)
         
         # Spacer
         panel.add_widget(Widget(size_hint_y=0.2))
         
-        # Format buttons with rotated text in portrait mode
+        # Format buttons - global rotation handles orientation
         btn_horizontal = RotatedButton(
             text="Horizontal (16:9)", 
             size_hint_y=None, 
@@ -3448,8 +3429,7 @@ class FormatSelectionPopup(RotatedModalView):
             font_size=dp(22),
             background_normal='', 
             background_color=(0.3, 0.5, 0.7, 1),
-            color=(1, 1, 1, 1),
-            rotation_angle=label_rotation
+            color=(1, 1, 1, 1)
         )
         btn_horizontal.bind(on_release=lambda x: self._select_format("16:9"))
         panel.add_widget(btn_horizontal)
@@ -3461,8 +3441,7 @@ class FormatSelectionPopup(RotatedModalView):
             font_size=dp(22),
             background_normal='', 
             background_color=(0.3, 0.5, 0.7, 1),
-            color=(1, 1, 1, 1),
-            rotation_angle=label_rotation
+            color=(1, 1, 1, 1)
         )
         btn_vertical.bind(on_release=lambda x: self._select_format("9:16"))
         panel.add_widget(btn_vertical)
@@ -3470,7 +3449,7 @@ class FormatSelectionPopup(RotatedModalView):
         # Spacer
         panel.add_widget(Widget(size_hint_y=0.2))
         
-        # Close button with rotated text in portrait mode
+        # Close button
         close_btn = RotatedButton(
             text="Schließen", 
             size_hint_y=None, 
@@ -3478,8 +3457,7 @@ class FormatSelectionPopup(RotatedModalView):
             font_size=dp(20),
             background_normal='', 
             background_color=(0.4, 0.4, 0.5, 1),
-            color=(1, 1, 1, 1),
-            rotation_angle=label_rotation
+            color=(1, 1, 1, 1)
         )
         close_btn.bind(on_release=lambda x: self.close())
         panel.add_widget(close_btn)
@@ -3493,11 +3471,7 @@ class FormatSelectionPopup(RotatedModalView):
         Window.bind(on_key_down=self._on_key_down)
         
         # Log modal opening
-        if is_portrait:
-            debug_logger.info(f"Format modal open centered size={panel_size[0]}x{panel_size[1]}")
-            debug_logger.info(f"Format modal labels rotated {PORTRAIT_MODAL_LABEL_ANGLE}° (portrait)")
-        else:
-            debug_logger.info(f"Format modal open centered size={panel_size[0]}x{panel_size[1]}")
+        debug_logger.info(f"Format modal open centered size={panel_size[0]}x{panel_size[1]}")
     
     def _on_key_down(self, window, key, scancode, codepoint, modifiers):
         """Handle ESC/Back key to dismiss modal"""
