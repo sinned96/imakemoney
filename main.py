@@ -754,6 +754,10 @@ class RegisterScreen(FloatLayout):
         Clock.schedule_once(lambda dt:self.on_done(),0.8)
 
 # ---- CustomAppBar ----
+# Config constants for portrait modal labels
+PORTRAIT_MODAL_LABEL_ANGLE = -90  # Counterclockwise rotation for portrait mode
+PORTRAIT_MODAL_LABEL_PADDING = (dp(8), dp(6))  # Padding to prevent clipping
+
 class VerticalButton(Button):
     """Button with vertically rotated text for 9:16 mode toolbar"""
     def __init__(self, rotation_angle=270, **kwargs):
@@ -782,6 +786,70 @@ class VerticalButton(Button):
         self.canvas.after.clear()
         with self.canvas.after:
             PopMatrix()
+
+class RotatedLabel(Label):
+    """Label with rotated text for portrait mode modals.
+    
+    Rotates only the text rendering, not the widget container itself,
+    so button hitboxes and layout remain correct.
+    """
+    def __init__(self, rotation_angle=0, **kwargs):
+        """
+        Args:
+            rotation_angle: Angle to rotate text (default 0, use -90 for portrait)
+        """
+        super().__init__(**kwargs)
+        self.rotation_angle = rotation_angle
+        # Add padding to prevent text clipping when rotated
+        if rotation_angle != 0:
+            self.padding = PORTRAIT_MODAL_LABEL_PADDING
+        self.bind(pos=self._update_rotation, size=self._update_rotation)
+        
+    def _update_rotation(self, *args):
+        # Clear and redraw canvas with rotation
+        self.canvas.before.clear()
+        if self.rotation_angle != 0:
+            with self.canvas.before:
+                PushMatrix()
+                # Rotate around center to keep text centered in widget
+                Rotate(angle=self.rotation_angle, origin=self.center)
+        
+        self.canvas.after.clear()
+        if self.rotation_angle != 0:
+            with self.canvas.after:
+                PopMatrix()
+
+class RotatedButton(Button):
+    """Button with rotated text for portrait mode modals.
+    
+    Rotates only the text rendering, not the button container itself,
+    so hitboxes remain correct and clicks work as expected.
+    """
+    def __init__(self, rotation_angle=0, **kwargs):
+        """
+        Args:
+            rotation_angle: Angle to rotate text (default 0, use -90 for portrait)
+        """
+        super().__init__(**kwargs)
+        self.rotation_angle = rotation_angle
+        # Add padding to prevent text clipping when rotated
+        if rotation_angle != 0:
+            self.padding = PORTRAIT_MODAL_LABEL_PADDING
+        self.bind(pos=self._update_rotation, size=self._update_rotation)
+        
+    def _update_rotation(self, *args):
+        # Clear and redraw canvas with rotation
+        self.canvas.before.clear()
+        if self.rotation_angle != 0:
+            with self.canvas.before:
+                PushMatrix()
+                # Rotate around center to keep text centered in button
+                Rotate(angle=self.rotation_angle, origin=self.center)
+        
+        self.canvas.after.clear()
+        if self.rotation_angle != 0:
+            with self.canvas.after:
+                PopMatrix()
 
 class CustomAppBar(BoxLayout):
     def __init__(self, title="App", vertical=False, **kwargs):
@@ -3323,42 +3391,78 @@ class FormatSelectionPopup(RotatedModalView):
         panel.bind(pos=lambda *a: setattr(panel._bg, 'pos', panel.pos),
                   size=lambda *a: setattr(panel._bg, 'size', panel.size))
         
-        panel.add_widget(Label(text="Format", size_hint_y=None, height=dp(54),
-                              font_size=dp(32), color=(1, 1, 1, 1), 
-                              bold=True))
+        # Determine if we should rotate labels (portrait mode)
+        is_portrait = aspect == "9:16"
+        label_rotation = PORTRAIT_MODAL_LABEL_ANGLE if is_portrait else 0
         
-        # Current format display
+        # Title label with rotation in portrait mode
+        title_label = RotatedLabel(
+            text="Format", 
+            size_hint_y=None, 
+            height=dp(54),
+            font_size=dp(32), 
+            color=(1, 1, 1, 1), 
+            bold=True,
+            rotation_angle=label_rotation
+        )
+        panel.add_widget(title_label)
+        
+        # Current format display with rotation in portrait mode
         current_text = f"Aktuell: {self.slideshow.aspect_ratio}"
-        self.current_label = Label(text=current_text, size_hint_y=None, height=dp(30),
-                                   font_size=dp(18), color=(0.7, 0.9, 1, 1))
+        self.current_label = RotatedLabel(
+            text=current_text, 
+            size_hint_y=None, 
+            height=dp(30),
+            font_size=dp(18), 
+            color=(0.7, 0.9, 1, 1),
+            rotation_angle=label_rotation
+        )
         panel.add_widget(self.current_label)
         
         # Spacer
         panel.add_widget(Widget(size_hint_y=0.2))
         
-        # Format buttons
-        btn_horizontal = Button(text="Horizontal (16:9)", size_hint_y=None, height=dp(60),
-                               font_size=dp(22),
-                               background_normal='', background_color=(0.3, 0.5, 0.7, 1),
-                               color=(1, 1, 1, 1))
+        # Format buttons with rotated text in portrait mode
+        btn_horizontal = RotatedButton(
+            text="Horizontal (16:9)", 
+            size_hint_y=None, 
+            height=dp(60),
+            font_size=dp(22),
+            background_normal='', 
+            background_color=(0.3, 0.5, 0.7, 1),
+            color=(1, 1, 1, 1),
+            rotation_angle=label_rotation
+        )
         btn_horizontal.bind(on_release=lambda x: self._select_format("16:9"))
         panel.add_widget(btn_horizontal)
         
-        btn_vertical = Button(text="Vertikal (9:16)", size_hint_y=None, height=dp(60),
-                             font_size=dp(22),
-                             background_normal='', background_color=(0.3, 0.5, 0.7, 1),
-                             color=(1, 1, 1, 1))
+        btn_vertical = RotatedButton(
+            text="Vertikal (9:16)", 
+            size_hint_y=None, 
+            height=dp(60),
+            font_size=dp(22),
+            background_normal='', 
+            background_color=(0.3, 0.5, 0.7, 1),
+            color=(1, 1, 1, 1),
+            rotation_angle=label_rotation
+        )
         btn_vertical.bind(on_release=lambda x: self._select_format("9:16"))
         panel.add_widget(btn_vertical)
         
         # Spacer
         panel.add_widget(Widget(size_hint_y=0.2))
         
-        # Close button
-        close_btn = Button(text="Schließen", size_hint_y=None, height=dp(50),
-                          font_size=dp(20),
-                          background_normal='', background_color=(0.4, 0.4, 0.5, 1),
-                          color=(1, 1, 1, 1))
+        # Close button with rotated text in portrait mode
+        close_btn = RotatedButton(
+            text="Schließen", 
+            size_hint_y=None, 
+            height=dp(50),
+            font_size=dp(20),
+            background_normal='', 
+            background_color=(0.4, 0.4, 0.5, 1),
+            color=(1, 1, 1, 1),
+            rotation_angle=label_rotation
+        )
         close_btn.bind(on_release=lambda x: self.close())
         panel.add_widget(close_btn)
         
@@ -3371,7 +3475,11 @@ class FormatSelectionPopup(RotatedModalView):
         Window.bind(on_key_down=self._on_key_down)
         
         # Log modal opening
-        debug_logger.info(f"Format modal open centered size={panel_size[0]}x{panel_size[1]}")
+        if is_portrait:
+            debug_logger.info(f"Format modal open centered size={panel_size[0]}x{panel_size[1]}")
+            debug_logger.info(f"Format modal labels rotated {PORTRAIT_MODAL_LABEL_ANGLE}° (portrait)")
+        else:
+            debug_logger.info(f"Format modal open centered size={panel_size[0]}x{panel_size[1]}")
     
     def _on_key_down(self, window, key, scancode, codepoint, modifiers):
         """Handle ESC/Back key to dismiss modal"""
