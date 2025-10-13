@@ -96,6 +96,37 @@ Aufnahmen_Backup/
 
 # Test files (removed in cleanup)
 test_*.py
+verify_*.py
+
+# Documentation files (removed in cleanup, keep only README.md)
+*_SUMMARY.md
+*_GUIDE.md
+*_IMPLEMENTATION.md
+*_VISUAL*.md
+*_FIXES*.md
+*_TESTING*.md
+*_CHECKLIST*.md
+*_INSTRUCTIONS*.md
+*_SETUP.md
+PR_*.md
+HOTFIX*.md
+PORTRAIT*.md
+BEFORE_AFTER*.md
+CHANGES*.md
+FIX_*.md
+FULLSCREEN*.md
+IMPLEMENTATION*.md
+ORIENTATION*.md
+QUICK_*.md
+ROTATED*.md
+ROTATION*.md
+SPEECH*.md
+TESTING*.md
+TRUE_*.md
+VERIFICATION*.md
+VERTEX*.md
+CHANGELOG.md
+FINAL*.md
 
 # Demo/temp images
 *-demo.png
