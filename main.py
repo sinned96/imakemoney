@@ -162,7 +162,8 @@ Window.clearcolor = (0.15, 0.15, 0.15, 1)  # Dark gray
 # ------------------ PORTRAIT ROTATION CONFIG ------------------
 # Global rotation configuration for portrait mode (9:16)
 PORTRAIT_ROTATION_DEGREES = -90  # -90 = counterclockwise (left rotation), +90 = clockwise (right rotation)
-PORTRAIT_SCALE_FIT = False  # Scale content to fit window after rotation (disabled by default to avoid edge cases)
+PORTRAIT_SCALE_FIT = True  # Scale content to fit window after rotation (enabled to fix clipping on 1920x1080)
+DEBUG_SHOW_BOUNDS = False  # Draw debug rectangle around transformed content bounds
 
 # ------------------ ORIENTATION PROVIDER ------------------
 class OrientationProvider:
@@ -243,6 +244,9 @@ class RotatingSurface(FloatLayout):
         mat = Matrix()
         mat.translate(cx, cy, 0)
         
+        # Track scale factor for logging
+        scale_factor = 1.0
+        
         # Optional: Scale to fit rotated content within window
         if PORTRAIT_SCALE_FIT:
             # After rotation, logical width and height swap
@@ -250,11 +254,11 @@ class RotatingSurface(FloatLayout):
             if self.width > 0 and self.height > 0:
                 # When rotated -90 deg, the logical height becomes the physical width
                 # and logical width becomes the physical height
-                scale = min(self.width / self.height, self.height / self.width)
+                scale_factor = min(self.width / self.height, self.height / self.width)
                 # Apply safe minimum scale clamp to avoid degenerate scaling
-                scale = max(scale, 1e-3)
-                if scale < 1.0:
-                    mat.scale(scale, scale, 1)
+                scale_factor = max(scale_factor, 1e-3)
+                if scale_factor < 1.0:
+                    mat.scale(scale_factor, scale_factor, 1)
         
         # Apply rotation
         mat.rotate(PORTRAIT_ROTATION_DEGREES * 3.14159265359 / 180.0, 0, 0, 1)
@@ -273,10 +277,18 @@ class RotatingSurface(FloatLayout):
         
         with self.canvas.after:
             PopMatrix()
+            
+            # Optional debug visualization
+            if DEBUG_SHOW_BOUNDS:
+                from kivy.graphics import Color, Line
+                Color(1, 0, 0, 0.8)  # Red with 80% opacity
+                # Draw rectangle around the content bounds
+                Line(rectangle=(self.x, self.y, self.width, self.height), width=2)
         
         # Log once when rotation is applied
         if not self._rotation_logged:
-            debug_logger.info(f"Applied global rotation {PORTRAIT_ROTATION_DEGREES} deg with input transform for 9:16 (center-anchored)")
+            scale_msg = f" with scale {scale_factor:.4f}" if PORTRAIT_SCALE_FIT and scale_factor < 1.0 else ""
+            debug_logger.info(f"Applied global rotation {PORTRAIT_ROTATION_DEGREES} deg{scale_msg} with input transform for 9:16 (center-anchored)")
             self._rotation_logged = True
     
     def on_touch_down(self, touch):
@@ -405,16 +417,26 @@ class RotatedModalView(ModalView):
             self._inverse_matrix = None
             return
         
-        # Portrait mode: apply same rotation as RotatingSurface
+        # Portrait mode: apply same rotation and scale as RotatingSurface
         from kivy.graphics.transformation import Matrix
         from kivy.graphics import PushMatrix, PopMatrix, MatrixInstruction
+        from kivy.core.window import Window
         
-        # Calculate center point for rotation anchor
-        cx, cy = self.center_x, self.center_y
+        # Calculate center point for rotation anchor (use Window center for modals)
+        cx, cy = Window.width / 2, Window.height / 2
         
-        # Build transformation matrix: Translate(cx, cy) · Rotate · Translate(-cx, -cy)
+        # Build transformation matrix: Translate(cx, cy) · Scale · Rotate · Translate(-cx, -cy)
         mat = Matrix()
         mat.translate(cx, cy, 0)
+        
+        # Optional: Scale to fit rotated content within window (same as RotatingSurface)
+        if PORTRAIT_SCALE_FIT:
+            if Window.width > 0 and Window.height > 0:
+                scale_factor = min(Window.width / Window.height, Window.height / Window.width)
+                scale_factor = max(scale_factor, 1e-3)
+                if scale_factor < 1.0:
+                    mat.scale(scale_factor, scale_factor, 1)
+        
         mat.rotate(PORTRAIT_ROTATION_DEGREES * 3.14159265359 / 180.0, 0, 0, 1)
         mat.translate(-cx, -cy, 0)
         
