@@ -553,6 +553,14 @@ class RotatingRootFbo(FloatLayout):
             touch.pop()
         
         return ret
+    
+    def clear_widgets(self):
+        """Override to properly clean up child container"""
+        if self._child_container:
+            self._child_container.clear_widgets()
+            self._debug_label = None  # Will be recreated if needed
+        super().clear_widgets()
+        self._child_container = None
 
 # ------------------ ROTATING ROOT ------------------
 class RotatingRoot(FloatLayout):
@@ -580,9 +588,12 @@ class RotatingRoot(FloatLayout):
                 if not self._rotating_surface:
                     self._rotating_surface = RotatingRootFbo()
                     super().add_widget(self._rotating_surface, *args, **kwargs)
-                    debug_logger.info("Showing LoginScreen (portrait FBO)")
+                    debug_logger.info("Using portrait FBO mode for rendering")
                 self._content_widget = widget
                 self._rotating_surface.add_widget(widget)
+                # Log what widget is being shown
+                widget_name = widget.__class__.__name__
+                debug_logger.info(f"Showing {widget_name} in portrait FBO")
             else:
                 # Raw canvas transform (original method)
                 if not self._rotating_surface:
