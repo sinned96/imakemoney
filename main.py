@@ -391,13 +391,18 @@ class RotatingRootFbo(FloatLayout):
         self._finalized = False
         self._finalize_attempts = 0
         
-        # Defer viewport calculation until Window has real size
-        Clock.schedule_once(self._finalize_viewport, 0)
+        # Debouncing state
+        self._last_resize_w = 0
+        self._last_resize_h = 0
+        self._pending_apply_event = None
         
         # Bind to Window.size for dynamic recalculation
         from kivy.core.window import Window
         Window.bind(size=self._on_resize)
         self.bind(pos=self._update_transform)
+        
+        # Defer viewport calculation until Window has real size
+        Clock.schedule_once(self._finalize_viewport, 0)
     
     def _finalize_viewport(self, dt):
         """Finalize viewport after Window has real size"""
@@ -417,18 +422,37 @@ class RotatingRootFbo(FloatLayout):
         self._finalized = True
         debug_logger.info(f"Portrait FBO finalized: window={ww:.0f}x{wh:.0f}")
         
-        # Trigger transform calculation with real Window size
-        self._update_transform()
+        # Schedule initial apply with current Window size
+        self._schedule_debounced_apply(ww, wh)
     
     def _on_resize(self, instance, size):
         """Handle Window resize events"""
         if self._finalized:
-            debug_logger.info(f"Window resized to {size[0]:.0f}x{size[1]:.0f}, recalculating transform")
-            self._rotation_logged = False  # Allow logging again for new size
-            self._update_transform()
+            w, h = size
+            debug_logger.info(f"Window resize event: {w:.0f}x{h:.0f}")
+            self._schedule_debounced_apply(w, h)
+    
+    def _schedule_debounced_apply(self, w, h):
+        """Schedule a debounced apply of the transform"""
+        # Store the size
+        self._last_resize_w = w
+        self._last_resize_h = h
+        
+        # Unschedule any pending apply
+        if self._pending_apply_event:
+            Clock.unschedule(self._pending_apply_event)
+        
+        # Schedule one Clock task in the next frame
+        self._pending_apply_event = Clock.schedule_once(lambda dt: self._apply_transform(w, h), 0)
         
     def _update_transform(self, *args):
-        """Apply rotation and scale transform with explicit virtual sizing"""
+        """Legacy method for compatibility - redirects to debounced apply"""
+        # Use the last known size or current Window size
+        if self._finalized and self._last_resize_w > 0 and self._last_resize_h > 0:
+            self._schedule_debounced_apply(self._last_resize_w, self._last_resize_h)
+        
+    def _apply_transform(self, w, h):
+        """Apply rotation and scale transform using resize event parameters only"""
         # Skip if not yet finalized
         if not self._finalized:
             return
@@ -448,33 +472,49 @@ class RotatingRootFbo(FloatLayout):
         # Portrait FBO mode: apply rotation and scale
         from kivy.graphics.transformation import Matrix
         from kivy.graphics import PushMatrix, PopMatrix, MatrixInstruction, Color, Line, Rectangle
+        from kivy.core.text import Label as CoreLabel
         
-        vw, vh = PORTRAIT_VIRTUAL_SIZE  # Virtual portrait size (1080x1920)
-        ww, wh = self.width, self.height  # Physical window size (1920x1080)
+        # Virtual portrait size (1080x1920)
+        virtual_w = 1080
+        virtual_h = 1920
         
-        if ww <= 0 or wh <= 0:
+        # Use event parameters w, h directly (NOT Window.size)
+        if w <= 0 or h <= 0:
+            debug_logger.warning(f"Invalid window size in apply: {w}x{h}, skipping")
             return
         
-        # Calculate center point for rotation anchor
-        cx, cy = ww / 2, wh / 2
+        # After -90° rotation, the target frame is (rot_w, rot_h) = (virtual_h, virtual_w) = (1920, 1080)
+        rot_w = virtual_h  # 1920
+        rot_h = virtual_w  # 1080
         
-        # Build transformation matrix: Translate(cx, cy) · Scale · Rotate · Translate(-cx, -cy)
-        mat = Matrix()
-        mat.translate(cx, cy, 0)
-        
-        # After -90° rotation, virtual height (1920) becomes physical width (1920)
-        # and virtual width (1080) becomes physical height (1080)
-        # Scale uniformly to fit: s = min(window_width / virtual_height, window_height / virtual_width)
-        scale_factor = min(ww / vh, wh / vw)
+        # Compute scale: s = min(w / rot_w, h / rot_h)
+        scale_factor = min(w / rot_w, h / rot_h)
         scale_factor = max(scale_factor, 1e-3)  # Safety clamp
         
+        # Compute blit size after scaling
+        blit_w = rot_w * scale_factor
+        blit_h = rot_h * scale_factor
+        
+        # Position for centering (letterboxing)
+        pos_x = (w - blit_w) / 2
+        pos_y = (h - blit_h) / 2
+        
+        # Build transformation matrix:
+        # 1. Clear background
+        # 2. PushMatrix
+        # 3. Translate(pos_x, pos_y) - position the viewport
+        # 4. Translate(blit_w/2, blit_h/2) - move to center of blit area
+        # 5. Rotate(-90°)
+        # 6. Translate(-virtual_w/2, -virtual_h/2) - center virtual content
+        # 7. Draw content at (0, 0) with size (virtual_w, virtual_h)
+        # 8. PopMatrix
+        
+        mat = Matrix()
+        mat.translate(pos_x, pos_y, 0)
+        mat.translate(blit_w / 2, blit_h / 2, 0)
         mat.scale(scale_factor, scale_factor, 1)
-        
-        # Apply rotation
         mat.rotate(PORTRAIT_ROTATION_DEGREES * 3.14159265359 / 180.0, 0, 0, 1)
-        
-        # Translate back, centering the virtual canvas
-        mat.translate(-vw / 2, -vh / 2, 0)
+        mat.translate(-virtual_w / 2, -virtual_h / 2, 0)
         
         # Store matrices for touch transformation
         self._transform_matrix = mat
@@ -482,6 +522,10 @@ class RotatingRootFbo(FloatLayout):
         
         # Apply to canvas
         with self.canvas.before:
+            # Background clear
+            Color(0, 0, 0, 1)
+            Rectangle(pos=(0, 0), size=(w, h))
+            
             PushMatrix()
             matrix_inst = MatrixInstruction()
             matrix_inst.matrix = mat
@@ -491,50 +535,48 @@ class RotatingRootFbo(FloatLayout):
             
             # Add debug overlay if enabled
             if DEBUG_ROTATION_OVERLAY:
-                # Draw debug elements after pop to show them in screen space
+                # Draw debug elements using the same matrix stack
                 PushMatrix()
                 matrix_inst2 = MatrixInstruction()
                 matrix_inst2.matrix = mat
                 
                 # Neon border around virtual content area
                 Color(0, 1, 1, 0.8)  # Cyan
-                Line(rectangle=(5, 5, vw - 10, vh - 10), width=3)
+                Line(rectangle=(5, 5, virtual_w - 10, virtual_h - 10), width=3)
                 
                 # Crosshair at center of virtual content
                 Color(1, 0, 1, 0.8)  # Magenta
-                vcx, vcy = vw / 2, vh / 2
+                vcx, vcy = virtual_w / 2, virtual_h / 2
                 Line(points=[vcx - 50, vcy, vcx + 50, vcy], width=2)
                 Line(points=[vcx, vcy - 50, vcx, vcy + 50], width=2)
                 
-                # Debug rectangle marker in top-left
+                # Debug rectangle marker in top-left of virtual space
                 Color(0, 1, 0, 0.6)  # Green
-                Rectangle(pos=(10, vh - 60), size=(300, 50))
+                Rectangle(pos=(10, virtual_h - 60), size=(300, 50))
                 
                 PopMatrix()
                 
                 # Add debug label if not already added
                 if not self._debug_label and self._child_container:
                     self._debug_label = Label(
-                        text=f"DEBUG: portrait content\nvirtual={vw}x{vh} scale={scale_factor:.3f}",
+                        text=f"DEBUG: portrait\nvirtual={virtual_w}x{virtual_h}\nscale={scale_factor:.3f}",
                         size_hint=(None, None),
                         size=(300, 80),
-                        pos=(10, vh - 90),
+                        pos=(10, virtual_h - 90),
                         color=(0, 1, 0, 1),
                         font_size=14
                     )
                     self._child_container.add_widget(self._debug_label)
                 elif self._debug_label:
-                    self._debug_label.text = f"DEBUG: portrait content\nvirtual={vw}x{vh} scale={scale_factor:.3f}"
+                    self._debug_label.text = f"DEBUG: portrait\nvirtual={virtual_w}x{virtual_h}\nscale={scale_factor:.3f}"
         
         # Update child container size if it exists
         if self._child_container:
-            self._child_container.size = (vw, vh)
+            self._child_container.size = (virtual_w, virtual_h)
             self._child_container.pos = (0, 0)
         
-        # Log once when rotation is applied
-        if not self._rotation_logged:
-            debug_logger.info(f"Portrait FBO mode: virtual={vw}x{vh}, window={ww:.0f}x{wh:.0f}, scale={scale_factor:.4f}, rotation={PORTRAIT_ROTATION_DEGREES}°")
-            self._rotation_logged = True
+        # Log concise line per execution
+        debug_logger.info(f"[Portrait apply] event={w:.0f}x{h:.0f} s={scale_factor:.4f} blit={blit_w:.0f}x{blit_h:.0f} pos=({pos_x:.0f},{pos_y:.0f}) rot={PORTRAIT_ROTATION_DEGREES}")
     
     def add_widget(self, widget, *args, **kwargs):
         """Override to properly size children for virtual portrait space"""

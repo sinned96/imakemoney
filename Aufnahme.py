@@ -42,6 +42,37 @@ def setup_projekt_logging():
 # Initialize logger
 logger = setup_projekt_logging()
 
+def safe_print(msg):
+    """
+    Print message safely, encoding unicode to ASCII-safe equivalents for stdout.
+    Logs retain full UTF-8 encoding.
+    
+    Args:
+        msg: String that may contain unicode characters
+    """
+    # Replacements for common unicode symbols
+    replacements = {
+        '✓': '[OK]',
+        '✗': '[ERROR]',
+        '⚡': '[NOTE]',
+        '✅': '[SUCCESS]',
+        '→': '->',
+        'ℹ': '[INFO]',
+        '📱': '[MOBILE]',
+        '🖥': '[DESKTOP]',
+        '📁': '[FOLDER]',
+    }
+    
+    safe_msg = str(msg)
+    for unicode_char, ascii_equiv in replacements.items():
+        safe_msg = safe_msg.replace(unicode_char, ascii_equiv)
+    
+    try:
+        safe_print(safe_msg)
+    except UnicodeEncodeError:
+        # Fallback: encode with errors='replace'
+        safe_print(safe_msg.encode('ascii', errors='replace').decode('ascii'))
+
 import os
 import sys
 import signal
@@ -70,14 +101,14 @@ class AudioRecorder:
     def signal_handler(self, signum, frame):
         """Handle SIGTERM/SIGINT signals gracefully"""
         logger.info(f"Received signal {signum}, stopping recording...")
-        print(f"Received signal {signum}, stopping recording...")
+        safe_print(f"Received signal {signum}, stopping recording...")
         self.stop_recording()
         
     def start_recording(self):
         """Start audio recording using available tools"""
         if self.recording_started:
             logger.warning("Recording already started")
-            print("Warning: Recording already started")
+            safe_print("Warning: Recording already started")
             return
             
         # Create standardized output directory if it doesn't exist
@@ -87,15 +118,15 @@ class AudioRecorder:
             logger.info(f"Recording directory ensured: {recordings_dir}")
         except Exception as e:
             logger.error(f"Failed to create recording directory: {e}")
-            print(f"Error creating recording directory: {e}")
+            safe_print(f"Error creating recording directory: {e}")
             return
         
         # Use fixed filename in standardized location - always overwrite previous recording
         self.output_file = recordings_dir / "aufnahme.wav"
         
         logger.info(f"Starting recording to: {self.output_file}")
-        print(f"Starting recording to: {self.output_file}")
-        print(f"Using standardized path: /home/pi/Desktop/v2_Tripple S/aufnahme.wav")
+        safe_print(f"Starting recording to: {self.output_file}")
+        safe_print(f"Using standardized path: /home/pi/Desktop/v2_Tripple S/aufnahme.wav")
         
         # Try different recording tools in order of preference - MODIFIED FOR MONO RECORDING
         recording_commands = [
@@ -122,8 +153,8 @@ class AudioRecorder:
         if not cmd_found:
             # Create a mock recording process for testing/demo purposes
             logger.warning("No audio recording tools found (arecord, parecord, ffmpeg)")
-            print("Warning: No audio recording tools found (arecord, parecord, ffmpeg)")
-            print("Starting simulation mode for testing...")
+            safe_print("Warning: No audio recording tools found (arecord, parecord, ffmpeg)")
+            safe_print("Starting simulation mode for testing...")
             logger.info("Starting mock recording simulation mode")
             cmd_found = ['python3', '-c', f"""
 import time
@@ -134,18 +165,18 @@ import signal
 with open('{self.output_file}', 'wb') as f:
     pass
 
-print("Mock recording started - generating frames...")
+safe_print("Mock recording started - generating frames...")
 frame_count = 0
 try:
     while True:
         time.sleep(1)
         frame_count += 44100 * 1  # Simulate 1 second of 44.1kHz mono audio
-        print(f"Frames processed: {{frame_count}}")
+        safe_print(f"Frames processed: {{frame_count}}")
         # Simulate file growth
         with open('{self.output_file}', 'ab') as f:
             f.write(b'\\x00' * 1000)  # Add some dummy data
 except KeyboardInterrupt:
-    print(f"Recording stopped. Total frames: {{frame_count}}")
+    safe_print(f"Recording stopped. Total frames: {{frame_count}}")
 """]
         
         try:
@@ -159,18 +190,18 @@ except KeyboardInterrupt:
             self.recording_started = True
             self.start_time = time.time()
             logger.info(f"Recording started successfully (PID: {self.recording_process.pid})")
-            print(f"Recording started successfully (PID: {self.recording_process.pid})")
+            safe_print(f"Recording started successfully (PID: {self.recording_process.pid})")
             
         except Exception as e:
             logger.error(f"Error starting recording: {e}")
-            print(f"Error starting recording: {e}")
+            safe_print(f"Error starting recording: {e}")
             sys.exit(1)
             
     def stop_recording(self):
         """Stop the recording and cleanup with improved error handling"""
         if not self.recording_started or not self.recording_process:
             logger.warning("No recording to stop")
-            print("No recording to stop")
+            safe_print("No recording to stop")
             return
             
         logger.info("Stopping recording process...")
@@ -197,19 +228,19 @@ except KeyboardInterrupt:
                 
         except subprocess.TimeoutExpired:
             logger.error("Recording process didn't terminate cleanly, forcing kill")
-            print("Warning: Recording process didn't terminate cleanly, forcing kill")
+            safe_print("Warning: Recording process didn't terminate cleanly, forcing kill")
             os.killpg(os.getpgid(self.recording_process.pid), signal.SIGKILL)
             self.recording_process.wait()
             process_exit_code = self.recording_process.returncode
         except Exception as e:
             logger.error(f"Error stopping recording: {e}")
-            print(f"Error stopping recording: {e}")
+            safe_print(f"Error stopping recording: {e}")
             
         # Calculate recording statistics
         if self.start_time:
             duration = time.time() - self.start_time
             logger.info(f"Recording duration: {duration:.2f} seconds")
-            print(f"Recording duration: {duration:.2f} seconds")
+            safe_print(f"Recording duration: {duration:.2f} seconds")
             
             # Estimate frame count (44.1kHz * channels * duration) - using MONO (1 channel)
             sample_rate = 44100
@@ -229,19 +260,19 @@ except KeyboardInterrupt:
             logger.info(f"File size: {file_size:,} bytes ({file_size / 1024 / 1024:.2f} MB)")
             logger.info(f"Estimated frames recorded: {self.frame_count:,}")
             
-            print(f"Recording saved to: {self.output_file}")
-            print(f"File size: {file_size:,} bytes ({file_size / 1024 / 1024:.2f} MB)")
-            print(f"Estimated frames recorded: {self.frame_count:,}")
+            safe_print(f"Recording saved to: {self.output_file}")
+            safe_print(f"File size: {file_size:,} bytes ({file_size / 1024 / 1024:.2f} MB)")
+            safe_print(f"Estimated frames recorded: {self.frame_count:,}")
             
             if file_created_successfully:
                 logger.info("Audio file successfully created")
-                print("[SUCCESS] Audio file successfully created")
+                safe_print("[SUCCESS] Audio file successfully created")
             else:
                 logger.warning("Audio file is very small, may be incomplete")
-                print("[WARNING] Warning: Audio file is very small, may be incomplete")
+                safe_print("[WARNING] Warning: Audio file is very small, may be incomplete")
         else:
             logger.error("Recording file was not created or is missing")
-            print("[ERROR] Error: Recording file was not created or is missing")
+            safe_print("[ERROR] Error: Recording file was not created or is missing")
             
         # Enhanced error reporting based on file creation success
         if process_exit_code is not None and process_exit_code != 0:
@@ -249,22 +280,22 @@ except KeyboardInterrupt:
                 # Exit code != 0 but file was created successfully
                 # This is common when stopping recording tools with SIGTERM/SIGINT
                 logger.info(f"Recording process ended with exit code {process_exit_code}, but audio file was saved successfully")
-                print(f"[INFO] Info: Recording process ended with exit code {process_exit_code}, but audio file was saved successfully")
-                print("This is normal when stopping recording tools via signal")
+                safe_print(f"[INFO] Info: Recording process ended with exit code {process_exit_code}, but audio file was saved successfully")
+                safe_print("This is normal when stopping recording tools via signal")
             else:
                 # Exit code != 0 AND no valid file created - this is a real error
                 logger.error(f"Recording process ended with error code {process_exit_code} and no valid audio file was created")
-                print(f"[ERROR] Error: Recording process ended with error code {process_exit_code} and no valid audio file was created")
+                safe_print(f"[ERROR] Error: Recording process ended with error code {process_exit_code} and no valid audio file was created")
         elif file_created_successfully:
             logger.info("Recording completed successfully")
-            print("[SUCCESS] Recording completed successfully")
+            safe_print("[SUCCESS] Recording completed successfully")
             
         self.recording_started = False
         
     def run(self):
         """Main recording loop"""
         logger.info("Audio recorder starting...")
-        print("Audio recorder starting...")
+        safe_print("Audio recorder starting...")
         
         # Start recording immediately
         self.start_recording()
@@ -283,32 +314,32 @@ except KeyboardInterrupt:
                 
         except KeyboardInterrupt:
             logger.info("Recording interrupted by user (KeyboardInterrupt)")
-            print("[INTERRUPT] Recording interrupted by user (KeyboardInterrupt)")
-            print("[STATUS] Gracefully stopping recording process...")
+            safe_print("[INTERRUPT] Recording interrupted by user (KeyboardInterrupt)")
+            safe_print("[STATUS] Gracefully stopping recording process...")
         finally:
             self.stop_recording()
 
 def main():
     """Main entry point"""
     logger.info("=== Aufnahme.py - Audio Recording Script Started ===")
-    print("Aufnahme.py - Audio Recording Script")
-    print("Press Ctrl+C or send SIGTERM to stop recording")
+    safe_print("Aufnahme.py - Audio Recording Script")
+    safe_print("Press Ctrl+C or send SIGTERM to stop recording")
     
     try:
         recorder = AudioRecorder()
         recorder.run()
         logger.info("Recording session completed")
-        print("Recording session completed.")
+        safe_print("Recording session completed.")
     except KeyboardInterrupt:
         logger.info("Main process interrupted by KeyboardInterrupt")
-        print("\n[INTERRUPT] Main process interrupted by KeyboardInterrupt")
-        print("[STATUS] Audio recording script shutting down gracefully")
+        safe_print("\n[INTERRUPT] Main process interrupted by KeyboardInterrupt")
+        safe_print("[STATUS] Audio recording script shutting down gracefully")
     except Exception as e:
         logger.error(f"Unexpected error in main: {e}", exc_info=True)
         try:
-            print(f"[ERROR] Unexpected error in main: {e}")
+            safe_print(f"[ERROR] Unexpected error in main: {e}")
         except Exception:
-            print("[ERROR] Unexpected error occurred but could not be displayed due to encoding issues")
+            safe_print("[ERROR] Unexpected error occurred but could not be displayed due to encoding issues")
 
 if __name__ == "__main__":
     main()
