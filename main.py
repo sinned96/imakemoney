@@ -371,14 +371,14 @@ class RotatingSurface(FloatLayout):
 # ------------------ ROTATING ROOT FBO ------------------
 class RotatingRootFbo(FloatLayout):
     """
-    Simplified FBO-based portrait rendering with letterboxing.
+    FBO-based portrait rendering with letterboxing.
     
-    This widget creates a virtual portrait-sized surface and ensures children
+    This widget creates a virtual portrait-sized FBO surface (1080x1920) and ensures children
     are properly sized to fit within it, then applies rotation and letterboxing
     for display on the physical screen.
     
-    Key improvement: Sets explicit size on child widgets to ensure they render
-    at the correct virtual resolution, avoiding clipping issues.
+    Key improvement: Uses actual Kivy Fbo to render children to a texture, which is then
+    drawn with rotation and scaling to the main canvas.
     """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -390,6 +390,8 @@ class RotatingRootFbo(FloatLayout):
         self._debug_label = None
         self._finalized = False
         self._finalize_attempts = 0
+        self._fbo = None
+        self._fbo_rect = None
         
         # Debouncing state
         self._last_resize_w = 0
@@ -451,8 +453,39 @@ class RotatingRootFbo(FloatLayout):
         if self._finalized and self._last_resize_w > 0 and self._last_resize_h > 0:
             self._schedule_debounced_apply(self._last_resize_w, self._last_resize_h)
         
+    def _create_fbo(self):
+        """Create and setup the FBO for portrait rendering"""
+        from kivy.graphics import Fbo, Color, Rectangle, Canvas
+        
+        # Virtual portrait size (1080x1920)
+        virtual_w = 1080
+        virtual_h = 1920
+        
+        # Create FBO with virtual size
+        self._fbo = Fbo(size=(virtual_w, virtual_h), with_stencilbuffer=True)
+        
+        # Log FBO creation
+        debug_logger.info(f"[FBO Init] Created FBO: size={virtual_w}x{virtual_h}, texture={self._fbo.texture.size if self._fbo.texture else 'None'}")
+        
+        # Clear FBO background
+        with self._fbo:
+            Color(0, 0, 0, 1)
+            Rectangle(pos=(0, 0), size=(virtual_w, virtual_h))
+        
+        # Bind the child container to render into the FBO
+        if self._child_container:
+            # Bind child container's canvas groups to the FBO
+            # This ensures all child widgets render into the FBO
+            self._fbo.add(self._child_container.canvas.before)
+            self._fbo.add(self._child_container.canvas)
+            self._fbo.add(self._child_container.canvas.after)
+            
+            debug_logger.info(f"[FBO Init] Bound child container canvas to FBO")
+        
+        return True
+    
     def _apply_transform(self, w, h):
-        """Apply rotation and scale transform using resize event parameters only"""
+        """Apply rotation and scale transform using FBO texture"""
         # Skip if not yet finalized
         if not self._finalized:
             return
@@ -464,7 +497,11 @@ class RotatingRootFbo(FloatLayout):
         self.canvas.after.clear()
         
         if not is_portrait or PORTRAIT_VIEW_MODE != "fbo":
-            # Not in FBO mode
+            # Not in FBO mode - destroy FBO if it exists
+            if self._fbo:
+                debug_logger.info("[FBO] Cleaning up FBO (not in FBO mode)")
+                self._fbo = None
+                self._fbo_rect = None
             self._transform_matrix = None
             self._inverse_matrix = None
             return
@@ -482,6 +519,19 @@ class RotatingRootFbo(FloatLayout):
         if w <= 0 or h <= 0:
             debug_logger.warning(f"Invalid window size in apply: {w}x{h}, skipping")
             return
+        
+        # Create FBO if not exists
+        if not self._fbo:
+            self._create_fbo()
+        
+        # Verify FBO texture exists
+        if not self._fbo or not self._fbo.texture:
+            debug_logger.error("[FBO] FBO or FBO texture is None - cannot render!")
+            return
+        
+        # Log FBO state
+        fbo_tex_size = self._fbo.texture.size if self._fbo.texture else (0, 0)
+        debug_logger.info(f"[FBO State] FBO size={self._fbo.size}, texture size={fbo_tex_size}")
         
         # After -90° rotation, the target frame is (rot_w, rot_h) = (virtual_h, virtual_w) = (1920, 1080)
         rot_w = virtual_h  # 1920
@@ -506,7 +556,7 @@ class RotatingRootFbo(FloatLayout):
         # 4. Translate(blit_w/2, blit_h/2) - move to center of blit area
         # 5. Rotate(-90°)
         # 6. Translate(-virtual_w/2, -virtual_h/2) - center virtual content
-        # 7. Draw content at (0, 0) with size (virtual_w, virtual_h)
+        # 7. Draw FBO texture at (0, 0) with size (virtual_w, virtual_h)
         # 8. PopMatrix
         
         mat = Matrix()
@@ -520,7 +570,7 @@ class RotatingRootFbo(FloatLayout):
         self._transform_matrix = mat
         self._inverse_matrix = mat.inverse()
         
-        # Apply to canvas
+        # Apply to canvas - draw the FBO texture with transformations
         with self.canvas.before:
             # Background clear
             Color(0, 0, 0, 1)
@@ -529,6 +579,10 @@ class RotatingRootFbo(FloatLayout):
             PushMatrix()
             matrix_inst = MatrixInstruction()
             matrix_inst.matrix = mat
+            
+            # Draw the FBO texture
+            Color(1, 1, 1, 1)  # White color to show texture as-is
+            self._fbo_rect = Rectangle(pos=(0, 0), size=(virtual_w, virtual_h), texture=self._fbo.texture)
         
         with self.canvas.after:
             PopMatrix()
@@ -575,8 +629,13 @@ class RotatingRootFbo(FloatLayout):
             self._child_container.size = (virtual_w, virtual_h)
             self._child_container.pos = (0, 0)
         
+        # Request FBO update
+        if self._fbo:
+            self._fbo.ask_update()
+            self._fbo.draw()
+        
         # Log concise line per execution
-        debug_logger.info(f"[Portrait apply] event={w:.0f}x{h:.0f} s={scale_factor:.4f} blit={blit_w:.0f}x{blit_h:.0f} pos=({pos_x:.0f},{pos_y:.0f}) rot={PORTRAIT_ROTATION_DEGREES}")
+        debug_logger.info(f"[Portrait apply] event={w:.0f}x{h:.0f} s={scale_factor:.4f} blit={blit_w:.0f}x{blit_h:.0f} pos=({pos_x:.0f},{pos_y:.0f}) rot={PORTRAIT_ROTATION_DEGREES} fbo_tex={fbo_tex_size}")
     
     def add_widget(self, widget, *args, **kwargs):
         """Override to properly size children for virtual portrait space"""
@@ -587,12 +646,18 @@ class RotatingRootFbo(FloatLayout):
             if not self._child_container:
                 self._child_container = FloatLayout(size=PORTRAIT_VIRTUAL_SIZE, pos=(0, 0))
                 self._child_container.size_hint = (None, None)
+                # Add container to parent widget tree (required for rendering)
                 super().add_widget(self._child_container)
+                debug_logger.info(f"Created FBO child container: size={PORTRAIT_VIRTUAL_SIZE}")
             
             # Add the child to the container
             widget_name = widget.__class__.__name__
             debug_logger.info(f"Adding {widget_name} to portrait FBO container")
             self._child_container.add_widget(widget, *args, **kwargs)
+            
+            # Create FBO if not exists and bind container to it
+            if not self._fbo and self._finalized:
+                self._create_fbo()
             
             # Force transform update
             self._update_transform()
@@ -640,10 +705,17 @@ class RotatingRootFbo(FloatLayout):
         return ret
     
     def clear_widgets(self):
-        """Override to properly clean up child container"""
+        """Override to properly clean up child container and FBO"""
         if self._child_container:
             self._child_container.clear_widgets()
             self._debug_label = None  # Will be recreated if needed
+        
+        # Clean up FBO
+        if self._fbo:
+            debug_logger.info("[FBO] Cleaning up FBO on clear_widgets")
+            self._fbo = None
+            self._fbo_rect = None
+        
         super().clear_widgets()
         self._child_container = None
 
