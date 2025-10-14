@@ -455,7 +455,7 @@ class RotatingRootFbo(FloatLayout):
         
     def _create_fbo(self):
         """Create and setup the FBO for portrait rendering"""
-        from kivy.graphics import Fbo, Color, Rectangle, Canvas
+        from kivy.graphics import Fbo, Color, Rectangle, ClearColor, ClearBuffers
         
         # Virtual portrait size (1080x1920)
         virtual_w = 1080
@@ -467,15 +467,15 @@ class RotatingRootFbo(FloatLayout):
         # Log FBO creation
         debug_logger.info(f"[FBO Init] Created FBO: size={virtual_w}x{virtual_h}, texture={self._fbo.texture.size if self._fbo.texture else 'None'}")
         
-        # Clear FBO background
-        with self._fbo:
-            Color(0, 0, 0, 1)
-            Rectangle(pos=(0, 0), size=(virtual_w, virtual_h))
+        # Setup FBO background clearing
+        with self._fbo.before:
+            ClearColor(0, 0, 0, 1)
+            ClearBuffers()
         
         # Bind the child container to render into the FBO
         if self._child_container:
-            # Bind child container's canvas groups to the FBO
-            # This ensures all child widgets render into the FBO
+            # Add the child container's canvas instructions to the FBO
+            # This will capture all rendering from the container and its children
             self._fbo.add(self._child_container.canvas.before)
             self._fbo.add(self._child_container.canvas)
             self._fbo.add(self._child_container.canvas.after)
@@ -629,10 +629,15 @@ class RotatingRootFbo(FloatLayout):
             self._child_container.size = (virtual_w, virtual_h)
             self._child_container.pos = (0, 0)
         
-        # Request FBO update
+        # Request FBO update - this renders the child widgets into the FBO texture
         if self._fbo:
+            # Force a layout pass on child container to ensure widgets are positioned
+            if self._child_container:
+                self._child_container.do_layout()
+            # Update and draw the FBO
             self._fbo.ask_update()
             self._fbo.draw()
+            debug_logger.debug(f"[FBO] Updated and drew FBO")
         
         # Log concise line per execution
         debug_logger.info(f"[Portrait apply] event={w:.0f}x{h:.0f} s={scale_factor:.4f} blit={blit_w:.0f}x{blit_h:.0f} pos=({pos_x:.0f},{pos_y:.0f}) rot={PORTRAIT_ROTATION_DEGREES} fbo_tex={fbo_tex_size}")
@@ -646,9 +651,9 @@ class RotatingRootFbo(FloatLayout):
             if not self._child_container:
                 self._child_container = FloatLayout(size=PORTRAIT_VIRTUAL_SIZE, pos=(0, 0))
                 self._child_container.size_hint = (None, None)
-                # Add container to parent widget tree (required for rendering)
-                super().add_widget(self._child_container)
                 debug_logger.info(f"Created FBO child container: size={PORTRAIT_VIRTUAL_SIZE}")
+                # Add to widget tree so it gets proper layout/rendering
+                super().add_widget(self._child_container)
             
             # Add the child to the container
             widget_name = widget.__class__.__name__
@@ -658,6 +663,9 @@ class RotatingRootFbo(FloatLayout):
             # Create FBO if not exists and bind container to it
             if not self._fbo and self._finalized:
                 self._create_fbo()
+            elif self._fbo:
+                # FBO already exists, request update
+                self._fbo.ask_update()
             
             # Force transform update
             self._update_transform()
