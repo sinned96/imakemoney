@@ -199,7 +199,7 @@ DEBUG_SHOW_BOUNDS = False  # Draw debug rectangle around transformed content bou
 # FBO-based portrait rendering configuration
 PORTRAIT_VIEW_MODE = "fbo"  # "fbo" = FBO-based rendering with letterboxing, "raw" = direct canvas transform
 PORTRAIT_VIRTUAL_SIZE = (1080, 1920)  # Virtual portrait size for FBO rendering
-DEBUG_ROTATION_OVERLAY = False  # Show debug overlay (neon border, crosshair, label) in portrait FBO mode
+DEBUG_ROTATION_OVERLAY = True  # Show debug overlay (neon border, crosshair, label) in portrait FBO mode
 
 # ------------------ ORIENTATION PROVIDER ------------------
 class OrientationProvider:
@@ -387,6 +387,7 @@ class RotatingRootFbo(FloatLayout):
         self._inverse_matrix = None
         self._rotation_logged = False
         self._child_container = None
+        self._debug_label = None
         self.bind(size=self._update_transform, pos=self._update_transform)
         
     def _update_transform(self, *args):
@@ -469,6 +470,20 @@ class RotatingRootFbo(FloatLayout):
                 Rectangle(pos=(10, vh - 60), size=(300, 50))
                 
                 PopMatrix()
+                
+                # Add debug label if not already added
+                if not self._debug_label and self._child_container:
+                    self._debug_label = Label(
+                        text=f"DEBUG: portrait content\nvirtual={vw}x{vh} scale={scale_factor:.3f}",
+                        size_hint=(None, None),
+                        size=(300, 80),
+                        pos=(10, vh - 90),
+                        color=(0, 1, 0, 1),
+                        font_size=14
+                    )
+                    self._child_container.add_widget(self._debug_label)
+                elif self._debug_label:
+                    self._debug_label.text = f"DEBUG: portrait content\nvirtual={vw}x{vh} scale={scale_factor:.3f}"
         
         # Update child container size if it exists
         if self._child_container:
