@@ -371,166 +371,137 @@ class RotatingSurface(FloatLayout):
 # ------------------ ROTATING ROOT FBO ------------------
 class RotatingRootFbo(FloatLayout):
     """
-    FBO-based portrait rendering with letterboxing.
+    Simplified FBO-based portrait rendering with letterboxing.
     
-    This widget renders all children into a fixed-size portrait FBO (virtual canvas),
-    then draws the FBO texture into the physical window with proper rotation, scaling,
-    and letterboxing. This guarantees full visibility regardless of child widget sizing
-    issues during startup.
+    This widget creates a virtual portrait-sized surface and ensures children
+    are properly sized to fit within it, then applies rotation and letterboxing
+    for display on the physical screen.
     
-    Transform pipeline:
-    1. Render children to portrait FBO at PORTRAIT_VIRTUAL_SIZE (1080x1920)
-    2. Compose transform: translate(center) → rotate(±90°) → scale(uniform fit) → translate(-center)
-    3. Draw FBO texture with letterboxing (black/gray bars)
-    
-    Features:
-    - Fixed virtual size eliminates layout ambiguity
-    - Automatic letterboxing for proper aspect ratio
-    - Debug overlay for visibility verification
-    - Touch coordinates properly mapped from screen to FBO space
+    Key improvement: Sets explicit size on child widgets to ensure they render
+    at the correct virtual resolution, avoiding clipping issues.
     """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.orientation_provider = OrientationProvider()
-        self._fbo = None
-        self._fbo_texture = None
         self._transform_matrix = None
         self._inverse_matrix = None
-        self._debug_instructions = []
-        self.bind(size=self._update_fbo, pos=self._update_fbo)
+        self._rotation_logged = False
+        self._child_container = None
+        self.bind(size=self._update_transform, pos=self._update_transform)
         
-    def _create_fbo(self):
-        """Create FBO with portrait virtual size"""
-        from kivy.graphics.fbo import Fbo
-        from kivy.graphics import ClearColor, ClearBuffers
-        
-        vw, vh = PORTRAIT_VIRTUAL_SIZE
-        self._fbo = Fbo(size=(vw, vh), with_stencilbuffer=True)
-        
-        # Set clear color to match background
-        with self._fbo:
-            ClearColor(0.15, 0.15, 0.15, 1)  # Dark gray like Window.clearcolor
-            ClearBuffers()
-        
-        self._fbo_texture = self._fbo.texture
-        debug_logger.info(f"Created portrait FBO: {vw}x{vh} (virtual size)")
-        
-    def _update_fbo(self, *args):
-        """Update FBO rendering and transform"""
+    def _update_transform(self, *args):
+        """Apply rotation and scale transform with explicit virtual sizing"""
         is_portrait = self.orientation_provider.is_portrait()
         
-        # Clear canvas
-        self.canvas.clear()
+        # Clear existing transforms
         self.canvas.before.clear()
         self.canvas.after.clear()
         
         if not is_portrait or PORTRAIT_VIEW_MODE != "fbo":
-            # Not in FBO mode - children render directly
-            self._fbo = None
-            self._fbo_texture = None
+            # Not in FBO mode
             self._transform_matrix = None
             self._inverse_matrix = None
             return
         
-        # Create FBO if needed
-        if not self._fbo:
-            self._create_fbo()
-        
-        # Calculate transform for drawing FBO texture
+        # Portrait FBO mode: apply rotation and scale
         from kivy.graphics.transformation import Matrix
-        from kivy.graphics import PushMatrix, PopMatrix, MatrixInstruction, Rectangle, Color
+        from kivy.graphics import PushMatrix, PopMatrix, MatrixInstruction, Color, Line, Rectangle
         
-        vw, vh = PORTRAIT_VIRTUAL_SIZE  # Virtual portrait size
-        ww, wh = self.width, self.height  # Physical window size
+        vw, vh = PORTRAIT_VIRTUAL_SIZE  # Virtual portrait size (1080x1920)
+        ww, wh = self.width, self.height  # Physical window size (1920x1080)
         
         if ww <= 0 or wh <= 0:
             return
         
-        # Center point
+        # Calculate center point for rotation anchor
         cx, cy = ww / 2, wh / 2
         
-        # Build transform: translate(center) → rotate → scale → translate(-center)
+        # Build transformation matrix: Translate(cx, cy) · Scale · Rotate · Translate(-cx, -cy)
         mat = Matrix()
         mat.translate(cx, cy, 0)
         
-        # After -90° rotation, virtual height becomes physical width, virtual width becomes physical height
+        # After -90° rotation, virtual height (1920) becomes physical width (1920)
+        # and virtual width (1080) becomes physical height (1080)
         # Scale uniformly to fit: s = min(window_width / virtual_height, window_height / virtual_width)
         scale_factor = min(ww / vh, wh / vw)
         scale_factor = max(scale_factor, 1e-3)  # Safety clamp
+        
         mat.scale(scale_factor, scale_factor, 1)
         
         # Apply rotation
         mat.rotate(PORTRAIT_ROTATION_DEGREES * 3.14159265359 / 180.0, 0, 0, 1)
         
+        # Translate back, centering the virtual canvas
         mat.translate(-vw / 2, -vh / 2, 0)
         
-        # Store matrices
+        # Store matrices for touch transformation
         self._transform_matrix = mat
         self._inverse_matrix = mat.inverse()
         
-        # Draw FBO texture with transform
-        with self.canvas:
+        # Apply to canvas
+        with self.canvas.before:
             PushMatrix()
             matrix_inst = MatrixInstruction()
             matrix_inst.matrix = mat
-            
-            # Draw FBO texture
-            Color(1, 1, 1, 1)
-            Rectangle(texture=self._fbo_texture, pos=(0, 0), size=(vw, vh))
-            
+        
+        with self.canvas.after:
             PopMatrix()
+            
+            # Add debug overlay if enabled
+            if DEBUG_ROTATION_OVERLAY:
+                # Draw debug elements after pop to show them in screen space
+                PushMatrix()
+                matrix_inst2 = MatrixInstruction()
+                matrix_inst2.matrix = mat
+                
+                # Neon border around virtual content area
+                Color(0, 1, 1, 0.8)  # Cyan
+                Line(rectangle=(5, 5, vw - 10, vh - 10), width=3)
+                
+                # Crosshair at center of virtual content
+                Color(1, 0, 1, 0.8)  # Magenta
+                vcx, vcy = vw / 2, vh / 2
+                Line(points=[vcx - 50, vcy, vcx + 50, vcy], width=2)
+                Line(points=[vcx, vcy - 50, vcx, vcy + 50], width=2)
+                
+                # Debug rectangle marker in top-left
+                Color(0, 1, 0, 0.6)  # Green
+                Rectangle(pos=(10, vh - 60), size=(300, 50))
+                
+                PopMatrix()
         
-        # Add debug overlay if enabled
-        if DEBUG_ROTATION_OVERLAY:
-            self._add_debug_overlay(vw, vh, scale_factor)
+        # Update child container size if it exists
+        if self._child_container:
+            self._child_container.size = (vw, vh)
+            self._child_container.pos = (0, 0)
         
-        # Log once
-        if not hasattr(self, '_fbo_logged'):
+        # Log once when rotation is applied
+        if not self._rotation_logged:
             debug_logger.info(f"Portrait FBO mode: virtual={vw}x{vh}, window={ww:.0f}x{wh:.0f}, scale={scale_factor:.4f}, rotation={PORTRAIT_ROTATION_DEGREES}°")
-            self._fbo_logged = True
-    
-    def _add_debug_overlay(self, vw, vh, scale_factor):
-        """Add debug visualization overlay"""
-        from kivy.graphics import Color, Line, Rectangle
-        from kivy.graphics.transformation import Matrix
-        from kivy.graphics import PushMatrix, PopMatrix, MatrixInstruction
-        
-        # Draw debug elements in FBO coordinate space
-        with self._fbo:
-            # Neon border around content
-            Color(0, 1, 1, 0.8)  # Cyan
-            Line(rectangle=(5, 5, vw - 10, vh - 10), width=3)
-            
-            # Crosshair at center
-            Color(1, 0, 1, 0.8)  # Magenta
-            cx, cy = vw / 2, vh / 2
-            Line(points=[cx - 50, cy, cx + 50, cy], width=2)
-            Line(points=[cx, cy - 50, cx, cy + 50], width=2)
-            
-            # Debug label in top-left
-            # Note: Label widget in FBO requires special handling, so draw a rectangle marker instead
-            Color(0, 1, 0, 0.6)  # Green
-            Rectangle(pos=(10, vh - 60), size=(300, 50))
-        
-        debug_logger.info(f"Debug overlay enabled in portrait FBO")
+            self._rotation_logged = True
     
     def add_widget(self, widget, *args, **kwargs):
-        """Override to add children to FBO when in portrait FBO mode"""
+        """Override to properly size children for virtual portrait space"""
         is_portrait = self.orientation_provider.is_portrait()
         
-        if is_portrait and PORTRAIT_VIEW_MODE == "fbo" and self._fbo:
-            # Add to FBO's canvas
-            widget.size = PORTRAIT_VIRTUAL_SIZE
-            widget.pos = (0, 0)
-            super().add_widget(widget, *args, **kwargs)
-            # Redirect widget rendering to FBO
-            widget.canvas = self._fbo
+        if is_portrait and PORTRAIT_VIEW_MODE == "fbo":
+            # Create a container at virtual size if not exists
+            if not self._child_container:
+                self._child_container = FloatLayout(size=PORTRAIT_VIRTUAL_SIZE, pos=(0, 0))
+                self._child_container.size_hint = (None, None)
+                super().add_widget(self._child_container)
+            
+            # Add the child to the container
+            self._child_container.add_widget(widget, *args, **kwargs)
+            
+            # Force transform update
+            self._update_transform()
         else:
             # Direct rendering
             super().add_widget(widget, *args, **kwargs)
     
     def on_touch_down(self, touch):
-        """Transform touch coordinates from screen to FBO space"""
+        """Transform touch coordinates from screen to virtual space"""
         if self._inverse_matrix:
             touch.push()
             touch.apply_transform_2d(lambda x, y: self._inverse_matrix.transform_point(x, y, 0)[:2])
@@ -543,7 +514,7 @@ class RotatingRootFbo(FloatLayout):
         return ret
     
     def on_touch_move(self, touch):
-        """Transform touch coordinates from screen to FBO space"""
+        """Transform touch coordinates from screen to virtual space"""
         if self._inverse_matrix:
             touch.push()
             touch.apply_transform_2d(lambda x, y: self._inverse_matrix.transform_point(x, y, 0)[:2])
@@ -556,7 +527,7 @@ class RotatingRootFbo(FloatLayout):
         return ret
     
     def on_touch_up(self, touch):
-        """Transform touch coordinates from screen to FBO space"""
+        """Transform touch coordinates from screen to virtual space"""
         if self._inverse_matrix:
             touch.push()
             touch.apply_transform_2d(lambda x, y: self._inverse_matrix.transform_point(x, y, 0)[:2])
