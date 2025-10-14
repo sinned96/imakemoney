@@ -55,6 +55,37 @@ def setup_debug_logging():
 # Initialize debug logger
 debug_logger = setup_debug_logging()
 
+# ASCII output helper for subprocess scripts
+def ensure_ascii_stdout(msg):
+    """
+    Convert message to ASCII-safe version for stdout printing.
+    
+    Replaces common unicode symbols with ASCII equivalents to avoid
+    UnicodeEncodeError on systems with latin-1 or ASCII console encoding.
+    
+    Args:
+        msg: String that may contain unicode characters
+        
+    Returns:
+        ASCII-safe string
+    """
+    replacements = {
+        'ℹ': '[INFO]',
+        '✓': '[OK]',
+        '⚡': '[NOTE]',
+        '✅': '[SUCCESS]',
+        '→': '->',
+        '📱': '[MOBILE]',
+        '🖥': '[DESKTOP]',
+        '📁': '[FOLDER]',
+    }
+    
+    result = str(msg)
+    for unicode_char, ascii_equiv in replacements.items():
+        result = result.replace(unicode_char, ascii_equiv)
+    
+    return result
+
 # Network and QR code utilities
 def get_network_ip():
     """
@@ -164,6 +195,11 @@ Window.clearcolor = (0.15, 0.15, 0.15, 1)  # Dark gray
 PORTRAIT_ROTATION_DEGREES = -90  # -90 = counterclockwise (left rotation), +90 = clockwise (right rotation)
 PORTRAIT_SCALE_FIT = True  # Scale content to fit window after rotation (enabled to fix clipping on 1920x1080)
 DEBUG_SHOW_BOUNDS = False  # Draw debug rectangle around transformed content bounds
+
+# FBO-based portrait rendering configuration
+PORTRAIT_VIEW_MODE = "fbo"  # "fbo" = FBO-based rendering with letterboxing, "raw" = direct canvas transform
+PORTRAIT_VIRTUAL_SIZE = (1080, 1920)  # Virtual portrait size for FBO rendering
+DEBUG_ROTATION_OVERLAY = False  # Show debug overlay (neon border, crosshair, label) in portrait FBO mode
 
 # ------------------ ORIENTATION PROVIDER ------------------
 class OrientationProvider:
@@ -332,9 +368,209 @@ class RotatingSurface(FloatLayout):
         
         return ret
 
+# ------------------ ROTATING ROOT FBO ------------------
+class RotatingRootFbo(FloatLayout):
+    """
+    FBO-based portrait rendering with letterboxing.
+    
+    This widget renders all children into a fixed-size portrait FBO (virtual canvas),
+    then draws the FBO texture into the physical window with proper rotation, scaling,
+    and letterboxing. This guarantees full visibility regardless of child widget sizing
+    issues during startup.
+    
+    Transform pipeline:
+    1. Render children to portrait FBO at PORTRAIT_VIRTUAL_SIZE (1080x1920)
+    2. Compose transform: translate(center) → rotate(±90°) → scale(uniform fit) → translate(-center)
+    3. Draw FBO texture with letterboxing (black/gray bars)
+    
+    Features:
+    - Fixed virtual size eliminates layout ambiguity
+    - Automatic letterboxing for proper aspect ratio
+    - Debug overlay for visibility verification
+    - Touch coordinates properly mapped from screen to FBO space
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.orientation_provider = OrientationProvider()
+        self._fbo = None
+        self._fbo_texture = None
+        self._transform_matrix = None
+        self._inverse_matrix = None
+        self._debug_instructions = []
+        self.bind(size=self._update_fbo, pos=self._update_fbo)
+        
+    def _create_fbo(self):
+        """Create FBO with portrait virtual size"""
+        from kivy.graphics.fbo import Fbo
+        from kivy.graphics import ClearColor, ClearBuffers
+        
+        vw, vh = PORTRAIT_VIRTUAL_SIZE
+        self._fbo = Fbo(size=(vw, vh), with_stencilbuffer=True)
+        
+        # Set clear color to match background
+        with self._fbo:
+            ClearColor(0.15, 0.15, 0.15, 1)  # Dark gray like Window.clearcolor
+            ClearBuffers()
+        
+        self._fbo_texture = self._fbo.texture
+        debug_logger.info(f"Created portrait FBO: {vw}x{vh} (virtual size)")
+        
+    def _update_fbo(self, *args):
+        """Update FBO rendering and transform"""
+        is_portrait = self.orientation_provider.is_portrait()
+        
+        # Clear canvas
+        self.canvas.clear()
+        self.canvas.before.clear()
+        self.canvas.after.clear()
+        
+        if not is_portrait or PORTRAIT_VIEW_MODE != "fbo":
+            # Not in FBO mode - children render directly
+            self._fbo = None
+            self._fbo_texture = None
+            self._transform_matrix = None
+            self._inverse_matrix = None
+            return
+        
+        # Create FBO if needed
+        if not self._fbo:
+            self._create_fbo()
+        
+        # Calculate transform for drawing FBO texture
+        from kivy.graphics.transformation import Matrix
+        from kivy.graphics import PushMatrix, PopMatrix, MatrixInstruction, Rectangle, Color
+        
+        vw, vh = PORTRAIT_VIRTUAL_SIZE  # Virtual portrait size
+        ww, wh = self.width, self.height  # Physical window size
+        
+        if ww <= 0 or wh <= 0:
+            return
+        
+        # Center point
+        cx, cy = ww / 2, wh / 2
+        
+        # Build transform: translate(center) → rotate → scale → translate(-center)
+        mat = Matrix()
+        mat.translate(cx, cy, 0)
+        
+        # After -90° rotation, virtual height becomes physical width, virtual width becomes physical height
+        # Scale uniformly to fit: s = min(window_width / virtual_height, window_height / virtual_width)
+        scale_factor = min(ww / vh, wh / vw)
+        scale_factor = max(scale_factor, 1e-3)  # Safety clamp
+        mat.scale(scale_factor, scale_factor, 1)
+        
+        # Apply rotation
+        mat.rotate(PORTRAIT_ROTATION_DEGREES * 3.14159265359 / 180.0, 0, 0, 1)
+        
+        mat.translate(-vw / 2, -vh / 2, 0)
+        
+        # Store matrices
+        self._transform_matrix = mat
+        self._inverse_matrix = mat.inverse()
+        
+        # Draw FBO texture with transform
+        with self.canvas:
+            PushMatrix()
+            matrix_inst = MatrixInstruction()
+            matrix_inst.matrix = mat
+            
+            # Draw FBO texture
+            Color(1, 1, 1, 1)
+            Rectangle(texture=self._fbo_texture, pos=(0, 0), size=(vw, vh))
+            
+            PopMatrix()
+        
+        # Add debug overlay if enabled
+        if DEBUG_ROTATION_OVERLAY:
+            self._add_debug_overlay(vw, vh, scale_factor)
+        
+        # Log once
+        if not hasattr(self, '_fbo_logged'):
+            debug_logger.info(f"Portrait FBO mode: virtual={vw}x{vh}, window={ww:.0f}x{wh:.0f}, scale={scale_factor:.4f}, rotation={PORTRAIT_ROTATION_DEGREES}°")
+            self._fbo_logged = True
+    
+    def _add_debug_overlay(self, vw, vh, scale_factor):
+        """Add debug visualization overlay"""
+        from kivy.graphics import Color, Line, Rectangle
+        from kivy.graphics.transformation import Matrix
+        from kivy.graphics import PushMatrix, PopMatrix, MatrixInstruction
+        
+        # Draw debug elements in FBO coordinate space
+        with self._fbo:
+            # Neon border around content
+            Color(0, 1, 1, 0.8)  # Cyan
+            Line(rectangle=(5, 5, vw - 10, vh - 10), width=3)
+            
+            # Crosshair at center
+            Color(1, 0, 1, 0.8)  # Magenta
+            cx, cy = vw / 2, vh / 2
+            Line(points=[cx - 50, cy, cx + 50, cy], width=2)
+            Line(points=[cx, cy - 50, cx, cy + 50], width=2)
+            
+            # Debug label in top-left
+            # Note: Label widget in FBO requires special handling, so draw a rectangle marker instead
+            Color(0, 1, 0, 0.6)  # Green
+            Rectangle(pos=(10, vh - 60), size=(300, 50))
+        
+        debug_logger.info(f"Debug overlay enabled in portrait FBO")
+    
+    def add_widget(self, widget, *args, **kwargs):
+        """Override to add children to FBO when in portrait FBO mode"""
+        is_portrait = self.orientation_provider.is_portrait()
+        
+        if is_portrait and PORTRAIT_VIEW_MODE == "fbo" and self._fbo:
+            # Add to FBO's canvas
+            widget.size = PORTRAIT_VIRTUAL_SIZE
+            widget.pos = (0, 0)
+            super().add_widget(widget, *args, **kwargs)
+            # Redirect widget rendering to FBO
+            widget.canvas = self._fbo
+        else:
+            # Direct rendering
+            super().add_widget(widget, *args, **kwargs)
+    
+    def on_touch_down(self, touch):
+        """Transform touch coordinates from screen to FBO space"""
+        if self._inverse_matrix:
+            touch.push()
+            touch.apply_transform_2d(lambda x, y: self._inverse_matrix.transform_point(x, y, 0)[:2])
+        
+        ret = super().on_touch_down(touch)
+        
+        if self._inverse_matrix:
+            touch.pop()
+        
+        return ret
+    
+    def on_touch_move(self, touch):
+        """Transform touch coordinates from screen to FBO space"""
+        if self._inverse_matrix:
+            touch.push()
+            touch.apply_transform_2d(lambda x, y: self._inverse_matrix.transform_point(x, y, 0)[:2])
+        
+        ret = super().on_touch_move(touch)
+        
+        if self._inverse_matrix:
+            touch.pop()
+        
+        return ret
+    
+    def on_touch_up(self, touch):
+        """Transform touch coordinates from screen to FBO space"""
+        if self._inverse_matrix:
+            touch.push()
+            touch.apply_transform_2d(lambda x, y: self._inverse_matrix.transform_point(x, y, 0)[:2])
+        
+        ret = super().on_touch_up(touch)
+        
+        if self._inverse_matrix:
+            touch.pop()
+        
+        return ret
+
 # ------------------ ROTATING ROOT ------------------
 class RotatingRoot(FloatLayout):
-    """Root widget that wraps content in RotatingSurface for portrait mode"""
+    """Root widget that wraps content in RotatingSurface or RotatingRootFbo for portrait mode"""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.orientation_provider = OrientationProvider()
@@ -342,7 +578,7 @@ class RotatingRoot(FloatLayout):
         self._content_widget = None
     
     def add_widget(self, widget, *args, **kwargs):
-        """Override to wrap content in RotatingSurface when in portrait mode"""
+        """Override to wrap content in RotatingSurface or RotatingRootFbo when in portrait mode"""
         is_portrait = self.orientation_provider.is_portrait()
         
         # If we're switching orientation, clean up old structure
@@ -352,12 +588,22 @@ class RotatingRoot(FloatLayout):
             self._content_widget = None
         
         if is_portrait:
-            # Portrait mode: wrap content in RotatingSurface
-            if not self._rotating_surface:
-                self._rotating_surface = RotatingSurface()
-                super().add_widget(self._rotating_surface, *args, **kwargs)
-            self._content_widget = widget
-            self._rotating_surface.add_widget(widget)
+            # Portrait mode: choose rendering method based on PORTRAIT_VIEW_MODE
+            if PORTRAIT_VIEW_MODE == "fbo":
+                # FBO-based rendering with letterboxing
+                if not self._rotating_surface:
+                    self._rotating_surface = RotatingRootFbo()
+                    super().add_widget(self._rotating_surface, *args, **kwargs)
+                    debug_logger.info("Showing LoginScreen (portrait FBO)")
+                self._content_widget = widget
+                self._rotating_surface.add_widget(widget)
+            else:
+                # Raw canvas transform (original method)
+                if not self._rotating_surface:
+                    self._rotating_surface = RotatingSurface()
+                    super().add_widget(self._rotating_surface, *args, **kwargs)
+                self._content_widget = widget
+                self._rotating_surface.add_widget(widget)
         else:
             # Landscape mode: add content directly
             self._content_widget = widget
