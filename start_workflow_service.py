@@ -42,6 +42,33 @@ def setup_projekt_logging():
 # Initialize logger
 logger = setup_projekt_logging()
 
+def safe_print(msg):
+    """
+    Print message safely, encoding unicode to ASCII-safe equivalents for stdout.
+    Logs retain full UTF-8 encoding.
+    
+    Args:
+        msg: String that may contain unicode characters
+    """
+    # Replacements for common unicode symbols
+    replacements = {
+        '✓': '[OK]',
+        '✗': '[ERROR]',
+        '⚡': '[NOTE]',
+        '✅': '[SUCCESS]',
+        '→': '->',
+    }
+    
+    safe_msg = str(msg)
+    for unicode_char, ascii_equiv in replacements.items():
+        safe_msg = safe_msg.replace(unicode_char, ascii_equiv)
+    
+    try:
+        print(safe_msg)
+    except UnicodeEncodeError:
+        # Fallback: encode with errors='replace'
+        print(safe_msg.encode('ascii', errors='replace').decode('ascii'))
+
 VERTEX_SCRIPT = "vertex_ai_image_workflow.py"
 TRANSCRIPT_PATH = "transkript.txt"
 BILDER_DIR = "BilderVertex"
@@ -120,14 +147,14 @@ def run_vertex_step(script_dir):
             
         if result.returncode == 0:
             logger.info(f"Vertex AI image generation completed successfully")
-            print(f"✓ Vertex KI Bildgenerierung abgeschlossen. Bild sollte in {bilder_dir} liegen.")
+            safe_print(f"[OK] Vertex KI Bildgenerierung abgeschlossen. Bild sollte in {bilder_dir} liegen.")
             return True
         else:
             logger.error(f"Vertex AI step failed with exit code: {result.returncode}")
-            print(f"✗ Fehler beim Vertex KI Schritt! Code: {result.returncode}")
+            safe_print(f"[ERROR] Fehler beim Vertex KI Schritt! Code: {result.returncode}")
             if result.stderr:
                 logger.error(f"Vertex script stderr: {result.stderr}")
-                print(result.stderr)
+                safe_print(result.stderr)
             return False
             
     except subprocess.TimeoutExpired:
@@ -170,9 +197,9 @@ def start_service():
         # Check if it's still running
         if process.poll() is None:
             logger.info(f"Workflow manager service started successfully (PID: {process.pid})")
-            print(f"✓ Workflow-Manager Service gestartet (PID: {process.pid})")
-            print("Service läuft im Hintergrund und überwacht Workflow-Trigger")
-            print("HINWEIS: Service beendet sich automatisch nach einem Workflow-Durchlauf")
+            safe_print(f"[OK] Workflow-Manager Service gestartet (PID: {process.pid})")
+            safe_print("Service läuft im Hintergrund und überwacht Workflow-Trigger")
+            safe_print("HINWEIS: Service beendet sich automatisch nach einem Workflow-Durchlauf")
             print(f"\nZum manuellen Beenden: kill {process.pid}")
             
             # Monitor the service briefly, then detach
@@ -187,8 +214,8 @@ def start_service():
             
             if process.poll() is None:
                 logger.info(f"Service running stable (PID: {process.pid})")
-                print(f"\n✓ Service läuft stabil (PID: {process.pid})")
-                print("Service wird im Hintergrund weitergeführt...")
+                safe_print(f"\n[OK] Service läuft stabil (PID: {process.pid})")
+                safe_print("Service wird im Hintergrund weitergeführt...")
                 # Let it run in background and exit after one workflow
                 return True
             else:
@@ -207,7 +234,7 @@ def start_service():
         else:
             stdout, stderr = process.communicate()
             logger.error("Service could not be started")
-            print("✗ Service konnte nicht gestartet werden")
+            safe_print("[ERROR] Service konnte nicht gestartet werden")
             if stdout:
                 logger.error(f"Service stdout: {stdout}")
                 print("STDOUT:", stdout)
