@@ -55,6 +55,37 @@ def setup_debug_logging():
 # Initialize debug logger
 debug_logger = setup_debug_logging()
 
+# ASCII output helper for subprocess scripts
+def ensure_ascii_stdout(msg):
+    """
+    Convert message to ASCII-safe version for stdout printing.
+    
+    Replaces common unicode symbols with ASCII equivalents to avoid
+    UnicodeEncodeError on systems with latin-1 or ASCII console encoding.
+    
+    Args:
+        msg: String that may contain unicode characters
+        
+    Returns:
+        ASCII-safe string
+    """
+    replacements = {
+        'ℹ': '[INFO]',
+        '✓': '[OK]',
+        '⚡': '[NOTE]',
+        '✅': '[SUCCESS]',
+        '→': '->',
+        '📱': '[MOBILE]',
+        '🖥': '[DESKTOP]',
+        '📁': '[FOLDER]',
+    }
+    
+    result = str(msg)
+    for unicode_char, ascii_equiv in replacements.items():
+        result = result.replace(unicode_char, ascii_equiv)
+    
+    return result
+
 # Network and QR code utilities
 def get_network_ip():
     """
@@ -164,6 +195,11 @@ Window.clearcolor = (0.15, 0.15, 0.15, 1)  # Dark gray
 PORTRAIT_ROTATION_DEGREES = -90  # -90 = counterclockwise (left rotation), +90 = clockwise (right rotation)
 PORTRAIT_SCALE_FIT = True  # Scale content to fit window after rotation (enabled to fix clipping on 1920x1080)
 DEBUG_SHOW_BOUNDS = False  # Draw debug rectangle around transformed content bounds
+
+# FBO-based portrait rendering configuration
+PORTRAIT_VIEW_MODE = "fbo"  # "fbo" = FBO-based rendering with letterboxing, "raw" = direct canvas transform
+PORTRAIT_VIRTUAL_SIZE = (1080, 1920)  # Virtual portrait size for FBO rendering
+DEBUG_ROTATION_OVERLAY = True  # Show debug overlay (neon border, crosshair, label) in portrait FBO mode
 
 # ------------------ ORIENTATION PROVIDER ------------------
 class OrientationProvider:
@@ -332,9 +368,203 @@ class RotatingSurface(FloatLayout):
         
         return ret
 
+# ------------------ ROTATING ROOT FBO ------------------
+class RotatingRootFbo(FloatLayout):
+    """
+    Simplified FBO-based portrait rendering with letterboxing.
+    
+    This widget creates a virtual portrait-sized surface and ensures children
+    are properly sized to fit within it, then applies rotation and letterboxing
+    for display on the physical screen.
+    
+    Key improvement: Sets explicit size on child widgets to ensure they render
+    at the correct virtual resolution, avoiding clipping issues.
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.orientation_provider = OrientationProvider()
+        self._transform_matrix = None
+        self._inverse_matrix = None
+        self._rotation_logged = False
+        self._child_container = None
+        self._debug_label = None
+        self.bind(size=self._update_transform, pos=self._update_transform)
+        
+    def _update_transform(self, *args):
+        """Apply rotation and scale transform with explicit virtual sizing"""
+        is_portrait = self.orientation_provider.is_portrait()
+        
+        # Clear existing transforms
+        self.canvas.before.clear()
+        self.canvas.after.clear()
+        
+        if not is_portrait or PORTRAIT_VIEW_MODE != "fbo":
+            # Not in FBO mode
+            self._transform_matrix = None
+            self._inverse_matrix = None
+            return
+        
+        # Portrait FBO mode: apply rotation and scale
+        from kivy.graphics.transformation import Matrix
+        from kivy.graphics import PushMatrix, PopMatrix, MatrixInstruction, Color, Line, Rectangle
+        
+        vw, vh = PORTRAIT_VIRTUAL_SIZE  # Virtual portrait size (1080x1920)
+        ww, wh = self.width, self.height  # Physical window size (1920x1080)
+        
+        if ww <= 0 or wh <= 0:
+            return
+        
+        # Calculate center point for rotation anchor
+        cx, cy = ww / 2, wh / 2
+        
+        # Build transformation matrix: Translate(cx, cy) · Scale · Rotate · Translate(-cx, -cy)
+        mat = Matrix()
+        mat.translate(cx, cy, 0)
+        
+        # After -90° rotation, virtual height (1920) becomes physical width (1920)
+        # and virtual width (1080) becomes physical height (1080)
+        # Scale uniformly to fit: s = min(window_width / virtual_height, window_height / virtual_width)
+        scale_factor = min(ww / vh, wh / vw)
+        scale_factor = max(scale_factor, 1e-3)  # Safety clamp
+        
+        mat.scale(scale_factor, scale_factor, 1)
+        
+        # Apply rotation
+        mat.rotate(PORTRAIT_ROTATION_DEGREES * 3.14159265359 / 180.0, 0, 0, 1)
+        
+        # Translate back, centering the virtual canvas
+        mat.translate(-vw / 2, -vh / 2, 0)
+        
+        # Store matrices for touch transformation
+        self._transform_matrix = mat
+        self._inverse_matrix = mat.inverse()
+        
+        # Apply to canvas
+        with self.canvas.before:
+            PushMatrix()
+            matrix_inst = MatrixInstruction()
+            matrix_inst.matrix = mat
+        
+        with self.canvas.after:
+            PopMatrix()
+            
+            # Add debug overlay if enabled
+            if DEBUG_ROTATION_OVERLAY:
+                # Draw debug elements after pop to show them in screen space
+                PushMatrix()
+                matrix_inst2 = MatrixInstruction()
+                matrix_inst2.matrix = mat
+                
+                # Neon border around virtual content area
+                Color(0, 1, 1, 0.8)  # Cyan
+                Line(rectangle=(5, 5, vw - 10, vh - 10), width=3)
+                
+                # Crosshair at center of virtual content
+                Color(1, 0, 1, 0.8)  # Magenta
+                vcx, vcy = vw / 2, vh / 2
+                Line(points=[vcx - 50, vcy, vcx + 50, vcy], width=2)
+                Line(points=[vcx, vcy - 50, vcx, vcy + 50], width=2)
+                
+                # Debug rectangle marker in top-left
+                Color(0, 1, 0, 0.6)  # Green
+                Rectangle(pos=(10, vh - 60), size=(300, 50))
+                
+                PopMatrix()
+                
+                # Add debug label if not already added
+                if not self._debug_label and self._child_container:
+                    self._debug_label = Label(
+                        text=f"DEBUG: portrait content\nvirtual={vw}x{vh} scale={scale_factor:.3f}",
+                        size_hint=(None, None),
+                        size=(300, 80),
+                        pos=(10, vh - 90),
+                        color=(0, 1, 0, 1),
+                        font_size=14
+                    )
+                    self._child_container.add_widget(self._debug_label)
+                elif self._debug_label:
+                    self._debug_label.text = f"DEBUG: portrait content\nvirtual={vw}x{vh} scale={scale_factor:.3f}"
+        
+        # Update child container size if it exists
+        if self._child_container:
+            self._child_container.size = (vw, vh)
+            self._child_container.pos = (0, 0)
+        
+        # Log once when rotation is applied
+        if not self._rotation_logged:
+            debug_logger.info(f"Portrait FBO mode: virtual={vw}x{vh}, window={ww:.0f}x{wh:.0f}, scale={scale_factor:.4f}, rotation={PORTRAIT_ROTATION_DEGREES}°")
+            self._rotation_logged = True
+    
+    def add_widget(self, widget, *args, **kwargs):
+        """Override to properly size children for virtual portrait space"""
+        is_portrait = self.orientation_provider.is_portrait()
+        
+        if is_portrait and PORTRAIT_VIEW_MODE == "fbo":
+            # Create a container at virtual size if not exists
+            if not self._child_container:
+                self._child_container = FloatLayout(size=PORTRAIT_VIRTUAL_SIZE, pos=(0, 0))
+                self._child_container.size_hint = (None, None)
+                super().add_widget(self._child_container)
+            
+            # Add the child to the container
+            self._child_container.add_widget(widget, *args, **kwargs)
+            
+            # Force transform update
+            self._update_transform()
+        else:
+            # Direct rendering
+            super().add_widget(widget, *args, **kwargs)
+    
+    def on_touch_down(self, touch):
+        """Transform touch coordinates from screen to virtual space"""
+        if self._inverse_matrix:
+            touch.push()
+            touch.apply_transform_2d(lambda x, y: self._inverse_matrix.transform_point(x, y, 0)[:2])
+        
+        ret = super().on_touch_down(touch)
+        
+        if self._inverse_matrix:
+            touch.pop()
+        
+        return ret
+    
+    def on_touch_move(self, touch):
+        """Transform touch coordinates from screen to virtual space"""
+        if self._inverse_matrix:
+            touch.push()
+            touch.apply_transform_2d(lambda x, y: self._inverse_matrix.transform_point(x, y, 0)[:2])
+        
+        ret = super().on_touch_move(touch)
+        
+        if self._inverse_matrix:
+            touch.pop()
+        
+        return ret
+    
+    def on_touch_up(self, touch):
+        """Transform touch coordinates from screen to virtual space"""
+        if self._inverse_matrix:
+            touch.push()
+            touch.apply_transform_2d(lambda x, y: self._inverse_matrix.transform_point(x, y, 0)[:2])
+        
+        ret = super().on_touch_up(touch)
+        
+        if self._inverse_matrix:
+            touch.pop()
+        
+        return ret
+    
+    def clear_widgets(self):
+        """Override to properly clean up child container"""
+        if self._child_container:
+            self._child_container.clear_widgets()
+            self._debug_label = None  # Will be recreated if needed
+        super().clear_widgets()
+        self._child_container = None
+
 # ------------------ ROTATING ROOT ------------------
 class RotatingRoot(FloatLayout):
-    """Root widget that wraps content in RotatingSurface for portrait mode"""
+    """Root widget that wraps content in RotatingSurface or RotatingRootFbo for portrait mode"""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.orientation_provider = OrientationProvider()
@@ -342,7 +572,7 @@ class RotatingRoot(FloatLayout):
         self._content_widget = None
     
     def add_widget(self, widget, *args, **kwargs):
-        """Override to wrap content in RotatingSurface when in portrait mode"""
+        """Override to wrap content in RotatingSurface or RotatingRootFbo when in portrait mode"""
         is_portrait = self.orientation_provider.is_portrait()
         
         # If we're switching orientation, clean up old structure
@@ -352,12 +582,25 @@ class RotatingRoot(FloatLayout):
             self._content_widget = None
         
         if is_portrait:
-            # Portrait mode: wrap content in RotatingSurface
-            if not self._rotating_surface:
-                self._rotating_surface = RotatingSurface()
-                super().add_widget(self._rotating_surface, *args, **kwargs)
-            self._content_widget = widget
-            self._rotating_surface.add_widget(widget)
+            # Portrait mode: choose rendering method based on PORTRAIT_VIEW_MODE
+            if PORTRAIT_VIEW_MODE == "fbo":
+                # FBO-based rendering with letterboxing
+                if not self._rotating_surface:
+                    self._rotating_surface = RotatingRootFbo()
+                    super().add_widget(self._rotating_surface, *args, **kwargs)
+                    debug_logger.info("Using portrait FBO mode for rendering")
+                self._content_widget = widget
+                self._rotating_surface.add_widget(widget)
+                # Log what widget is being shown
+                widget_name = widget.__class__.__name__
+                debug_logger.info(f"Showing {widget_name} in portrait FBO")
+            else:
+                # Raw canvas transform (original method)
+                if not self._rotating_surface:
+                    self._rotating_surface = RotatingSurface()
+                    super().add_widget(self._rotating_surface, *args, **kwargs)
+                self._content_widget = widget
+                self._rotating_surface.add_widget(widget)
         else:
             # Landscape mode: add content directly
             self._content_widget = widget
