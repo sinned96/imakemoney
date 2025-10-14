@@ -388,10 +388,51 @@ class RotatingRootFbo(FloatLayout):
         self._rotation_logged = False
         self._child_container = None
         self._debug_label = None
-        self.bind(size=self._update_transform, pos=self._update_transform)
+        self._finalized = False
+        self._finalize_attempts = 0
+        
+        # Defer viewport calculation until Window has real size
+        Clock.schedule_once(self._finalize_viewport, 0)
+        
+        # Bind to Window.size for dynamic recalculation
+        from kivy.core.window import Window
+        Window.bind(size=self._on_resize)
+        self.bind(pos=self._update_transform)
+    
+    def _finalize_viewport(self, dt):
+        """Finalize viewport after Window has real size"""
+        from kivy.core.window import Window
+        ww, wh = Window.size
+        
+        # Guard: if Window size is still too small, retry
+        if ww * wh <= 10000:
+            self._finalize_attempts += 1
+            if self._finalize_attempts < 20:  # Max 2 seconds of retries
+                debug_logger.warning(f"Window size still too small ({ww:.0f}x{wh:.0f}), retrying in 0.1s (attempt {self._finalize_attempts})")
+                Clock.schedule_once(self._finalize_viewport, 0.1)
+                return
+            else:
+                debug_logger.error(f"Window size never reached valid dimensions after {self._finalize_attempts} attempts, proceeding anyway")
+        
+        self._finalized = True
+        debug_logger.info(f"Portrait FBO finalized: window={ww:.0f}x{wh:.0f}")
+        
+        # Trigger transform calculation with real Window size
+        self._update_transform()
+    
+    def _on_resize(self, instance, size):
+        """Handle Window resize events"""
+        if self._finalized:
+            debug_logger.info(f"Window resized to {size[0]:.0f}x{size[1]:.0f}, recalculating transform")
+            self._rotation_logged = False  # Allow logging again for new size
+            self._update_transform()
         
     def _update_transform(self, *args):
         """Apply rotation and scale transform with explicit virtual sizing"""
+        # Skip if not yet finalized
+        if not self._finalized:
+            return
+        
         is_portrait = self.orientation_provider.is_portrait()
         
         # Clear existing transforms
@@ -507,6 +548,8 @@ class RotatingRootFbo(FloatLayout):
                 super().add_widget(self._child_container)
             
             # Add the child to the container
+            widget_name = widget.__class__.__name__
+            debug_logger.info(f"Adding {widget_name} to portrait FBO container")
             self._child_container.add_widget(widget, *args, **kwargs)
             
             # Force transform update
