@@ -156,6 +156,9 @@ from kivy.core.window import Window
 from kivy.graphics import Translate, Rotate as CanvasRotate
 from kivy.uix.modalview import ModalView
 
+# Set neutral clear color to help diagnose out-of-bounds content
+Window.clearcolor = (0.15, 0.15, 0.15, 1)  # Dark gray
+
 # ------------------ PORTRAIT ROTATION CONFIG ------------------
 # Global rotation configuration for portrait mode (9:16)
 PORTRAIT_ROTATION_DEGREES = -90  # -90 = counterclockwise (left rotation), +90 = clockwise (right rotation)
@@ -530,6 +533,61 @@ try:
 except Exception:
     AppBarClass = None
     KIVYMD_OK = False
+
+# ------------------ ASPECT DETECTION HELPER ------------------
+def detect_aspect_from_configs():
+    """
+    Detect desired aspect ratio from configuration files.
+    
+    Priority:
+    1. modes.json (keys: aspect, aspect_ratio, mode, display_mode)
+    2. image_meta.json (key: aspect_ratio)
+    3. Default: "16:9"
+    
+    Normalizes variants:
+    - "9:16", "9/16", "portrait", "vertical" → "9:16"
+    - "16:9", "16/9", "landscape", "horizontal" → "16:9"
+    
+    Returns:
+        str: Normalized aspect ratio ("9:16" or "16:9")
+    """
+    # Try modes.json first
+    if MODES_PATH.exists():
+        try:
+            data = json.loads(MODES_PATH.read_text(encoding="utf-8"))
+            # Check for aspect-related keys at root level
+            for key in ["aspect", "aspect_ratio", "mode", "display_mode"]:
+                if key in data:
+                    value = str(data[key]).lower().strip()
+                    # Normalize to standard format
+                    if value in ["9:16", "9/16", "portrait", "vertical"]:
+                        debug_logger.info(f"Detected aspect from modes.json['{key}']: {value} → 9:16")
+                        return "9:16"
+                    elif value in ["16:9", "16/9", "landscape", "horizontal"]:
+                        debug_logger.info(f"Detected aspect from modes.json['{key}']: {value} → 16:9")
+                        return "16:9"
+        except Exception as e:
+            debug_logger.warning(f"Could not read aspect from modes.json: {e}")
+    
+    # Try image_meta.json as fallback
+    if IMAGE_META_PATH.exists():
+        try:
+            data = json.loads(IMAGE_META_PATH.read_text(encoding="utf-8"))
+            if "aspect_ratio" in data:
+                value = str(data["aspect_ratio"]).lower().strip()
+                # Normalize to standard format
+                if value in ["9:16", "9/16", "portrait", "vertical"]:
+                    debug_logger.info(f"Detected aspect from image_meta.json: {value} → 9:16")
+                    return "9:16"
+                elif value in ["16:9", "16/9", "landscape", "horizontal"]:
+                    debug_logger.info(f"Detected aspect from image_meta.json: {value} → 16:9")
+                    return "16:9"
+        except Exception as e:
+            debug_logger.warning(f"Could not read aspect from image_meta.json: {e}")
+    
+    # Default to landscape
+    debug_logger.info("No aspect configuration found, defaulting to 16:9")
+    return "16:9"
 
 # ------------------ Account / Auth ------------------
 def hash_password(pw: str) -> str:
@@ -2177,8 +2235,8 @@ class AufnahmePopup(RotatedModalView):
                 # Exit code != 0 but file is valid - this is normal for recording tools stopped via signal
                 info_msg = f"Hinweis: Prozess beendet mit Code {process_exit_code}, Audio jedoch erfolgreich gespeichert"
                 debug_logger.info(info_msg)
-                print(f"ℹ {info_msg}")
-                self._add_status_message(f"ℹ {info_msg}", "info")
+                print(f"[INFO] {info_msg}")
+                self._add_status_message(f"[INFO] {info_msg}", "info")
                 self.add_output_text("[color=4499ff]Dies ist normal beim Stoppen von Aufnahme-Tools[/color]")
             else:
                 success_msg = "Aufnahme erfolgreich abgeschlossen"
@@ -4533,6 +4591,12 @@ if KIVYMD_OK:
             self.root_widget=RotatingRoot()
             self.slideshow=None
             self._open_panel = None  # Track currently open panel (id, instance)
+            
+            # Initialize orientation before showing login screen
+            aspect = detect_aspect_from_configs()
+            OrientationProvider().set_orientation(aspect)
+            debug_logger.info(f"Early orientation initialized: {aspect}")
+            
             self.show_login()
             return self.root_widget
         def clear_root(self): self.root_widget.clear_widgets()
@@ -4557,6 +4621,12 @@ else:
             self.root_widget=RotatingRoot()
             self.slideshow=None
             self._open_panel = None  # Track currently open panel (id, instance)
+            
+            # Initialize orientation before showing login screen
+            aspect = detect_aspect_from_configs()
+            OrientationProvider().set_orientation(aspect)
+            debug_logger.info(f"Early orientation initialized: {aspect}")
+            
             self.show_login()
             return self.root_widget
         def clear_root(self): self.root_widget.clear_widgets()
