@@ -44,13 +44,44 @@ def setup_projekt_logging():
 # Initialize logger
 logger = setup_projekt_logging()
 
+def safe_print(msg):
+    """
+    Print message safely, encoding unicode to ASCII-safe equivalents for stdout.
+    Logs retain full UTF-8 encoding.
+    
+    Args:
+        msg: String that may contain unicode characters
+    """
+    # Replacements for common unicode symbols
+    replacements = {
+        '✓': '[OK]',
+        '✗': '[ERROR]',
+        '⚡': '[NOTE]',
+        '✅': '[SUCCESS]',
+        '→': '->',
+        'ℹ': '[INFO]',
+        '📱': '[MOBILE]',
+        '🖥': '[DESKTOP]',
+        '📁': '[FOLDER]',
+    }
+    
+    safe_msg = str(msg)
+    for unicode_char, ascii_equiv in replacements.items():
+        safe_msg = safe_msg.replace(unicode_char, ascii_equiv)
+    
+    try:
+        safe_print(safe_msg)
+    except UnicodeEncodeError:
+        # Fallback: encode with errors='replace'
+        safe_print(safe_msg.encode('ascii', errors='replace').decode('ascii'))
+
 # Handle image processing functionality
 try:
     from PIL import Image, ImageOps
     PILLOW_AVAILABLE = True
 except ImportError:
     PILLOW_AVAILABLE = False
-    print("Warning: Pillow not available, image scaling disabled")
+    safe_print("Warning: Pillow not available, image scaling disabled")
 
 # Handle clipboard functionality (optional in headless environments)
 try:
@@ -58,7 +89,7 @@ try:
     CLIPBOARD_AVAILABLE = True
 except ImportError:
     CLIPBOARD_AVAILABLE = False
-    print("Warning: pyperclip not available, clipboard operations disabled")
+    safe_print("Warning: pyperclip not available, clipboard operations disabled")
 
 # Handle requests for API calls
 try:
@@ -66,7 +97,7 @@ try:
     REQUESTS_AVAILABLE = True
 except ImportError:
     REQUESTS_AVAILABLE = False
-    print("Warning: requests library not available, API calls disabled")
+    safe_print("Warning: requests library not available, API calls disabled")
 
 # Optional Google Cloud dependencies
 try:
@@ -78,7 +109,7 @@ except ImportError:
     GOOGLE_CLOUD_AVAILABLE = False
     service_account = None
     GoogleAuthRequest = None
-    print("Google Cloud libraries not available - using demo mode for image generation")
+    safe_print("Google Cloud libraries not available - using demo mode for image generation")
 
 # Configuration for different environments
 import os
@@ -118,9 +149,9 @@ if __name__ == "__main__":
     logger.info(f"PythonServer starting - Environment: {'Raspberry Pi' if IS_RASPBERRY_PI else 'Desktop'}")
     logger.info(f"Display: {'Headless' if IS_HEADLESS else 'GUI Available'}")
     logger.info(f"Script Directory: {SCRIPT_DIR}")
-    print(f"Environment: {'Raspberry Pi' if IS_RASPBERRY_PI else 'Desktop'}")
-    print(f"Display: {'Headless' if IS_HEADLESS else 'GUI Available'}")
-    print(f"Script Directory: {SCRIPT_DIR}")
+    safe_print(f"Environment: {'Raspberry Pi' if IS_RASPBERRY_PI else 'Desktop'}")
+    safe_print(f"Display: {'Headless' if IS_HEADLESS else 'GUI Available'}")
+    safe_print(f"Script Directory: {SCRIPT_DIR}")
 
 class AsyncWorkflowManager:
     """Manages the asynchronous execution of the recording and processing workflow"""
@@ -135,7 +166,7 @@ class AsyncWorkflowManager:
         """Run a script synchronously with output collection"""
         if os.path.exists(script_path):
             logger.info(f"Starting {beschreibung}: {script_path}")
-            print(f"Starte {beschreibung}: {script_path}")
+            safe_print(f"Starte {beschreibung}: {script_path}")
             try:
                 # Setup environment variables for the script
                 env = os.environ.copy()
@@ -184,29 +215,29 @@ class AsyncWorkflowManager:
                 
             except subprocess.TimeoutExpired:
                 logger.error(f"Timeout in {beschreibung} after 5 minutes")
-                print(f"Timeout bei {beschreibung} nach 5 Minuten")
+                safe_print(f"Timeout bei {beschreibung} nach 5 Minuten")
                 return False
             except Exception as e:
                 logger.error(f"Error executing {beschreibung}: {e}")
-                print(f"Fehler beim Ausführen von {beschreibung}: {e}")
+                safe_print(f"Fehler beim Ausführen von {beschreibung}: {e}")
                 return False
         else:
             logger.error(f"{os.path.basename(script_path)} not found!")
-            print(f"{os.path.basename(script_path)} nicht gefunden!")
+            safe_print(f"{os.path.basename(script_path)} nicht gefunden!")
             return False
 
     def start_recording_async(self, script_path):
         """Start Aufnahme.py as asynchronous subprocess"""
         if not script_path or not os.path.exists(script_path):
-            print(f"Aufnahme-Script nicht gefunden: {script_path}")
+            safe_print(f"Aufnahme-Script nicht gefunden: {script_path}")
             return False
             
         if self.is_recording:
-            print("Warnung: Aufnahme läuft bereits")
+            safe_print("Warnung: Aufnahme läuft bereits")
             return False
             
         try:
-            print(f"Starte Aufnahme asynchron: {script_path}")
+            safe_print(f"Starte Aufnahme asynchron: {script_path}")
             
             # Start the recording process
             self.recording_process = subprocess.Popen(
@@ -220,8 +251,8 @@ class AsyncWorkflowManager:
             
             self.is_recording = True
             self.output_lines = []
-            print(f"Aufnahme gestartet (PID: {self.recording_process.pid})")
-            print("Drücke Enter um die Aufnahme zu stoppen, oder warte auf externes Signal...")
+            safe_print(f"Aufnahme gestartet (PID: {self.recording_process.pid})")
+            safe_print("Drücke Enter um die Aufnahme zu stoppen, oder warte auf externes Signal...")
             
             # Start output monitoring thread
             output_thread = threading.Thread(target=self._monitor_output, daemon=True)
@@ -230,7 +261,7 @@ class AsyncWorkflowManager:
             return True
             
         except Exception as e:
-            print(f"Fehler beim Starten der Aufnahme: {e}")
+            safe_print(f"Fehler beim Starten der Aufnahme: {e}")
             self.is_recording = False
             return False
 
@@ -261,16 +292,16 @@ class AsyncWorkflowManager:
                     break
                     
         except Exception as e:
-            print(f"Fehler beim Überwachen der Ausgabe: {e}")
+            safe_print(f"Fehler beim Überwachen der Ausgabe: {e}")
 
     def stop_recording(self):
         """Stop the recording process gracefully using SIGTERM"""
         if not self.is_recording or not self.recording_process:
-            print("Keine Aufnahme läuft")
+            safe_print("Keine Aufnahme läuft")
             return True
             
         try:
-            print("Stoppe Aufnahme...")
+            safe_print("Stoppe Aufnahme...")
             
             # Send SIGTERM to the process group for clean shutdown
             os.killpg(os.getpgid(self.recording_process.pid), signal.SIGTERM)
@@ -291,31 +322,31 @@ class AsyncWorkflowManager:
                     print(stderr)
                     
             except subprocess.TimeoutExpired:
-                print("Aufnahme reagiert nicht auf SIGTERM, erzwinge Beendigung...")
+                safe_print("Aufnahme reagiert nicht auf SIGTERM, erzwinge Beendigung...")
                 os.killpg(os.getpgid(self.recording_process.pid), signal.SIGKILL)
                 self.recording_process.wait()
                 
-            print("Aufnahme gestoppt")
+            safe_print("Aufnahme gestoppt")
             self.is_recording = False
             
             # Display summary of collected output
             if self.output_lines:
-                print("\n--- Aufnahme Zusammenfassung ---")
+                safe_print("\n--- Aufnahme Zusammenfassung ---")
                 for line in self.output_lines[-10:]:  # Show last 10 lines
                     print(line)
-                print("--- Ende Zusammenfassung ---\n")
+                safe_print("--- Ende Zusammenfassung ---\n")
                 
             return True
             
         except Exception as e:
-            print(f"Fehler beim Stoppen der Aufnahme: {e}")
+            safe_print(f"Fehler beim Stoppen der Aufnahme: {e}")
             self.is_recording = False
             return False
 
     def wait_for_stop_signal(self):
         """Wait for user input or external signal to stop recording"""
         def signal_handler(signum, frame):
-            print(f"\nSignal {signum} empfangen, stoppe Aufnahme...")
+            safe_print(f"\nSignal {signum} empfangen, stoppe Aufnahme...")
             self.should_stop = True
 
         # Set up signal handlers
@@ -324,7 +355,7 @@ class AsyncWorkflowManager:
             original_handlers[signal.SIGINT] = signal.signal(signal.SIGINT, signal_handler)
             original_handlers[signal.SIGTERM] = signal.signal(signal.SIGTERM, signal_handler)
         except Exception as e:
-            print(f"Warnung: Konnte Signal-Handler nicht setzen: {e}")
+            safe_print(f"Warnung: Konnte Signal-Handler nicht setzen: {e}")
         
         try:
             while self.is_recording and not self.should_stop:
@@ -348,15 +379,15 @@ class AsyncWorkflowManager:
                 time.sleep(0.1)
                 
         except KeyboardInterrupt:
-            print("\n[INTERRUPT] Keyboard Interrupt empfangen")
-            print("[STATUS] Gracefully shutting down workflow manager...")
+            safe_print("\n[INTERRUPT] Keyboard Interrupt empfangen")
+            safe_print("[STATUS] Gracefully shutting down workflow manager...")
             self.should_stop = True
         except Exception as e:
             try:
-                print(f"Fehler beim Warten auf Stop-Signal: {e}")
+                safe_print(f"Fehler beim Warten auf Stop-Signal: {e}")
             except Exception:
                 # Fallback if even basic printing fails
-                print("Fehler beim Warten auf Stop-Signal (encoding error)")
+                safe_print("Fehler beim Warten auf Stop-Signal (encoding error)")
             self.should_stop = True
         finally:
             # Restore original signal handlers
@@ -439,7 +470,7 @@ class WorkflowFileWatcher:
             with open(self.status_log, "a", encoding="utf-8") as f:
                 f.write(log_line)
                 
-            print(f"[{level}] {message}")
+            safe_print(f"[{level}] {message}")
             
         except Exception as e:
             # Fallback to ASCII-safe logging if Unicode fails
@@ -453,11 +484,11 @@ class WorkflowFileWatcher:
                 with open(self.status_log, "a", encoding="utf-8") as f:
                     f.write(log_line)
                     
-                print(f"[{level}] {safe_message}")
+                safe_print(f"[{level}] {safe_message}")
             except Exception:
                 # Ultimate fallback - just print basic error
                 logger.error("Logging failed - message could not be encoded safely")
-                print(f"[ERROR] Logging failed - message could not be encoded safely")
+                safe_print(f"[ERROR] Logging failed - message could not be encoded safely")
     
     def clear_status_log(self):
         """Clear the status log file"""
@@ -465,7 +496,7 @@ class WorkflowFileWatcher:
             if self.status_log.exists():
                 self.status_log.unlink()
         except Exception as e:
-            print(f"Error clearing log: {e}")
+            safe_print(f"Error clearing log: {e}")
     
     def execute_workflow(self):
         """
@@ -670,7 +701,7 @@ class WorkflowFileWatcher:
     def start_watching(self):
         """Start watching for trigger files in background thread"""
         if self.running:
-            print("Watcher bereits aktiv")
+            safe_print("Watcher bereits aktiv")
             return False
         
         # Acquire exclusive service lock
@@ -708,8 +739,8 @@ class WorkflowFileWatcher:
         self.watcher_thread = threading.Thread(target=watcher_thread, daemon=True)
         self.watcher_thread.start()
         
-        print(f"Workflow-Manager läuft im Hintergrund (PID: {os.getpid()})")
-        print("Service beendet sich automatisch nach einem Workflow-Durchlauf")
+        safe_print(f"Workflow-Manager läuft im Hintergrund (PID: {os.getpid()})")
+        safe_print("Service beendet sich automatisch nach einem Workflow-Durchlauf")
         return True
     
     def stop_watching(self):
@@ -717,7 +748,7 @@ class WorkflowFileWatcher:
         self.running = False
         self.release_service_lock()
         self.log_status("Workflow-Manager gestoppt")
-        print("Workflow-Manager gestoppt")
+        safe_print("Workflow-Manager gestoppt")
     
     def _get_transcript_for_ai(self):
         """
@@ -792,14 +823,14 @@ def get_copied_content():
         try:
             text = pyperclip.paste()
             if text and text.strip():
-                print("Text aus Zwischenablage gelesen.")
+                safe_print("Text aus Zwischenablage gelesen.")
                 return text.strip()
         except Exception as e:
-            print("Konnte Zwischenablage nicht lesen:", e)
+            safe_print("Konnte Zwischenablage nicht lesen:", e)
     else:
-        print("Zwischenablage nicht verfügbar (pyperclip fehlt)")
+        safe_print("Zwischenablage nicht verfügbar (pyperclip fehlt)")
     
-    print("Kein Text gefunden!")
+    safe_print("Kein Text gefunden!")
     return ""
 
 def get_next_index(directory, prefix):
@@ -833,7 +864,7 @@ def scale_image_to_1920x1080(image_path, preserve_aspect_ratio=True, logger=None
         if logger:
             logger(message, level)
         else:
-            print(f"[{level}] {message}")
+            safe_print(f"[{level}] {message}")
     
     if not PILLOW_AVAILABLE:
         log("Pillow not available - image scaling skipped", "WARNING")
@@ -951,7 +982,7 @@ def generate_image_imagen4(prompt, image_count=1, bilder_dir=BILDER_DIR, output_
         if logger:
             logger(message, level)
         else:
-            print(f"[{level}] {message}")
+            safe_print(f"[{level}] {message}")
     
     log(f"=== Vertex AI Image Generation ===")
     log(f"Prompt: '{prompt[:100]}{'...' if len(prompt) > 100 else ''}'")
@@ -1112,7 +1143,7 @@ def _create_demo_images(bilder_dir, output_prefix, image_count, logger=None):
         if logger:
             logger(message, level)
         else:
-            print(f"[{level}] {message}")
+            safe_print(f"[{level}] {message}")
     
     log("Creating demo images as fallback...")
     
@@ -1168,13 +1199,13 @@ def main():
     4. Collect and display all subprocess output
     """
     logger.info("=== PythonServer Main Workflow Started ===")
-    print("=== Audio Recording & AI Image Generation Workflow ===")
-    print("Dieses Programm führt folgende Schritte aus:")
-    print("1. Aufnahme (asynchron, manuell stoppbar)")  
-    print("2. Spracherkennung")
-    print("3. Datei kopieren")
-    print("4. Bild generieren")
-    print("=" * 60)
+    safe_print("=== Audio Recording & AI Image Generation Workflow ===")
+    safe_print("Dieses Programm führt folgende Schritte aus:")
+    safe_print("1. Aufnahme (asynchron, manuell stoppbar)")  
+    safe_print("2. Spracherkennung")
+    safe_print("3. Datei kopieren")
+    safe_print("4. Bild generieren")
+    safe_print("=" * 60)
     
     # Initialize workflow manager
     logger.info("Initializing AsyncWorkflowManager")
@@ -1184,16 +1215,16 @@ def main():
     logger.info("Starting asynchronous recording")
     if not workflow.start_recording_async(AUFNAHME_SCRIPT):
         logger.error("Failed to start recording - workflow aborted")
-        print("Fehler beim Starten der Aufnahme - Workflow abgebrochen")
+        safe_print("Fehler beim Starten der Aufnahme - Workflow abgebrochen")
         return False
     
     # Wait for recording to be stopped (manually or by signal)
     logger.info("Waiting for stop signal")
-    print("Warte auf Stop-Signal...")
-    print("Optionen zum Stoppen:")
-    print("- Drücke Enter")
-    print("- Sende SIGTERM an diesen Prozess")
-    print("- Drücke Ctrl+C")
+    safe_print("Warte auf Stop-Signal...")
+    safe_print("Optionen zum Stoppen:")
+    safe_print("- Drücke Enter")
+    safe_print("- Sende SIGTERM an diesen Prozess")
+    safe_print("- Drücke Ctrl+C")
     
     workflow.wait_for_stop_signal()
     
@@ -1203,76 +1234,76 @@ def main():
         workflow.stop_recording()
     
     logger.info("Recording completed, continuing with further steps")
-    print("\n" + "=" * 60)
-    print("Aufnahme abgeschlossen, fahre mit weiteren Schritten fort...")
-    print("=" * 60)
+    safe_print("\n" + "=" * 60)
+    safe_print("Aufnahme abgeschlossen, fahre mit weiteren Schritten fort...")
+    safe_print("=" * 60)
     
     # Step 2: Voice recognition
     if not workflow.run_script_sync(VOICE_SCRIPT, "Spracherkennung"):
-        print("Warnung: Spracherkennung fehlgeschlagen, fahre trotzdem fort...")
+        safe_print("Warnung: Spracherkennung fehlgeschlagen, fahre trotzdem fort...")
     
     # Step 3: Copy files  
     if not workflow.run_script_sync(COPY_SCRIPT, "Kopiervorgang"):
-        print("Warnung: Kopiervorgang fehlgeschlagen, fahre trotzdem fort...")
+        safe_print("Warnung: Kopiervorgang fehlgeschlagen, fahre trotzdem fort...")
     
-    print("Inhalt von transkript.txt wurde ins Clipboard kopiert!")
+    safe_print("Inhalt von transkript.txt wurde ins Clipboard kopiert!")
     
     # Step 4: Generate image
     prompt_text = get_copied_content()
     if not prompt_text.strip():
-        print("Kein Text zum Senden gefunden – Bild-Generierung übersprungen.")
+        safe_print("Kein Text zum Senden gefunden – Bild-Generierung übersprungen.")
     else:
-        print("Sende Text als Prompt an Vertex AI Imagen 4 ...")
+        safe_print("Sende Text als Prompt an Vertex AI Imagen 4 ...")
         try:
             generate_image_imagen4(prompt_text, image_count=1, bilder_dir=BILDER_DIR, output_prefix="bild")
         except Exception as e:
-            print(f"Fehler bei Bild-Generierung: {e}")
+            safe_print(f"Fehler bei Bild-Generierung: {e}")
     
-    print("\n" + "=" * 60)
-    print("Workflow vollständig abgeschlossen!")
-    print("=" * 60)
+    safe_print("\n" + "=" * 60)
+    safe_print("Workflow vollständig abgeschlossen!")
+    safe_print("=" * 60)
     return True
 
 # --- Original Workflow (kept for backwards compatibility) ---
 def run_original_workflow():
     """Run the original synchronous workflow"""
-    print("Führe ursprünglichen synchronen Workflow aus...")
+    safe_print("Führe ursprünglichen synchronen Workflow aus...")
     run_script(AUFNAHME_SCRIPT, "Aufnahme")
     run_script(VOICE_SCRIPT, "Spracherkennung")
     run_script(COPY_SCRIPT, "Kopiervorgang")
-    print("Inhalt von transkript.txt wurde ins Clipboard kopiert!")
+    safe_print("Inhalt von transkript.txt wurde ins Clipboard kopiert!")
 
     prompt_text = get_copied_content()
     if not prompt_text.strip():
-        print("Kein Text zum Senden gefunden – abgebrochen.")
+        safe_print("Kein Text zum Senden gefunden – abgebrochen.")
     else:
-        print("Sende Text als Prompt an Vertex AI Imagen 4 ...")
+        safe_print("Sende Text als Prompt an Vertex AI Imagen 4 ...")
         generate_image_imagen4(prompt_text, image_count=1, bilder_dir=BILDER_DIR, output_prefix="bild")
 
-    print("Workflow abgeschlossen!")
+    safe_print("Workflow abgeschlossen!")
 
 def run_background_service():
     """Run as background workflow manager service - runs ONCE then exits"""
-    print("=== Workflow Manager Service ===")
-    print("Startet als Hintergrunddienst für die Überwachung von Workflow-Triggern")
-    print("Service wird nach EINEM erfolgreichen Workflow-Durchlauf beendet")
+    safe_print("=== Workflow Manager Service ===")
+    safe_print("Startet als Hintergrunddienst für die Überwachung von Workflow-Triggern")
+    safe_print("Service wird nach EINEM erfolgreichen Workflow-Durchlauf beendet")
     
     watcher = WorkflowFileWatcher()
     
     # Set up signal handlers for clean shutdown
     import signal
     def signal_handler(signum, frame):
-        print(f"\nSignal {signum} empfangen, beende Service...")
+        safe_print(f"\nSignal {signum} empfangen, beende Service...")
         watcher.stop_watching()
     
     try:
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGINT, signal_handler)
     except Exception as e:
-        print(f"Warning: Could not set signal handlers: {e}")
+        safe_print(f"Warning: Could not set signal handlers: {e}")
     
     if not watcher.start_watching():
-        print("Fehler: Konnte Service nicht starten (möglicherweise läuft bereits eine Instanz)")
+        safe_print("Fehler: Konnte Service nicht starten (möglicherweise läuft bereits eine Instanz)")
         return False
     
     try:
@@ -1280,14 +1311,14 @@ def run_background_service():
         while watcher.running and not watcher.workflow_completed:
             time.sleep(1)
         
-        print("Workflow-Service beendet sich nach erfolgreichem Durchlauf")
+        safe_print("Workflow-Service beendet sich nach erfolgreichem Durchlauf")
         return True
         
     except KeyboardInterrupt:
-        print("\n[INTERRUPT] Service wird beendet durch KeyboardInterrupt...")
-        print("[STATUS] Cleaning up workflow service...")
+        safe_print("\n[INTERRUPT] Service wird beendet durch KeyboardInterrupt...")
+        safe_print("[STATUS] Cleaning up workflow service...")
         watcher.stop_watching()
-        print("[STATUS] Workflow service gracefully stopped")
+        safe_print("[STATUS] Workflow service gracefully stopped")
         return False
     finally:
         # Ensure cleanup even if something goes wrong
@@ -1301,12 +1332,12 @@ if __name__ == "__main__":
         elif sys.argv[1] == "--service":
             run_background_service()
         elif sys.argv[1] == "--help":
-            print("Usage:")
-            print("  python3 PythonServer.py           # Run interactive async workflow")
-            print("  python3 PythonServer.py --service # Run as background service")
-            print("  python3 PythonServer.py --original# Run original synchronous workflow")
+            safe_print("Usage:")
+            safe_print("  python3 PythonServer.py           # Run interactive async workflow")
+            safe_print("  python3 PythonServer.py --service # Run as background service")
+            safe_print("  python3 PythonServer.py --original# Run original synchronous workflow")
         else:
-            print(f"Unknown option: {sys.argv[1]}")
-            print("Use --help for usage information")
+            safe_print(f"Unknown option: {sys.argv[1]}")
+            safe_print("Use --help for usage information")
     else:
         main()

@@ -86,18 +86,18 @@ def check_service_running():
             age = time.time() - stat.st_mtime
             if age < 30:
                 logger.warning(f"Workflow service appears to be running (lock file: {lock_file}, age: {age:.1f}s)")
-                print(f"Workflow-Service scheint bereits zu laufen (Lock-Datei: {lock_file})")
+                safe_print(f"Workflow-Service scheint bereits zu laufen (Lock-Datei: {lock_file})")
                 try:
                     with open(lock_file, "r") as f:
                         pid = f.read().strip()
                     logger.info(f"Service PID from lock file: {pid}")
-                    print(f"Service-PID aus Lock-Datei: {pid}")
+                    safe_print(f"Service-PID aus Lock-Datei: {pid}")
                 except Exception as e:
                     logger.warning(f"Error reading lock file: {e}")
                 return True
             else:
                 logger.info(f"Found stale lock file ({age:.1f}s old), ignoring")
-                print(f"Veraltete Lock-Datei gefunden ({age:.1f}s alt), ignoriere")
+                safe_print(f"Veraltete Lock-Datei gefunden ({age:.1f}s alt), ignoriere")
         
         # Also check for recent status log
         status_log = script_dir / "workflow_status.log"
@@ -107,7 +107,7 @@ def check_service_running():
             age = time.time() - stat.st_mtime
             if age < 30:
                 logger.warning(f"Workflow service appears to be running (recent log file, age: {age:.1f}s)")
-                print("Workflow-Service scheint bereits zu laufen (aktuelle Log-Datei gefunden)")
+                safe_print("Workflow-Service scheint bereits zu laufen (aktuelle Log-Datei gefunden)")
                 return True
     except Exception as e:
         logger.error(f"Error checking service status: {e}")
@@ -120,14 +120,14 @@ def run_vertex_step(script_dir):
     transcript_file = script_dir / TRANSCRIPT_PATH
     bilder_dir = script_dir / BILDER_DIR
 
-    print("\n--- Starte Vertex KI Bildgenerierungsschritt ---")
+    safe_print("\n--- Starte Vertex KI Bildgenerierungsschritt ---")
     if not vertex_script.exists():
         logger.error(f"Vertex script not found: {vertex_script}")
-        print(f"Vertex-Skript nicht gefunden: {vertex_script}")
+        safe_print(f"Vertex-Skript nicht gefunden: {vertex_script}")
         return False
     if not transcript_file.exists():
         logger.error(f"Transcript not found: {transcript_file}")
-        print(f"Transkript nicht gefunden: {transcript_file}")
+        safe_print(f"Transkript nicht gefunden: {transcript_file}")
         return False
 
     try:
@@ -142,7 +142,7 @@ def run_vertex_step(script_dir):
         )
         
         if result.stdout:
-            print(result.stdout)
+            safe_print(result.stdout)
             logger.info(f"Vertex script stdout: {result.stdout}")
             
         if result.returncode == 0:
@@ -159,11 +159,11 @@ def run_vertex_step(script_dir):
             
     except subprocess.TimeoutExpired:
         logger.error("Vertex script execution timed out")
-        print("Fehler: Vertex KI Skript-Ausführung dauerte zu lange")
+        safe_print("Fehler: Vertex KI Skript-Ausführung dauerte zu lange")
         return False
     except Exception as e:
         logger.error(f"Error executing Vertex AI script: {e}")
-        print(f"Fehler beim Ausführen des Vertex KI Skripts: {e}")
+        safe_print(f"Fehler beim Ausführen des Vertex KI Skripts: {e}")
         return False
 
 def start_service():
@@ -174,12 +174,12 @@ def start_service():
     
     if not server_script.exists():
         logger.error(f"PythonServer.py not found in {script_dir}")
-        print(f"Fehler: PythonServer.py nicht gefunden in {script_dir}")
+        safe_print(f"Fehler: PythonServer.py nicht gefunden in {script_dir}")
         return False
     
     logger.info(f"Starting workflow manager service: {server_script}")
-    print("Starte Workflow-Manager Service...")
-    print(f"Script: {server_script}")
+    safe_print("Starte Workflow-Manager Service...")
+    safe_print(f"Script: {server_script}")
     
     try:
         # Start the service as subprocess
@@ -200,17 +200,17 @@ def start_service():
             safe_print(f"[OK] Workflow-Manager Service gestartet (PID: {process.pid})")
             safe_print("Service läuft im Hintergrund und überwacht Workflow-Trigger")
             safe_print("HINWEIS: Service beendet sich automatisch nach einem Workflow-Durchlauf")
-            print(f"\nZum manuellen Beenden: kill {process.pid}")
+            safe_print(f"\nZum manuellen Beenden: kill {process.pid}")
             
             # Monitor the service briefly, then detach
-            print("Überwache Service für 10 Sekunden...")
+            safe_print("Überwache Service für 10 Sekunden...")
             for i in range(10):
                 if process.poll() is not None:
                     logger.info(f"Service terminated (Exit Code: {process.returncode})")
-                    print(f"Service beendet (Exit Code: {process.returncode})")
+                    safe_print(f"Service beendet (Exit Code: {process.returncode})")
                     break
                 time.sleep(1)
-                print(".", end="", flush=True)
+                safe_print(".")
             
             if process.poll() is None:
                 logger.info(f"Service running stable (PID: {process.pid})")
@@ -221,13 +221,15 @@ def start_service():
             else:
                 stdout, stderr = process.communicate()
                 logger.info(f"Service completed with exit code: {process.returncode}")
-                print(f"Service beendet mit Exit Code: {process.returncode}")
+                safe_print(f"Service beendet mit Exit Code: {process.returncode}")
                 if stdout:
                     logger.info(f"Service stdout: {stdout}")
-                    print("STDOUT:", stdout)
+                    safe_print("STDOUT:")
+                    safe_print(stdout)
                 if stderr:
                     logger.warning(f"Service stderr: {stderr}")
-                    print("STDERR:", stderr)
+                    safe_print("STDERR:")
+                    safe_print(stderr)
                 # Nach erfolgreichem Durchlauf: Vertex-Schritt!
                 success = run_vertex_step(script_dir)
                 return process.returncode == 0 and success
@@ -237,15 +239,17 @@ def start_service():
             safe_print("[ERROR] Service konnte nicht gestartet werden")
             if stdout:
                 logger.error(f"Service stdout: {stdout}")
-                print("STDOUT:", stdout)
+                safe_print("STDOUT:")
+                safe_print(stdout)
             if stderr:
                 logger.error(f"Service stderr: {stderr}")
-                print("STDERR:", stderr)
+                safe_print("STDERR:")
+                safe_print(stderr)
             return False
             
     except Exception as e:
         logger.error(f"Error starting service: {e}")
-        print(f"Fehler beim Starten des Service: {e}")
+        safe_print(f"Fehler beim Starten des Service: {e}")
         return False
 
 def main():
@@ -258,26 +262,26 @@ def main():
     args = parser.parse_args()
     
     logger.info("=== Workflow Service Starter Started ===")
-    print("=== Workflow Service Starter ===")
+    safe_print("=== Workflow Service Starter ===")
     
     if check_service_running():
         if args.auto:
             logger.info("Service appears to be running, auto mode: skipping start")
-            print("Service scheint bereits zu laufen. Auto-Modus: Überspringe Start.")
+            safe_print("Service scheint bereits zu laufen. Auto-Modus: Überspringe Start.")
             return
         else:
             response = input("Service scheint bereits zu laufen. Trotzdem starten? (j/N): ")
             if response.lower() not in ('j', 'ja', 'y', 'yes'):
                 logger.info("User cancelled service start")
-                print("Abgebrochen.")
+                safe_print("Abgebrochen.")
                 return
     
     if start_service():
         logger.info("Service started successfully")
-        print("Service erfolgreich gestartet.")
+        safe_print("Service erfolgreich gestartet.")
     else:
         logger.error("Service could not be started")
-        print("Service konnte nicht gestartet werden.")
+        safe_print("Service konnte nicht gestartet werden.")
         if not args.auto:
             sys.exit(1)
 
