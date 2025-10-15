@@ -131,3 +131,6 @@ FINAL*.md
 # Demo/temp images
 *-demo.png
 spinner-positioning-*.png
+
+# Diagnostic screenshots
+screenshots/
