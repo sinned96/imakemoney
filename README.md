@@ -130,6 +130,61 @@ python main.py
 - **vertex_ai_image_workflow.py**: KI-Bildgenerierung
 - **start_workflow_service.py**: Workflow-Orchestrierung
 
+## Portrait Matrix Pipeline - Diagnostics
+
+### Running Diagnostics
+When troubleshooting portrait mode (9:16) rendering issues on Raspberry Pi, use these diagnostic tools:
+
+#### Default (with diagnostics enabled)
+```bash
+python3 main.py
+```
+**Expected behavior:**
+- Magenta semi-transparent test fill covers the portrait area
+- Green border (4px) outlines the virtual content area (1080x1920)
+- Yellow crosshair at center of portrait area
+- Orange banner showing "DIAG: FORCED LOGIN SIZE" (if force-size enabled)
+- LoginScreen should be visible and rotated left
+- Logs show per-frame child geometry for first 8 frames
+
+#### Disable forced LoginScreen size
+```bash
+DEBUG_FORCE_LOGIN_SIZE=0 python3 main.py
+```
+Use this to test if LoginScreen has natural size=(0,0) issues.
+
+#### Hide diagnostic overlay
+```bash
+DEBUG_ROTATION_OVERLAY=0 python3 main.py
+```
+Hides magenta fill, borders, and banner for clean testing.
+
+#### Baseline comparison (landscape mode)
+```bash
+PORTRAIT_PIPELINE=off python3 main.py
+```
+Tests in standard 16:9 landscape mode without rotation.
+
+#### Using FBO pipeline (legacy)
+```bash
+PORTRAIT_PIPELINE=fbo python3 main.py
+```
+Tests the legacy FBO-based rendering instead of matrix transforms.
+
+### Diagnostic Logs
+Check `projekt.log` for:
+- `[Portrait matrix] Frame N: X children: [ClassNames] sizes=[...]` - Child widget geometry
+- `[Portrait matrix] WARNING: WidgetName has size 0x0` - Zero-size widget warnings
+- `[Portrait matrix] event=1920x1080 s=1.0000 pos=(0,0) rot=-90` - Transform details
+- `[Portrait matrix] Forced size for LoginScreen: size=(1080,1920) pos=(0,0)` - Force-size confirmation
+
+### Acceptance Criteria
+✅ Magenta test fill and green border visible in portrait area  
+✅ LoginScreen becomes visible (with forced size) or logs show 0x0 sizes  
+✅ Logs include per-frame child count and geometry for first 8 frames  
+✅ Logs include warnings for any child with size=(0,0)  
+✅ No crashes; touch continues to work  
+
 ## Bekannte Einschränkungen
 - PIL/Pillow erforderlich für Formatfilterung
 - Google Cloud Credentials erforderlich für KI-Features
