@@ -266,6 +266,20 @@ class PortraitContainer(FloatLayout):
         self.virtual_w = 1080
         self.virtual_h = 1920
         
+        # Background instructions (stored on self, not on Canvas)
+        self._bg_color = None
+        self._bg_rect = None
+        
+        # Transform instruction cache (to avoid recreating every frame)
+        self._push_matrix = None
+        self._translate_pos = None
+        self._translate_center = None
+        self._scale_inst = None
+        self._rotate_inst = None
+        self._translate_virtual = None
+        self._matrix_inst = None
+        self._pop_matrix = None
+        
         # Bind to Window resize events
         from kivy.core.window import Window
         Window.bind(size=self._on_window_resize)
@@ -284,22 +298,17 @@ class PortraitContainer(FloatLayout):
         """Apply matrix rotation and scale transform for portrait mode"""
         is_portrait = self.orientation_provider.is_portrait()
         
-        # Clear existing canvas transforms
-        self.canvas.before.clear()
-        self.canvas.after.clear()
-        
         # Only apply if portrait mode is active and pipeline is matrix
         if not is_portrait or PORTRAIT_PIPELINE != "matrix":
+            # Clear transforms if switching away from portrait
+            if self._matrix_inst is not None:
+                self.canvas.before.clear()
+                self.canvas.after.clear()
+                self._matrix_inst = None
+                self._push_matrix = None
+                self._pop_matrix = None
             self._transform_matrix = None
             self._inverse_matrix = None
-            
-            # Draw black background on Window canvas (not widget canvas)
-            from kivy.core.window import Window
-            if not hasattr(Window.canvas, '_portrait_bg_instruction'):
-                with Window.canvas.before:
-                    GColor(0, 0, 0, 1)
-                    Window.canvas._portrait_bg_rect = Rectangle(pos=(0, 0), size=Window.size)
-                    Window.canvas._portrait_bg_instruction = True
             return
         
         # Get window dimensions
@@ -309,17 +318,6 @@ class PortraitContainer(FloatLayout):
         if w <= 0 or h <= 0:
             debug_logger.warning(f"Invalid window size: {w}x{h}, skipping transform")
             return
-        
-        # Draw black background for letterboxing on Window canvas
-        if not hasattr(Window.canvas, '_portrait_bg_instruction'):
-            with Window.canvas.before:
-                GColor(0, 0, 0, 1)
-                Window.canvas._portrait_bg_rect = Rectangle(pos=(0, 0), size=Window.size)
-                Window.canvas._portrait_bg_instruction = True
-        else:
-            # Update existing background rectangle
-            Window.canvas._portrait_bg_rect.pos = (0, 0)
-            Window.canvas._portrait_bg_rect.size = Window.size
         
         # After -90° rotation: target frame dimensions are (virtual_h, virtual_w) = (1920, 1080)
         rot_w = self.virtual_h  # 1920
@@ -358,33 +356,48 @@ class PortraitContainer(FloatLayout):
         self._transform_matrix = mat
         self._inverse_matrix = mat.inverse()
         
-        # Apply to canvas
-        with self.canvas.before:
-            PushMatrix()
-            matrix_inst = MatrixInstruction()
-            matrix_inst.matrix = mat
-        
-        with self.canvas.after:
-            PopMatrix()
+        # Create or update canvas instructions (one-time creation, then update values)
+        if self._matrix_inst is None:
+            # First time: create all instructions
+            self.canvas.before.clear()
+            self.canvas.after.clear()
             
-            # Optional debug overlay
-            if DEBUG_ROTATION_OVERLAY:
-                # Draw debug elements using the same matrix stack
-                PushMatrix()
-                matrix_inst2 = MatrixInstruction()
-                matrix_inst2.matrix = mat
+            with self.canvas.before:
+                # Black background for letterboxing (stored on self, not Canvas)
+                self._bg_color = GColor(0, 0, 0, 1)
+                self._bg_rect = Rectangle(pos=(0, 0), size=(w, h))
                 
-                # Neon border around virtual content area
-                GColor(0, 1, 1, 0.8)  # Cyan
-                Line(rectangle=(5, 5, self.virtual_w - 10, self.virtual_h - 10), width=3)
+                # Apply transformation matrix
+                self._push_matrix = PushMatrix()
+                self._matrix_inst = MatrixInstruction()
+                self._matrix_inst.matrix = mat
+            
+            with self.canvas.after:
+                self._pop_matrix = PopMatrix()
                 
-                # Crosshair at center of virtual content
-                GColor(1, 0, 1, 0.8)  # Magenta
-                vcx, vcy = self.virtual_w / 2, self.virtual_h / 2
-                Line(points=[vcx - 50, vcy, vcx + 50, vcy], width=2)
-                Line(points=[vcx, vcy - 50, vcx, vcy + 50], width=2)
-                
-                PopMatrix()
+                # Optional debug overlay
+                if DEBUG_ROTATION_OVERLAY:
+                    # Draw debug elements using the same matrix stack
+                    PushMatrix()
+                    matrix_inst2 = MatrixInstruction()
+                    matrix_inst2.matrix = mat
+                    
+                    # Neon border around virtual content area
+                    GColor(0, 1, 1, 0.8)  # Cyan
+                    Line(rectangle=(5, 5, self.virtual_w - 10, self.virtual_h - 10), width=3)
+                    
+                    # Crosshair at center of virtual content
+                    GColor(1, 0, 1, 0.8)  # Magenta
+                    vcx, vcy = self.virtual_w / 2, self.virtual_h / 2
+                    Line(points=[vcx - 50, vcy, vcx + 50, vcy], width=2)
+                    Line(points=[vcx, vcy - 50, vcx, vcy + 50], width=2)
+                    
+                    PopMatrix()
+        else:
+            # Update existing instructions (no recreation needed)
+            self._bg_rect.pos = (0, 0)
+            self._bg_rect.size = (w, h)
+            self._matrix_inst.matrix = mat
         
         # Log transform details once per resize event
         debug_logger.info(f"[Portrait matrix] event={w:.0f}x{h:.0f} s={scale_factor:.4f} blit={blit_w:.0f}x{blit_h:.0f} pos=({pos_x:.0f},{pos_y:.0f}) rot={PORTRAIT_ROTATION_DEGREES}")
