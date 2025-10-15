@@ -266,6 +266,20 @@ class PortraitContainer(FloatLayout):
         self.virtual_w = 1080
         self.virtual_h = 1920
         
+        # Background instructions (stored on self, not on Canvas)
+        self._bg_color = None
+        self._bg_rect = None
+        
+        # Transform instruction cache (to avoid recreating every frame)
+        self._push_matrix = None
+        self._translate_pos = None
+        self._translate_center = None
+        self._scale_inst = None
+        self._rotate_inst = None
+        self._translate_virtual = None
+        self._matrix_inst = None
+        self._pop_matrix = None
+        
         # Bind to Window resize events
         from kivy.core.window import Window
         Window.bind(size=self._on_window_resize)
@@ -292,14 +306,6 @@ class PortraitContainer(FloatLayout):
         if not is_portrait or PORTRAIT_PIPELINE != "matrix":
             self._transform_matrix = None
             self._inverse_matrix = None
-            
-            # Draw black background on Window canvas (not widget canvas)
-            from kivy.core.window import Window
-            if not hasattr(Window.canvas, '_portrait_bg_instruction'):
-                with Window.canvas.before:
-                    GColor(0, 0, 0, 1)
-                    Window.canvas._portrait_bg_rect = Rectangle(pos=(0, 0), size=Window.size)
-                    Window.canvas._portrait_bg_instruction = True
             return
         
         # Get window dimensions
@@ -309,17 +315,6 @@ class PortraitContainer(FloatLayout):
         if w <= 0 or h <= 0:
             debug_logger.warning(f"Invalid window size: {w}x{h}, skipping transform")
             return
-        
-        # Draw black background for letterboxing on Window canvas
-        if not hasattr(Window.canvas, '_portrait_bg_instruction'):
-            with Window.canvas.before:
-                GColor(0, 0, 0, 1)
-                Window.canvas._portrait_bg_rect = Rectangle(pos=(0, 0), size=Window.size)
-                Window.canvas._portrait_bg_instruction = True
-        else:
-            # Update existing background rectangle
-            Window.canvas._portrait_bg_rect.pos = (0, 0)
-            Window.canvas._portrait_bg_rect.size = Window.size
         
         # After -90° rotation: target frame dimensions are (virtual_h, virtual_w) = (1920, 1080)
         rot_w = self.virtual_h  # 1920
@@ -358,8 +353,19 @@ class PortraitContainer(FloatLayout):
         self._transform_matrix = mat
         self._inverse_matrix = mat.inverse()
         
-        # Apply to canvas
+        # Apply to canvas - create background and transform instructions
         with self.canvas.before:
+            # Black background for letterboxing (stored on self, not Canvas)
+            if self._bg_color is None:
+                self._bg_color = GColor(0, 0, 0, 1)
+            if self._bg_rect is None:
+                self._bg_rect = Rectangle(pos=(0, 0), size=(w, h))
+            else:
+                # Update existing background
+                self._bg_rect.pos = (0, 0)
+                self._bg_rect.size = (w, h)
+            
+            # Apply transformation matrix
             PushMatrix()
             matrix_inst = MatrixInstruction()
             matrix_inst.matrix = mat
