@@ -175,7 +175,10 @@ from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.anchorlayout import AnchorLayout
 from kivy.uix.image import Image
 from kivy.uix.scrollview import ScrollView
-from kivy.graphics import Color, Rectangle, Line, Rotate, PushMatrix, PopMatrix, Scale
+from kivy.graphics import (
+    Color as GColor,
+    Rectangle, Line, Rotate, PushMatrix, PopMatrix, Scale, Translate
+)
 from kivy.uix.button import Button
 from kivy.uix.togglebutton import ToggleButton
 from kivy.uix.label import Label
@@ -184,7 +187,6 @@ from kivy.uix.slider import Slider
 from kivy.uix.widget import Widget
 from kivy.app import App
 from kivy.core.window import Window
-from kivy.graphics import Translate, Rotate as CanvasRotate
 from kivy.uix.modalview import ModalView
 
 # Set neutral clear color to help diagnose out-of-bounds content
@@ -292,7 +294,7 @@ class PortraitContainer(FloatLayout):
             from kivy.core.window import Window
             if not hasattr(Window.canvas, '_portrait_bg_instruction'):
                 with Window.canvas.before:
-                    Color(0, 0, 0, 1)
+                    GColor(0, 0, 0, 1)
                     Window.canvas._portrait_bg_rect = Rectangle(pos=(0, 0), size=Window.size)
                     Window.canvas._portrait_bg_instruction = True
             return
@@ -308,7 +310,7 @@ class PortraitContainer(FloatLayout):
         # Draw black background for letterboxing on Window canvas
         if not hasattr(Window.canvas, '_portrait_bg_instruction'):
             with Window.canvas.before:
-                Color(0, 0, 0, 1)
+                GColor(0, 0, 0, 1)
                 Window.canvas._portrait_bg_rect = Rectangle(pos=(0, 0), size=Window.size)
                 Window.canvas._portrait_bg_instruction = True
         else:
@@ -340,7 +342,7 @@ class PortraitContainer(FloatLayout):
         # 5. Rotate(-90°)
         # 6. Translate(-virtual_w/2, -virtual_h/2) - center virtual content
         from kivy.graphics.transformation import Matrix
-        from kivy.graphics import PushMatrix, PopMatrix, MatrixInstruction, Color, Line
+        from kivy.graphics import PushMatrix, PopMatrix, MatrixInstruction
         
         mat = Matrix()
         mat.translate(pos_x, pos_y, 0)
@@ -370,11 +372,11 @@ class PortraitContainer(FloatLayout):
                 matrix_inst2.matrix = mat
                 
                 # Neon border around virtual content area
-                Color(0, 1, 1, 0.8)  # Cyan
+                GColor(0, 1, 1, 0.8)  # Cyan
                 Line(rectangle=(5, 5, self.virtual_w - 10, self.virtual_h - 10), width=3)
                 
                 # Crosshair at center of virtual content
-                Color(1, 0, 1, 0.8)  # Magenta
+                GColor(1, 0, 1, 0.8)  # Magenta
                 vcx, vcy = self.virtual_w / 2, self.virtual_h / 2
                 Line(points=[vcx - 50, vcy, vcx + 50, vcy], width=2)
                 Line(points=[vcx, vcy - 50, vcx, vcy + 50], width=2)
@@ -541,8 +543,7 @@ class RotatingSurface(FloatLayout):
             
             # Optional debug visualization
             if DEBUG_SHOW_BOUNDS:
-                from kivy.graphics import Color, Line
-                Color(1, 0, 0, 0.8)  # Red with 80% opacity
+                GColor(1, 0, 0, 0.8)  # Red with 80% opacity
                 # Draw rectangle around the content bounds
                 Line(rectangle=(self.x, self.y, self.width, self.height), width=2)
         
@@ -680,7 +681,7 @@ class RotatingRootFbo(FloatLayout):
         
     def _create_fbo(self):
         """Create and setup the FBO for portrait rendering"""
-        from kivy.graphics import Fbo, Color, Rectangle, ClearColor, ClearBuffers
+        from kivy.graphics import Fbo, Rectangle, ClearColor, ClearBuffers
         
         # Virtual portrait size (1080x1920)
         virtual_w = 1080
@@ -733,7 +734,7 @@ class RotatingRootFbo(FloatLayout):
         
         # Portrait FBO mode: apply rotation and scale
         from kivy.graphics.transformation import Matrix
-        from kivy.graphics import PushMatrix, PopMatrix, MatrixInstruction, Color, Line, Rectangle
+        from kivy.graphics import PushMatrix, PopMatrix, MatrixInstruction, Line, Rectangle
         from kivy.core.text import Label as CoreLabel
         
         # Virtual portrait size (1080x1920)
@@ -798,7 +799,7 @@ class RotatingRootFbo(FloatLayout):
         # Apply to canvas - draw the FBO texture with transformations
         with self.canvas.before:
             # Background clear
-            Color(0, 0, 0, 1)
+            GColor(0, 0, 0, 1)
             Rectangle(pos=(0, 0), size=(w, h))
             
             PushMatrix()
@@ -806,7 +807,7 @@ class RotatingRootFbo(FloatLayout):
             matrix_inst.matrix = mat
             
             # Draw the FBO texture
-            Color(1, 1, 1, 1)  # White color to show texture as-is
+            GColor(1, 1, 1, 1)  # White color to show texture as-is
             self._fbo_rect = Rectangle(pos=(0, 0), size=(virtual_w, virtual_h), texture=self._fbo.texture)
         
         with self.canvas.after:
@@ -820,17 +821,17 @@ class RotatingRootFbo(FloatLayout):
                 matrix_inst2.matrix = mat
                 
                 # Neon border around virtual content area
-                Color(0, 1, 1, 0.8)  # Cyan
+                GColor(0, 1, 1, 0.8)  # Cyan
                 Line(rectangle=(5, 5, virtual_w - 10, virtual_h - 10), width=3)
                 
                 # Crosshair at center of virtual content
-                Color(1, 0, 1, 0.8)  # Magenta
+                GColor(1, 0, 1, 0.8)  # Magenta
                 vcx, vcy = virtual_w / 2, virtual_h / 2
                 Line(points=[vcx - 50, vcy, vcx + 50, vcy], width=2)
                 Line(points=[vcx, vcy - 50, vcx, vcy + 50], width=2)
                 
                 # Debug rectangle marker in top-left of virtual space
-                Color(0, 1, 0, 0.6)  # Green
+                GColor(0, 1, 0, 0.6)  # Green
                 Rectangle(pos=(10, virtual_h - 60), size=(300, 50))
                 
                 PopMatrix()
