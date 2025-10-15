@@ -266,6 +266,10 @@ class PortraitContainer(FloatLayout):
         self.virtual_w = 1080
         self.virtual_h = 1920
         
+        # Background Rectangle objects stored on self
+        self._bg_color = None
+        self._bg_rect = None
+        
         # Bind to Window resize events
         from kivy.core.window import Window
         Window.bind(size=self._on_window_resize)
@@ -292,14 +296,8 @@ class PortraitContainer(FloatLayout):
         if not is_portrait or PORTRAIT_PIPELINE != "matrix":
             self._transform_matrix = None
             self._inverse_matrix = None
-            
-            # Draw black background on Window canvas (not widget canvas)
-            from kivy.core.window import Window
-            if not hasattr(Window.canvas, '_portrait_bg_instruction'):
-                with Window.canvas.before:
-                    GColor(0, 0, 0, 1)
-                    Window.canvas._portrait_bg_rect = Rectangle(pos=(0, 0), size=Window.size)
-                    Window.canvas._portrait_bg_instruction = True
+            self._bg_color = None
+            self._bg_rect = None
             return
         
         # Get window dimensions
@@ -309,17 +307,6 @@ class PortraitContainer(FloatLayout):
         if w <= 0 or h <= 0:
             debug_logger.warning(f"Invalid window size: {w}x{h}, skipping transform")
             return
-        
-        # Draw black background for letterboxing on Window canvas
-        if not hasattr(Window.canvas, '_portrait_bg_instruction'):
-            with Window.canvas.before:
-                GColor(0, 0, 0, 1)
-                Window.canvas._portrait_bg_rect = Rectangle(pos=(0, 0), size=Window.size)
-                Window.canvas._portrait_bg_instruction = True
-        else:
-            # Update existing background rectangle
-            Window.canvas._portrait_bg_rect.pos = (0, 0)
-            Window.canvas._portrait_bg_rect.size = Window.size
         
         # After -90° rotation: target frame dimensions are (virtual_h, virtual_w) = (1920, 1080)
         rot_w = self.virtual_h  # 1920
@@ -360,6 +347,11 @@ class PortraitContainer(FloatLayout):
         
         # Apply to canvas
         with self.canvas.before:
+            # Draw black background for letterboxing
+            # Store references on self to avoid AttributeError on Canvas object
+            self._bg_color = GColor(0, 0, 0, 1)
+            self._bg_rect = Rectangle(pos=(0, 0), size=Window.size)
+            
             PushMatrix()
             matrix_inst = MatrixInstruction()
             matrix_inst.matrix = mat
