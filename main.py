@@ -405,6 +405,51 @@ class PortraitContainer(FloatLayout):
             # Try to get screen title if it's a screen
             title = getattr(widget, 'title', getattr(widget, '__class__.__name__', 'Unknown'))
             debug_logger.info(f"[Portrait matrix] Added widget: {widget_name} (title/class: {title})")
+    
+    def on_touch_down(self, touch):
+        """Transform touch coordinates using Kivy's built-in push/pop mechanism"""
+        if self._inverse_matrix:
+            # Use Kivy's built-in coordinate transformation
+            # This applies the inverse matrix to map screen coords to widget coords
+            touch.push()
+            # Apply inverse transform to map screen coordinates to virtual space
+            tx, ty, _ = self._inverse_matrix.transform_point(touch.x, touch.y, 0)
+            touch.x, touch.y = tx, ty
+        
+        ret = super().on_touch_down(touch)
+        
+        if self._inverse_matrix:
+            touch.pop()
+        
+        return ret
+    
+    def on_touch_move(self, touch):
+        """Transform touch coordinates using Kivy's built-in push/pop mechanism"""
+        if self._inverse_matrix:
+            touch.push()
+            tx, ty, _ = self._inverse_matrix.transform_point(touch.x, touch.y, 0)
+            touch.x, touch.y = tx, ty
+        
+        ret = super().on_touch_move(touch)
+        
+        if self._inverse_matrix:
+            touch.pop()
+        
+        return ret
+    
+    def on_touch_up(self, touch):
+        """Transform touch coordinates using Kivy's built-in push/pop mechanism"""
+        if self._inverse_matrix:
+            touch.push()
+            tx, ty, _ = self._inverse_matrix.transform_point(touch.x, touch.y, 0)
+            touch.x, touch.y = tx, ty
+        
+        ret = super().on_touch_up(touch)
+        
+        if self._inverse_matrix:
+            touch.pop()
+        
+        return ret
 
 # ------------------ ROTATING SURFACE ------------------
 class RotatingSurface(FloatLayout):
