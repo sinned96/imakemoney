@@ -179,6 +179,9 @@ from kivy.graphics import (
     Color as GColor,
     Rectangle, Line, Rotate, PushMatrix, PopMatrix, Scale, Translate
 )
+# Compatibility alias to prevent NameError for existing Color(...) calls
+Color = GColor
+
 from kivy.uix.button import Button
 from kivy.uix.togglebutton import ToggleButton
 from kivy.uix.label import Label
@@ -1457,7 +1460,7 @@ class SoftKeyboard(FloatLayout):
         self.on_close = on_close
         self.target = None
         with self.canvas.before:
-            Color(0,0,0,0.85)
+            GColor(0,0,0,0.85)
             self.bg = Rectangle(pos=self.pos,size=self.size)
         self.bind(pos=self._upd_bg,size=self._upd_bg)
         rows = [
@@ -1506,7 +1509,7 @@ class LoginScreen(FloatLayout):
         self.keyboard_widget=None
         self.last_input=None
         with self.canvas.before:
-            Color(0.07,0.07,0.09,1)
+            GColor(0.07,0.07,0.09,1)
             self.bg=Rectangle(pos=self.pos,size=self.size)
         self.bind(pos=self._upd_bg,size=self._upd_bg)
         card=BoxLayout(orientation="vertical", size_hint=(None,None),
@@ -1514,7 +1517,7 @@ class LoginScreen(FloatLayout):
                        pos_hint={"center_x":0.5,"center_y":0.55},
                        padding=dp(28), spacing=dp(18))
         with card.canvas.before:
-            Color(0.16,0.16,0.20,1)
+            GColor(0.16,0.16,0.20,1)
             self._c_bg=Rectangle(pos=card.pos,size=card.size)
         card.bind(pos=lambda *a:setattr(self._c_bg,'pos',card.pos),
                   size=lambda *a:setattr(self._c_bg,'size',card.size))
@@ -1584,7 +1587,7 @@ class RegisterScreen(FloatLayout):
         self.keyboard_widget=None
         self.last_input=None
         with self.canvas.before:
-            Color(0.07,0.07,0.09,1)
+            GColor(0.07,0.07,0.09,1)
             self.bg=Rectangle(pos=self.pos,size=self.size)
         self.bind(pos=self._upd_bg,size=self._upd_bg)
         card=BoxLayout(orientation="vertical", size_hint=(None,None),
@@ -1592,7 +1595,7 @@ class RegisterScreen(FloatLayout):
                        pos_hint={"center_x":0.5,"center_y":0.53},
                        padding=dp(28), spacing=dp(16))
         with card.canvas.before:
-            Color(0.16,0.16,0.20,1)
+            GColor(0.16,0.16,0.20,1)
             self._c2_bg=Rectangle(pos=card.pos,size=card.size)
         card.bind(pos=lambda *a:setattr(self._c2_bg,'pos',card.pos),
                   size=lambda *a:setattr(self._c2_bg,'size',card.size))
@@ -1714,7 +1717,7 @@ class CustomAppBar(BoxLayout):
         self.vertical = vertical
         
         with self.canvas.before:
-            Color(0.12,0.12,0.14,1)
+            GColor(0.12,0.12,0.14,1)
             self.bg=Rectangle(pos=self.pos,size=self.size)
         self.bind(pos=self._upd_bg,size=self._upd_bg)
         self._title_label=Label(text=("" if HIDE_TOOLBAR_TITLE else title),
@@ -1812,7 +1815,7 @@ class ImageSettingsPopup(RotatedModalView):
         panel=BoxLayout(orientation='vertical',size_hint=(1, 1),
                         padding=dp(20),spacing=dp(14))
         with panel.canvas.before:
-            Color(0.16,0.16,0.2,0.97)
+            GColor(0.16,0.16,0.2,0.97)
             panel._bg=Rectangle(pos=panel.pos,size=panel.size)
         panel.bind(pos=lambda *a:setattr(panel._bg,'pos',panel.pos),
                    size=lambda *a:setattr(panel._bg,'size',panel.size))
@@ -1924,7 +1927,7 @@ class ImageSettingsPopup(RotatedModalView):
                       pos_hint={'center_x':0.5,'center_y':0.5},
                       padding=dp(16),spacing=dp(12))
         with box.canvas.before:
-            Color(0.3,0.15,0.15,0.95)
+            GColor(0.3,0.15,0.15,0.95)
             box._bg=Rectangle(pos=box.pos,size=box.size)
         box.bind(pos=lambda *a:setattr(box._bg,'pos',box.pos),
                  size=lambda *a:setattr(box._bg,'size',box.size))
@@ -2146,7 +2149,7 @@ class SettingsRootPopup(RotatedModalView):
                         padding=dp(24),spacing=dp(18))
         
         with panel.canvas.before:
-            Color(0.16,0.16,0.2,0.97); panel._bg=Rectangle(pos=panel.pos,size=panel.size)
+            GColor(0.16,0.16,0.2,0.97); panel._bg=Rectangle(pos=panel.pos,size=panel.size)
         panel.bind(pos=lambda *a:setattr(panel._bg,'pos',panel.pos),
                    size=lambda *a:setattr(panel._bg,'size',panel.size))
         panel.add_widget(Label(text="Einstellungen",
@@ -2203,7 +2206,7 @@ class LoadingSpinner(Widget):
             self.rotate = Rotate()
             self.rotate.angle = 0
             self.rotate.origin = (0, 0)
-            Color(0.3, 0.7, 1.0, 1.0)  # Blue color
+            GColor(0.3, 0.7, 1.0, 1.0)  # Blue color
             self.circle = Line(circle=(0, 0, dp(20)), width=dp(3), cap='round')
             self.circle.dash_offset = 10
             self.circle.dash_length = 15
@@ -2294,7 +2297,7 @@ class AufnahmePopup(RotatedModalView):
         )
         
         with self.panel.canvas.before:
-            Color(0.16, 0.16, 0.20, 0.95)
+            GColor(0.16, 0.16, 0.20, 0.95)
             self.panel._bg = Rectangle(pos=self.panel.pos, size=self.panel.size)
         self.panel.bind(pos=lambda *a: setattr(self.panel._bg, 'pos', self.panel.pos),
                        size=lambda *a: setattr(self.panel._bg, 'size', self.panel.size))
@@ -3525,7 +3528,7 @@ class GeneralSettingsPopup(RotatedModalView):
         panel=BoxLayout(orientation='vertical',size_hint=(None, None),size=panel_size,
                         padding=dp(22),spacing=dp(16))
         with panel.canvas.before:
-            Color(0.18,0.18,0.22,0.97); panel._bg=Rectangle(pos=panel.pos,size=panel.size)
+            GColor(0.18,0.18,0.22,0.97); panel._bg=Rectangle(pos=panel.pos,size=panel.size)
         panel.bind(pos=lambda *a:setattr(panel._bg,'pos',panel.pos),
                    size=lambda *a:setattr(panel._bg,'size',panel.size))
         panel.add_widget(Label(text="Allgemein",size_hint_y=None,height=dp(54),
@@ -3617,7 +3620,7 @@ class GlobalDurationPopup(RotatedModalView):
         panel=BoxLayout(orientation='vertical',size_hint=(None, None),size=panel_size,
                         padding=dp(22),spacing=dp(16))
         with panel.canvas.before:
-            Color(0.18,0.18,0.22,0.97); panel._bg=Rectangle(pos=panel.pos,size=panel.size)
+            GColor(0.18,0.18,0.22,0.97); panel._bg=Rectangle(pos=panel.pos,size=panel.size)
         panel.bind(pos=lambda *a:setattr(panel._bg,'pos',panel.pos),
                    size=lambda *a:setattr(panel._bg,'size',panel.size))
         panel.add_widget(Label(text="Bilddauer",size_hint_y=None,height=dp(54),
@@ -3691,9 +3694,9 @@ class ImageTile(BoxLayout):
         self._scheduled_lightbox=None  # For throttling lightbox opens
         
         with self.canvas.before:
-            Color(0.18,0.18,0.20,1)
+            GColor(0.18,0.18,0.20,1)
             self.bg_rect=Rectangle(pos=self.pos,size=self.size)
-            self.sel_color=Color(0,0.7,0,0)
+            self.sel_color=GColor(0,0.7,0,0)
             self.sel_line=Line(rectangle=(self.x,self.y,self.width,self.height),width=2)
         self.bind(pos=self._upd,size=self._upd)
         self.img=Image(source=path,size_hint=(1,None),height=THUMB_SIZE)
@@ -3811,13 +3814,13 @@ class GalleryEditor(FloatLayout):
         self.filter_selected_only=False
         self.has_changes=False
         with self.canvas.before:
-            Color(0,0,0,0.7)
+            GColor(0,0,0,0.7)
             self.bg=Rectangle(pos=self.pos,size=self.size)
         self.bind(pos=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)))
         root=BoxLayout(orientation="horizontal",size_hint=(0.95,0.92),
                        pos_hint={"center_x":0.5,"center_y":0.5},spacing=dp(18))
         with root.canvas.before:
-            Color(0.14,0.14,0.17,0.95)
+            GColor(0.14,0.14,0.17,0.95)
             self.inner_bg=Rectangle(pos=root.pos,size=root.size)
         root.bind(pos=lambda *a:setattr(self.inner_bg,'pos',root.pos),
                   size=lambda *a:setattr(self.inner_bg,'size',root.size))
@@ -4063,7 +4066,7 @@ class TimePickerPopup(RotatedModalView):
         panel=BoxLayout(orientation='vertical',size_hint=(1, 1),
                         spacing=dp(14),padding=dp(18))
         with panel.canvas.before:
-            Color(0.16,0.16,0.2,0.97); self.pbg=Rectangle(pos=panel.pos,size=panel.size)
+            GColor(0.16,0.16,0.2,0.97); self.pbg=Rectangle(pos=panel.pos,size=panel.size)
         panel.bind(pos=lambda *a:setattr(self.pbg,'pos',panel.pos),
                    size=lambda *a:setattr(self.pbg,'size',panel.size))
         panel.add_widget(Label(text=title,size_hint_y=None,height=dp(48),
@@ -4117,13 +4120,13 @@ class ScheduleEditor(FloatLayout):
         self.manager=slideshow.mode_manager
         self.mode_rows={}
         with self.canvas.before:
-            Color(0,0,0,0.65); self.bg=Rectangle(pos=self.pos,size=self.size)
+            GColor(0,0,0,0.65); self.bg=Rectangle(pos=self.pos,size=self.size)
         self.bind(pos=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)))
         panel=BoxLayout(orientation="vertical",size_hint=(0.7,0.6),
                         pos_hint={"center_x":0.5,"center_y":0.5},
                         spacing=dp(16),padding=dp(20))
         with panel.canvas.before:
-            Color(0.16,0.16,0.2,0.97); self.pbg=Rectangle(pos=panel.pos,size=panel.size)
+            GColor(0.16,0.16,0.2,0.97); self.pbg=Rectangle(pos=panel.pos,size=panel.size)
         panel.bind(pos=lambda *a:setattr(self.pbg,'pos',panel.pos),
                    size=lambda *a:setattr(self.pbg,'size',panel.size))
         panel.add_widget(Label(text="Zeitplan Tag / Nacht",
@@ -4223,7 +4226,7 @@ class FormatSelectionPopup(RotatedModalView):
         panel = BoxLayout(orientation='vertical', size_hint=(None, None), size=panel_size,
                          padding=dp(22), spacing=dp(16))
         with panel.canvas.before:
-            Color(0.18, 0.18, 0.22, 0.97)
+            GColor(0.18, 0.18, 0.22, 0.97)
             panel._bg = Rectangle(pos=panel.pos, size=panel.size)
         panel.bind(pos=lambda *a: setattr(panel._bg, 'pos', panel.pos),
                   size=lambda *a: setattr(panel._bg, 'size', panel.size))
@@ -4424,7 +4427,7 @@ class Slideshow(FloatLayout):
 
 
         with self.canvas.before:
-            Color(0.02,0.02,0.03,1)
+            GColor(0.02,0.02,0.03,1)
             self.bg=Rectangle(pos=self.pos,size=self.size)
         self.bind(pos=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)),
                   size=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)))
