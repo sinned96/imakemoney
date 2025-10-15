@@ -219,6 +219,22 @@ DEBUG_ROTATION_OVERLAY = os.getenv("DEBUG_ROTATION_OVERLAY", "1") == "1"
 # When enabled, forces LoginScreen to known size/pos during diagnostics
 DEBUG_FORCE_LOGIN_SIZE = os.getenv("DEBUG_FORCE_LOGIN_SIZE", "1") == "1"
 
+# Debug overlay configuration (env: DEBUG_TOP_OVERLAY)
+# When enabled, shows top-most diagnostic overlay with crosshair and banner
+DEBUG_TOP_OVERLAY = os.getenv("DEBUG_TOP_OVERLAY", "1") == "1"
+
+# Debug auto-screenshot configuration (env: DEBUG_AUTO_SCREENSHOT)
+# When enabled, takes a screenshot on first rendered frame
+DEBUG_AUTO_SCREENSHOT = os.getenv("DEBUG_AUTO_SCREENSHOT", "1") == "1"
+
+# Debug LoginScreen paint configuration (env: DEBUG_LOGIN_PAINT)
+# When enabled, adds colored rectangle and label to LoginScreen
+DEBUG_LOGIN_PAINT = os.getenv("DEBUG_LOGIN_PAINT", "1") == "1"
+
+# Debug force rotated modal configuration (env: DEBUG_FORCE_ROTATED_MODAL)
+# When enabled, forces modals/dialogs to use RotatedModalView
+DEBUG_FORCE_ROTATED_MODAL = os.getenv("DEBUG_FORCE_ROTATED_MODAL", "1") == "1"
+
 # ------------------ ORIENTATION PROVIDER ------------------
 class OrientationProvider:
     """Singleton that manages the current orientation state"""
@@ -282,6 +298,15 @@ class PortraitContainer(FloatLayout):
         self._diag_banner_rect = None
         self._diag_banner_label = None
         
+        # Top-most diagnostic overlay (DEBUG_TOP_OVERLAY)
+        self._top_overlay_crosshair_h = None
+        self._top_overlay_crosshair_v = None
+        self._top_overlay_banner_rect = None
+        self._top_overlay_banner_label = None
+        
+        # Auto-screenshot tracking
+        self._screenshot_taken = False
+        
         # Transform instruction cache (to avoid recreating every frame)
         self._push_matrix = None
         self._translate_pos = None
@@ -302,6 +327,10 @@ class PortraitContainer(FloatLayout):
         
         # Schedule frame counter for verbose diagnostics (first 8 frames)
         Clock.schedule_interval(self._count_frames, 0)
+        
+        # Schedule auto-screenshot on first rendered frame (DEBUG_AUTO_SCREENSHOT)
+        if DEBUG_AUTO_SCREENSHOT:
+            Clock.schedule_once(self._take_diagnostic_screenshot, 1.0)
     
     def _count_frames(self, dt):
         """Count frames for verbose diagnostics"""
@@ -311,6 +340,29 @@ class PortraitContainer(FloatLayout):
         else:
             # Stop counting after 8 frames
             Clock.unschedule(self._count_frames)
+    
+    def _take_diagnostic_screenshot(self, dt):
+        """Take a screenshot on first rendered frame (DEBUG_AUTO_SCREENSHOT)"""
+        if self._screenshot_taken:
+            return
+        
+        try:
+            from kivy.core.window import Window
+            import os
+            from pathlib import Path
+            
+            # Create screenshots directory if it doesn't exist
+            screenshot_dir = Path("./screenshots")
+            screenshot_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Take screenshot
+            screenshot_path = screenshot_dir / "frame1.png"
+            Window.screenshot(name=str(screenshot_path))
+            
+            self._screenshot_taken = True
+            debug_logger.info(f"[DEBUG_AUTO_SCREENSHOT] Screenshot saved to: {screenshot_path.absolute()}")
+        except Exception as e:
+            debug_logger.error(f"[DEBUG_AUTO_SCREENSHOT] Failed to take screenshot: {e}")
     
     def _log_child_diagnostics(self, context):
         """Log verbose child diagnostics"""
@@ -464,6 +516,30 @@ class PortraitContainer(FloatLayout):
                         # Note: We'll handle this via a Label widget added to the container
                     
                     PopMatrix()
+                
+                # Top-most diagnostic overlay (DEBUG_TOP_OVERLAY) - always on top
+                if DEBUG_TOP_OVERLAY:
+                    # Draw using the same matrix stack for transformed space
+                    PushMatrix()
+                    matrix_inst_top = MatrixInstruction()
+                    matrix_inst_top.matrix = mat
+                    
+                    # White semi-transparent center crosshair
+                    GColor(1, 1, 1, 0.5)  # White with 50% opacity
+                    vcx, vcy = self.virtual_w / 2, self.virtual_h / 2
+                    crosshair_size = 100
+                    self._top_overlay_crosshair_h = Line(points=[vcx - crosshair_size, vcy, vcx + crosshair_size, vcy], width=3)
+                    self._top_overlay_crosshair_v = Line(points=[vcx, vcy - crosshair_size, vcx, vcy + crosshair_size], width=3)
+                    
+                    # Big on-screen banner text 'LOGIN DIAG' centered
+                    banner_w = 400
+                    banner_h = 100
+                    banner_x = (self.virtual_w - banner_w) / 2
+                    banner_y = (self.virtual_h - banner_h) / 2 + 150  # Above center
+                    GColor(1, 1, 1, 0.4)  # White with 40% opacity
+                    self._top_overlay_banner_rect = Rectangle(pos=(banner_x, banner_y), size=(banner_w, banner_h))
+                    
+                    PopMatrix()
         else:
             # Update existing instructions (no recreation needed)
             self._bg_rect.pos = (0, 0)
@@ -510,6 +586,27 @@ class PortraitContainer(FloatLayout):
                 )
                 # Add banner as a child of this container (will be in transformed space)
                 Clock.schedule_once(lambda dt: super(PortraitContainer, self).add_widget(self._diag_banner_label), 0.1)
+            
+            # Add top-most diagnostic overlay banner label (DEBUG_TOP_OVERLAY)
+            if DEBUG_TOP_OVERLAY and not self._top_overlay_banner_label:
+                banner_w = 400
+                banner_h = 100
+                banner_x = (self.virtual_w - banner_w) / 2
+                banner_y = (self.virtual_h - banner_h) / 2 + 150  # Above center
+                self._top_overlay_banner_label = Label(
+                    text="LOGIN DIAG",
+                    size_hint=(None, None),
+                    size=(banner_w, banner_h),
+                    pos=(banner_x, banner_y),
+                    color=(1, 1, 1, 1),
+                    font_size=48,
+                    bold=True,
+                    halign='center',
+                    valign='middle'
+                )
+                self._top_overlay_banner_label.text_size = (banner_w, banner_h)
+                # Add banner as a child of this container (will be in transformed space)
+                Clock.schedule_once(lambda dt: super(PortraitContainer, self).add_widget(self._top_overlay_banner_label), 0.2)
         elif not widget.size_hint or widget.size_hint == (None, None):
             # Set widget size to virtual portrait dimensions if it doesn't have size_hint
             widget.size = (self.virtual_w, self.virtual_h)
@@ -1265,7 +1362,16 @@ class RotatedModalView(ModalView):
         result = super().open(*args, **kwargs)
         # Force transform update after modal is opened and sized
         self._update_modal_transform()
-        debug_logger.info("Modal opened with portrait rotation transform applied")
+        
+        # Log modal opening details (always log for debugging)
+        modal_class = self.__class__.__name__
+        modal_size = self.size if hasattr(self, 'size') else (0, 0)
+        is_rotated = True  # RotatedModalView always applies rotation in portrait mode
+        orientation = OrientationProvider().aspect_ratio
+        debug_logger.info(
+            f"[Modal Open] class={modal_class}, size={modal_size[0]:.0f}x{modal_size[1]:.0f}, "
+            f"is_rotated_modal=True, orientation={orientation}"
+        )
         return result
 
 # ------------------ KONFIG ------------------
@@ -1620,6 +1726,11 @@ class LoginScreen(FloatLayout):
         self.keyboard_widget=None
         self.last_input=None
         with self.canvas.before:
+            # Add paint-proofing colored rectangle (DEBUG_LOGIN_PAINT)
+            if DEBUG_LOGIN_PAINT:
+                GColor(0, 0.5, 1, 0.3)  # Blue with 30% opacity
+                self._debug_paint_rect = Rectangle(pos=self.pos, size=self.size)
+            
             GColor(0.07,0.07,0.09,1)
             self.bg=Rectangle(pos=self.pos,size=self.size)
         self.bind(pos=self._upd_bg,size=self._upd_bg)
@@ -1660,6 +1771,24 @@ class LoginScreen(FloatLayout):
         b_reg.bind(on_release=lambda *_: self.on_register())
         row.add_widget(b_login); row.add_widget(b_reg)
         card.add_widget(row)
+        
+        # Add paint-proofing label at top-left (DEBUG_LOGIN_PAINT)
+        if DEBUG_LOGIN_PAINT:
+            self._debug_paint_label = Label(
+                text="HELLO LOGIN",
+                size_hint=(None, None),
+                size=(300, 60),
+                pos=(10, self.height - 70),
+                color=(1, 1, 0, 1),  # Yellow
+                font_size=32,
+                bold=True,
+                halign='left',
+                valign='top'
+            )
+            self._debug_paint_label.text_size = (300, 60)
+            self.add_widget(self._debug_paint_label)
+            # Bind to update position when screen is resized
+            self.bind(size=lambda *args: setattr(self._debug_paint_label, 'pos', (10, self.height - 70)))
     def _on_focus(self, textinput, focused):
         if focused:
             self.last_input=textinput
@@ -1679,6 +1808,10 @@ class LoginScreen(FloatLayout):
             self.add_widget(self.keyboard_widget)
     def _upd_bg(self,*a):
         self.bg.pos=self.pos; self.bg.size=self.size
+        # Update debug paint rect if it exists (DEBUG_LOGIN_PAINT)
+        if DEBUG_LOGIN_PAINT and hasattr(self, '_debug_paint_rect'):
+            self._debug_paint_rect.pos = self.pos
+            self._debug_paint_rect.size = self.size
     def try_login(self,*_):
         username=get_text(self.user).strip()
         password=get_text(self.pw)
