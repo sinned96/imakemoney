@@ -196,10 +196,19 @@ PORTRAIT_ROTATION_DEGREES = -90  # -90 = counterclockwise (left rotation), +90 =
 PORTRAIT_SCALE_FIT = True  # Scale content to fit window after rotation (enabled to fix clipping on 1920x1080)
 DEBUG_SHOW_BOUNDS = False  # Draw debug rectangle around transformed content bounds
 
-# FBO-based portrait rendering configuration
-PORTRAIT_VIEW_MODE = "fbo"  # "fbo" = FBO-based rendering with letterboxing, "raw" = direct canvas transform
+# Portrait pipeline configuration (env: PORTRAIT_PIPELINE)
+# "matrix" = Matrix rotation at container level (default, reliable)
+# "fbo" = FBO-based rendering with letterboxing (legacy, for testing)
+# "off" = Disable portrait rotation entirely
+PORTRAIT_PIPELINE = os.getenv("PORTRAIT_PIPELINE", "matrix").lower()
+
+# Legacy FBO-based portrait rendering configuration (only used when PORTRAIT_PIPELINE=fbo)
+PORTRAIT_VIEW_MODE = "fbo" if PORTRAIT_PIPELINE == "fbo" else "raw"  # "fbo" = FBO-based rendering with letterboxing, "raw" = direct canvas transform
 PORTRAIT_VIRTUAL_SIZE = (1080, 1920)  # Virtual portrait size for FBO rendering
-DEBUG_ROTATION_OVERLAY = True  # Show debug overlay (neon border, crosshair, label) in portrait FBO mode
+
+# Debug overlay configuration (env: DEBUG_ROTATION_OVERLAY)
+# When enabled, shows neon border, crosshair, and debug info on portrait content
+DEBUG_ROTATION_OVERLAY = os.getenv("DEBUG_ROTATION_OVERLAY", "1") == "1"
 
 # ------------------ ORIENTATION PROVIDER ------------------
 class OrientationProvider:
@@ -225,6 +234,177 @@ class OrientationProvider:
     def is_portrait(self):
         """Check if we're in portrait mode"""
         return self.aspect_ratio == "9:16"
+
+# ------------------ PORTRAIT CONTAINER (MATRIX PIPELINE) ------------------
+class PortraitContainer(FloatLayout):
+    """
+    Matrix-based portrait rotation container (PORTRAIT_PIPELINE=matrix).
+    
+    Applies rotation and scale using canvas matrix transformations:
+    - In canvas.before: PushMatrix → Translate(x,y) → Translate(blit_w/2, blit_h/2) → 
+      Rotate(-90) → Scale(s, s, 1) → Translate(-virtual_w/2, -virtual_h/2)
+    - In canvas.after: PopMatrix
+    - Children are added under this container and rendered within the transformed space
+    - Touch coordinates are automatically handled by Kivy's event system (no manual transform)
+    
+    This approach avoids FBO texture pitfalls on Raspberry Pi by directly transforming
+    the widget tree canvas, which is more reliable with hardware GL drivers.
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.orientation_provider = OrientationProvider()
+        self._transform_matrix = None
+        self._inverse_matrix = None
+        self._frame_count = 0
+        
+        # Virtual portrait size (same as FBO virtual size for consistency)
+        self.virtual_w = 1080
+        self.virtual_h = 1920
+        
+        # Bind to Window resize events
+        from kivy.core.window import Window
+        Window.bind(size=self._on_window_resize)
+        self.bind(size=self._update_transform, pos=self._update_transform)
+        
+        # Initial transform setup
+        Clock.schedule_once(lambda dt: self._update_transform(), 0)
+    
+    def _on_window_resize(self, instance, size):
+        """Handle Window resize events with logging"""
+        w, h = size
+        debug_logger.info(f"[Portrait matrix] Window resize: {w}x{h}")
+        self._update_transform()
+    
+    def _update_transform(self, *args):
+        """Apply matrix rotation and scale transform for portrait mode"""
+        is_portrait = self.orientation_provider.is_portrait()
+        
+        # Clear existing canvas transforms
+        self.canvas.before.clear()
+        self.canvas.after.clear()
+        
+        # Only apply if portrait mode is active and pipeline is matrix
+        if not is_portrait or PORTRAIT_PIPELINE != "matrix":
+            self._transform_matrix = None
+            self._inverse_matrix = None
+            
+            # Draw black background on Window canvas (not widget canvas)
+            from kivy.core.window import Window
+            if not hasattr(Window.canvas, '_portrait_bg_instruction'):
+                with Window.canvas.before:
+                    Color(0, 0, 0, 1)
+                    Window.canvas._portrait_bg_rect = Rectangle(pos=(0, 0), size=Window.size)
+                    Window.canvas._portrait_bg_instruction = True
+            return
+        
+        # Get window dimensions
+        from kivy.core.window import Window
+        w, h = Window.size
+        
+        if w <= 0 or h <= 0:
+            debug_logger.warning(f"Invalid window size: {w}x{h}, skipping transform")
+            return
+        
+        # Draw black background for letterboxing on Window canvas
+        if not hasattr(Window.canvas, '_portrait_bg_instruction'):
+            with Window.canvas.before:
+                Color(0, 0, 0, 1)
+                Window.canvas._portrait_bg_rect = Rectangle(pos=(0, 0), size=Window.size)
+                Window.canvas._portrait_bg_instruction = True
+        else:
+            # Update existing background rectangle
+            Window.canvas._portrait_bg_rect.pos = (0, 0)
+            Window.canvas._portrait_bg_rect.size = Window.size
+        
+        # After -90° rotation: target frame dimensions are (virtual_h, virtual_w) = (1920, 1080)
+        rot_w = self.virtual_h  # 1920
+        rot_h = self.virtual_w  # 1080
+        
+        # Compute scale: s = min(w / rot_w, h / rot_h)
+        scale_factor = min(w / rot_w, h / rot_h)
+        scale_factor = max(scale_factor, 1e-3)  # Safety clamp
+        
+        # Compute blit size after scaling
+        blit_w = rot_w * scale_factor
+        blit_h = rot_h * scale_factor
+        
+        # Position for centering (letterboxing)
+        pos_x = (w - blit_w) / 2
+        pos_y = (h - blit_h) / 2
+        
+        # Build transformation matrix:
+        # 1. PushMatrix
+        # 2. Translate(pos_x, pos_y) - position the viewport
+        # 3. Translate(blit_w/2, blit_h/2) - move to center of blit area
+        # 4. Scale(s, s, 1)
+        # 5. Rotate(-90°)
+        # 6. Translate(-virtual_w/2, -virtual_h/2) - center virtual content
+        from kivy.graphics.transformation import Matrix
+        from kivy.graphics import PushMatrix, PopMatrix, MatrixInstruction, Color, Line
+        
+        mat = Matrix()
+        mat.translate(pos_x, pos_y, 0)
+        mat.translate(blit_w / 2, blit_h / 2, 0)
+        mat.scale(scale_factor, scale_factor, 1)
+        mat.rotate(PORTRAIT_ROTATION_DEGREES * 3.14159265359 / 180.0, 0, 0, 1)
+        mat.translate(-self.virtual_w / 2, -self.virtual_h / 2, 0)
+        
+        # Store matrices (inverse is available for optional manual touch handling)
+        self._transform_matrix = mat
+        self._inverse_matrix = mat.inverse()
+        
+        # Apply to canvas
+        with self.canvas.before:
+            PushMatrix()
+            matrix_inst = MatrixInstruction()
+            matrix_inst.matrix = mat
+        
+        with self.canvas.after:
+            PopMatrix()
+            
+            # Optional debug overlay
+            if DEBUG_ROTATION_OVERLAY:
+                # Draw debug elements using the same matrix stack
+                PushMatrix()
+                matrix_inst2 = MatrixInstruction()
+                matrix_inst2.matrix = mat
+                
+                # Neon border around virtual content area
+                Color(0, 1, 1, 0.8)  # Cyan
+                Line(rectangle=(5, 5, self.virtual_w - 10, self.virtual_h - 10), width=3)
+                
+                # Crosshair at center of virtual content
+                Color(1, 0, 1, 0.8)  # Magenta
+                vcx, vcy = self.virtual_w / 2, self.virtual_h / 2
+                Line(points=[vcx - 50, vcy, vcx + 50, vcy], width=2)
+                Line(points=[vcx, vcy - 50, vcx, vcy + 50], width=2)
+                
+                PopMatrix()
+        
+        # Log transform details once per resize event
+        debug_logger.info(f"[Portrait matrix] event={w:.0f}x{h:.0f} s={scale_factor:.4f} blit={blit_w:.0f}x{blit_h:.0f} pos=({pos_x:.0f},{pos_y:.0f}) rot={PORTRAIT_ROTATION_DEGREES}")
+        
+        # Log children count for first 3 frames
+        if self._frame_count < 3:
+            self._frame_count += 1
+            children_info = [type(c).__name__ for c in self.children]
+            debug_logger.info(f"[Portrait matrix] Frame {self._frame_count}: {len(self.children)} children: {children_info}")
+    
+    def add_widget(self, widget, *args, **kwargs):
+        """Override to set child size to virtual dimensions"""
+        # Set widget size to virtual portrait dimensions if it doesn't have size_hint
+        if not widget.size_hint or widget.size_hint == (None, None):
+            widget.size = (self.virtual_w, self.virtual_h)
+            widget.pos = (0, 0)
+        
+        super().add_widget(widget, *args, **kwargs)
+        
+        # Log what's being added (for first 3 frames)
+        if self._frame_count < 3:
+            widget_name = type(widget).__name__
+            # Try to get screen title if it's a screen
+            title = getattr(widget, 'title', getattr(widget, '__class__.__name__', 'Unknown'))
+            debug_logger.info(f"[Portrait matrix] Added widget: {widget_name} (title/class: {title})")
 
 # ------------------ ROTATING SURFACE ------------------
 class RotatingSurface(FloatLayout):
@@ -729,7 +909,7 @@ class RotatingRootFbo(FloatLayout):
 
 # ------------------ ROTATING ROOT ------------------
 class RotatingRoot(FloatLayout):
-    """Root widget that wraps content in RotatingSurface or RotatingRootFbo for portrait mode"""
+    """Root widget that wraps content in appropriate container for portrait mode"""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.orientation_provider = OrientationProvider()
@@ -737,7 +917,7 @@ class RotatingRoot(FloatLayout):
         self._content_widget = None
     
     def add_widget(self, widget, *args, **kwargs):
-        """Override to wrap content in RotatingSurface or RotatingRootFbo when in portrait mode"""
+        """Override to wrap content in appropriate container when in portrait mode"""
         is_portrait = self.orientation_provider.is_portrait()
         
         # If we're switching orientation, clean up old structure
@@ -746,24 +926,44 @@ class RotatingRoot(FloatLayout):
             self._rotating_surface = None
             self._content_widget = None
         
+        # Check if portrait rotation is disabled via PORTRAIT_PIPELINE=off
+        if PORTRAIT_PIPELINE == "off":
+            # Portrait rotation disabled: add content directly (landscape behavior)
+            self._content_widget = widget
+            super().add_widget(widget, *args, **kwargs)
+            debug_logger.info("[Portrait] Pipeline disabled (PORTRAIT_PIPELINE=off), using landscape mode")
+            return
+        
         if is_portrait:
-            # Portrait mode: choose rendering method based on PORTRAIT_VIEW_MODE
-            if PORTRAIT_VIEW_MODE == "fbo":
-                # FBO-based rendering with letterboxing
+            # Portrait mode: choose rendering method based on PORTRAIT_PIPELINE
+            if PORTRAIT_PIPELINE == "matrix":
+                # Matrix-based rotation (new default)
                 if not self._rotating_surface:
-                    self._rotating_surface = RotatingRootFbo()
+                    self._rotating_surface = PortraitContainer()
                     super().add_widget(self._rotating_surface, *args, **kwargs)
-                    debug_logger.info("Using portrait FBO mode for rendering")
+                    debug_logger.info("[Portrait] Using matrix pipeline for rendering")
                 self._content_widget = widget
                 self._rotating_surface.add_widget(widget)
                 # Log what widget is being shown
                 widget_name = widget.__class__.__name__
-                debug_logger.info(f"Showing {widget_name} in portrait FBO")
+                debug_logger.info(f"[Portrait matrix] Showing {widget_name}")
+            elif PORTRAIT_PIPELINE == "fbo":
+                # FBO-based rendering with letterboxing (legacy)
+                if not self._rotating_surface:
+                    self._rotating_surface = RotatingRootFbo()
+                    super().add_widget(self._rotating_surface, *args, **kwargs)
+                    debug_logger.info("[Portrait] Using FBO pipeline for rendering (legacy)")
+                self._content_widget = widget
+                self._rotating_surface.add_widget(widget)
+                # Log what widget is being shown
+                widget_name = widget.__class__.__name__
+                debug_logger.info(f"[Portrait FBO] Showing {widget_name}")
             else:
-                # Raw canvas transform (original method)
+                # Raw canvas transform (fallback for unknown pipeline values)
                 if not self._rotating_surface:
                     self._rotating_surface = RotatingSurface()
                     super().add_widget(self._rotating_surface, *args, **kwargs)
+                    debug_logger.info(f"[Portrait] Using raw canvas transform (pipeline={PORTRAIT_PIPELINE})")
                 self._content_widget = widget
                 self._rotating_surface.add_widget(widget)
         else:
@@ -5076,6 +5276,14 @@ else:
             return True
 
 if __name__ == "__main__":
+    # Log portrait pipeline configuration at startup
+    aspect = detect_aspect_from_configs()
+    if aspect == "9:16":
+        overlay_status = "enabled" if DEBUG_ROTATION_OVERLAY else "disabled"
+        debug_logger.info(f"[Startup] Portrait mode active: pipeline={PORTRAIT_PIPELINE}, overlay={overlay_status}")
+    else:
+        debug_logger.info(f"[Startup] Landscape mode active (aspect={aspect})")
+    
     # Start upload server in background thread
     try:
         from upload_server import start_server_thread
