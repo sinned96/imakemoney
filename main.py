@@ -215,6 +215,10 @@ PORTRAIT_VIRTUAL_SIZE = (1080, 1920)  # Virtual portrait size for FBO rendering
 # When enabled, shows neon border, crosshair, and debug info on portrait content
 DEBUG_ROTATION_OVERLAY = os.getenv("DEBUG_ROTATION_OVERLAY", "1") == "1"
 
+# Debug force-size configuration (env: DEBUG_FORCE_LOGIN_SIZE)
+# When enabled, forces LoginScreen to known size/pos during diagnostics
+DEBUG_FORCE_LOGIN_SIZE = os.getenv("DEBUG_FORCE_LOGIN_SIZE", "1") == "1"
+
 # ------------------ ORIENTATION PROVIDER ------------------
 class OrientationProvider:
     """Singleton that manages the current orientation state"""
@@ -261,6 +265,7 @@ class PortraitContainer(FloatLayout):
         self._transform_matrix = None
         self._inverse_matrix = None
         self._frame_count = 0
+        self._app_loop_frames = 0  # Track frames after app loop starts
         
         # Virtual portrait size (same as FBO virtual size for consistency)
         self.virtual_w = 1080
@@ -269,6 +274,13 @@ class PortraitContainer(FloatLayout):
         # Background instructions (stored on self, not on Canvas)
         self._bg_color = None
         self._bg_rect = None
+        
+        # Diagnostic overlay instructions (stored on self, not on Canvas)
+        self._diag_magenta_rect = None
+        self._diag_green_border = None
+        self._diag_banner_color = None
+        self._diag_banner_rect = None
+        self._diag_banner_label = None
         
         # Transform instruction cache (to avoid recreating every frame)
         self._push_matrix = None
@@ -287,12 +299,57 @@ class PortraitContainer(FloatLayout):
         
         # Initial transform setup
         Clock.schedule_once(lambda dt: self._update_transform(), 0)
+        
+        # Schedule frame counter for verbose diagnostics (first 8 frames)
+        Clock.schedule_interval(self._count_frames, 0)
+    
+    def _count_frames(self, dt):
+        """Count frames for verbose diagnostics"""
+        if self._app_loop_frames < 8:
+            self._app_loop_frames += 1
+            self._log_child_diagnostics(f"Frame {self._app_loop_frames}")
+        else:
+            # Stop counting after 8 frames
+            Clock.unschedule(self._count_frames)
+    
+    def _log_child_diagnostics(self, context):
+        """Log verbose child diagnostics"""
+        if not self.orientation_provider.is_portrait() or PORTRAIT_PIPELINE != "matrix":
+            return
+        
+        children_names = [type(c).__name__ for c in self.children]
+        children_geom = []
+        has_zero_size = False
+        
+        for child in self.children:
+            w, h = child.size
+            x, y = child.pos
+            children_geom.append(f"({w:.0f}x{h:.0f} @ {x:.0f},{y:.0f})")
+            
+            # Check for zero-size children
+            if w == 0 or h == 0:
+                has_zero_size = True
+                child_name = type(child).__name__
+                size_hint = getattr(child, 'size_hint', None)
+                size_hint_min = getattr(child, 'size_hint_min', None)
+                size_hint_max = getattr(child, 'size_hint_max', None)
+                debug_logger.warning(
+                    f"[Portrait matrix] WARNING: {child_name} has size {w}x{h} "
+                    f"(size_hint={size_hint}, size_hint_min={size_hint_min}, size_hint_max={size_hint_max})"
+                )
+        
+        debug_logger.info(
+            f"[Portrait matrix] {context}: {len(self.children)} children: {children_names} "
+            f"sizes={children_geom}"
+        )
     
     def _on_window_resize(self, instance, size):
         """Handle Window resize events with logging"""
         w, h = size
         debug_logger.info(f"[Portrait matrix] Window resize: {w}x{h}")
         self._update_transform()
+        # Log child diagnostics on resize
+        self._log_child_diagnostics(f"On resize to {w}x{h}")
     
     def _update_transform(self, *args):
         """Apply matrix rotation and scale transform for portrait mode"""
@@ -371,26 +428,40 @@ class PortraitContainer(FloatLayout):
                 self._push_matrix = PushMatrix()
                 self._matrix_inst = MatrixInstruction()
                 self._matrix_inst.matrix = mat
+                
+                # Diagnostic overlay: test pattern in transformed space
+                if DEBUG_ROTATION_OVERLAY:
+                    # Semi-transparent magenta test fill
+                    GColor(1, 0, 1, 0.15)  # Magenta with 15% opacity
+                    self._diag_magenta_rect = Rectangle(pos=(0, 0), size=(self.virtual_w, self.virtual_h))
+                    
+                    # Green border around virtual content
+                    GColor(0, 1, 0, 0.8)  # Green
+                    self._diag_green_border = Line(rectangle=(0, 0, self.virtual_w, self.virtual_h), width=4)
             
             with self.canvas.after:
                 self._pop_matrix = PopMatrix()
                 
-                # Optional debug overlay
+                # Optional debug overlay (crosshair and banner)
                 if DEBUG_ROTATION_OVERLAY:
                     # Draw debug elements using the same matrix stack
                     PushMatrix()
                     matrix_inst2 = MatrixInstruction()
                     matrix_inst2.matrix = mat
                     
-                    # Neon border around virtual content area
-                    GColor(0, 1, 1, 0.8)  # Cyan
-                    Line(rectangle=(5, 5, self.virtual_w - 10, self.virtual_h - 10), width=3)
-                    
                     # Crosshair at center of virtual content
-                    GColor(1, 0, 1, 0.8)  # Magenta
+                    GColor(1, 1, 0, 0.8)  # Yellow
                     vcx, vcy = self.virtual_w / 2, self.virtual_h / 2
                     Line(points=[vcx - 50, vcy, vcx + 50, vcy], width=2)
                     Line(points=[vcx, vcy - 50, vcx, vcy + 50], width=2)
+                    
+                    # Diagnostic banner if force-size is enabled
+                    if DEBUG_FORCE_LOGIN_SIZE:
+                        GColor(1, 0.5, 0, 0.4)  # Orange with 40% opacity
+                        self._diag_banner_rect = Rectangle(pos=(10, self.virtual_h - 60), size=(360, 50))
+                        
+                        # Add text label for banner (will be created as widget)
+                        # Note: We'll handle this via a Label widget added to the container
                     
                     PopMatrix()
         else:
@@ -398,31 +469,58 @@ class PortraitContainer(FloatLayout):
             self._bg_rect.pos = (0, 0)
             self._bg_rect.size = (w, h)
             self._matrix_inst.matrix = mat
+            
+            # Update diagnostic overlay elements if they exist
+            if DEBUG_ROTATION_OVERLAY:
+                # Update second matrix instruction in canvas.after
+                # Find and update the second MatrixInstruction
+                for instr in self.canvas.after.children:
+                    if isinstance(instr, MatrixInstruction):
+                        instr.matrix = mat
+                        break
         
         # Log transform details once per resize event
         debug_logger.info(f"[Portrait matrix] event={w:.0f}x{h:.0f} s={scale_factor:.4f} blit={blit_w:.0f}x{blit_h:.0f} pos=({pos_x:.0f},{pos_y:.0f}) rot={PORTRAIT_ROTATION_DEGREES}")
-        
-        # Log children count for first 3 frames
-        if self._frame_count < 3:
-            self._frame_count += 1
-            children_info = [type(c).__name__ for c in self.children]
-            debug_logger.info(f"[Portrait matrix] Frame {self._frame_count}: {len(self.children)} children: {children_info}")
     
     def add_widget(self, widget, *args, **kwargs):
         """Override to set child size to virtual dimensions"""
-        # Set widget size to virtual portrait dimensions if it doesn't have size_hint
-        if not widget.size_hint or widget.size_hint == (None, None):
+        widget_name = type(widget).__name__
+        
+        # Check if this is LoginScreen and force-size is enabled
+        if DEBUG_FORCE_LOGIN_SIZE and PORTRAIT_PIPELINE == "matrix" and widget_name == "LoginScreen":
+            # Force size and position for diagnostics
+            widget.size_hint = (None, None)
+            widget.size = (self.virtual_w, self.virtual_h)
+            widget.pos = (0, 0)
+            debug_logger.info(
+                f"[Portrait matrix] Forced size for {widget_name}: "
+                f"size=({self.virtual_w},{self.virtual_h}) pos=(0,0)"
+            )
+            
+            # Add diagnostic banner label
+            if DEBUG_ROTATION_OVERLAY and not self._diag_banner_label:
+                self._diag_banner_label = Label(
+                    text="DIAG: FORCED LOGIN SIZE",
+                    size_hint=(None, None),
+                    size=(360, 50),
+                    pos=(10, self.virtual_h - 60),
+                    color=(1, 1, 1, 1),
+                    font_size=18,
+                    bold=True
+                )
+                # Add banner as a child of this container (will be in transformed space)
+                Clock.schedule_once(lambda dt: super(PortraitContainer, self).add_widget(self._diag_banner_label), 0.1)
+        elif not widget.size_hint or widget.size_hint == (None, None):
+            # Set widget size to virtual portrait dimensions if it doesn't have size_hint
             widget.size = (self.virtual_w, self.virtual_h)
             widget.pos = (0, 0)
         
         super().add_widget(widget, *args, **kwargs)
         
-        # Log what's being added (for first 3 frames)
-        if self._frame_count < 3:
-            widget_name = type(widget).__name__
-            # Try to get screen title if it's a screen
-            title = getattr(widget, 'title', getattr(widget, '__class__.__name__', 'Unknown'))
-            debug_logger.info(f"[Portrait matrix] Added widget: {widget_name} (title/class: {title})")
+        # Log what's being added
+        # Try to get screen title if it's a screen
+        title = getattr(widget, 'title', getattr(widget, '__class__.__name__', 'Unknown'))
+        debug_logger.info(f"[Portrait matrix] Added widget: {widget_name} (title/class: {title})")
     
     def on_touch_down(self, touch):
         """Transform touch coordinates using Kivy's built-in push/pop mechanism"""
