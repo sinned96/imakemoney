@@ -195,17 +195,46 @@ from kivy.uix.modalview import ModalView
 # Set neutral clear color to help diagnose out-of-bounds content
 Window.clearcolor = (0.15, 0.15, 0.15, 1)  # Dark gray
 
+# ------------------ GL VENDOR DETECTION ------------------
+def detect_gl_vendor():
+    """Detect GL vendor and renderer for hardware-specific fallbacks"""
+    try:
+        from kivy.graphics.opengl import glGetString, GL_VENDOR, GL_RENDERER
+        vendor = glGetString(GL_VENDOR)
+        renderer = glGetString(GL_RENDERER)
+        if vendor:
+            vendor = vendor.decode('utf-8') if isinstance(vendor, bytes) else str(vendor)
+        if renderer:
+            renderer = renderer.decode('utf-8') if isinstance(renderer, bytes) else str(renderer)
+        debug_logger.info(f"[GL Detection] Vendor: {vendor}, Renderer: {renderer}")
+        return vendor, renderer
+    except Exception as e:
+        debug_logger.warning(f"[GL Detection] Failed to detect GL vendor: {e}")
+        return None, None
+
 # ------------------ PORTRAIT ROTATION CONFIG ------------------
 # Global rotation configuration for portrait mode (9:16)
-PORTRAIT_ROTATION_DEGREES = -90  # -90 = counterclockwise (left rotation), +90 = clockwise (right rotation)
-PORTRAIT_SCALE_FIT = True  # Scale content to fit window after rotation (enabled to fix clipping on 1920x1080)
+# Honor PORTRAIT_ROTATION_DEGREES env variable, default to -90
+PORTRAIT_ROTATION_DEGREES = int(os.getenv("PORTRAIT_ROTATION_DEGREES", "-90"))  # -90 = counterclockwise (left rotation), +90 = clockwise (right rotation)
+PORTRAIT_SCALE_FIT = os.getenv("PORTRAIT_SCALE_FIT", "1") == "1"  # Scale content to fit window after rotation (enabled to fix clipping on 1920x1080)
 DEBUG_SHOW_BOUNDS = False  # Draw debug rectangle around transformed content bounds
 
 # Portrait pipeline configuration (env: PORTRAIT_PIPELINE)
 # "matrix" = Matrix rotation at container level (default, reliable)
 # "fbo" = FBO-based rendering with letterboxing (legacy, for testing)
 # "off" = Disable portrait rotation entirely
-PORTRAIT_PIPELINE = os.getenv("PORTRAIT_PIPELINE", "matrix").lower()
+# Auto-detect: On Broadcom V3D (RPi), default to FBO unless forced to matrix
+_default_pipeline = "matrix"  # Will be updated after GL detection
+PORTRAIT_PIPELINE = os.getenv("PORTRAIT_PIPELINE", _default_pipeline).lower()
+
+# Force overrides
+PORTRAIT_FORCE_FBO = os.getenv("PORTRAIT_FORCE_FBO", "0") == "1"
+PORTRAIT_FORCE_MATRIX = os.getenv("PORTRAIT_FORCE_MATRIX", "0") == "1"
+
+# Matrix implementation mode (env: PORTRAIT_MATRIX_IMPL)
+# "mi" = MatrixInstruction (default, single matrix)
+# "rt" = Rotate/Translate/Scale (alternative, explicit instructions)
+PORTRAIT_MATRIX_IMPL = os.getenv("PORTRAIT_MATRIX_IMPL", "mi").lower()
 
 # Legacy FBO-based portrait rendering configuration (only used when PORTRAIT_PIPELINE=fbo)
 PORTRAIT_VIEW_MODE = "fbo" if PORTRAIT_PIPELINE == "fbo" else "raw"  # "fbo" = FBO-based rendering with letterboxing, "raw" = direct canvas transform
@@ -234,6 +263,107 @@ DEBUG_LOGIN_PAINT = os.getenv("DEBUG_LOGIN_PAINT", "1") == "1"
 # Debug force rotated modal configuration (env: DEBUG_FORCE_ROTATED_MODAL)
 # When enabled, forces modals/dialogs to use RotatedModalView
 DEBUG_FORCE_ROTATED_MODAL = os.getenv("DEBUG_FORCE_ROTATED_MODAL", "1") == "1"
+
+# Debug Window overlay configuration (env: DEBUG_WINDOW_OVERLAY)
+# When enabled, shows a bright overlay (semi-transparent red + banner text) directly on Window.canvas.after
+# This overlay appears above everything regardless of pipeline to verify draw state
+DEBUG_WINDOW_OVERLAY = os.getenv("DEBUG_WINDOW_OVERLAY", "0") == "1"
+
+# ------------------ WINDOW DEBUG OVERLAY ------------------
+class WindowDebugOverlay:
+    """
+    Window-level debug overlay that appears above everything.
+    
+    Draws directly on Window.canvas.after to verify that GL draw state is working.
+    This helps diagnose if black frames are due to color tinting or other GL state issues.
+    """
+    def __init__(self):
+        self._overlay_instructions = []
+        self._label_widget = None
+        self._enabled = False
+        
+    def enable(self):
+        """Enable the debug overlay on Window.canvas.after"""
+        if self._enabled:
+            return
+        
+        from kivy.core.window import Window
+        
+        # Draw directly on Window.canvas.after
+        with Window.canvas.after:
+            # Semi-transparent red overlay
+            GColor(1, 0, 0, 0.3)  # Red with 30% opacity
+            overlay_rect = Rectangle(pos=(0, 0), size=Window.size)
+            self._overlay_instructions.append(overlay_rect)
+            
+            # Banner background
+            banner_w = 600
+            banner_h = 80
+            banner_x = (Window.width - banner_w) / 2
+            banner_y = (Window.height - banner_h) / 2
+            GColor(1, 1, 1, 0.8)  # White with 80% opacity
+            banner_rect = Rectangle(pos=(banner_x, banner_y), size=(banner_w, banner_h))
+            self._overlay_instructions.append(banner_rect)
+        
+        # Create label widget for banner text
+        self._label_widget = Label(
+            text="DEBUG WINDOW OVERLAY",
+            size_hint=(None, None),
+            size=(600, 80),
+            pos=(banner_x, banner_y),
+            color=(0, 0, 0, 1),  # Black text
+            font_size=32,
+            bold=True,
+            halign='center',
+            valign='middle'
+        )
+        self._label_widget.text_size = (600, 80)
+        
+        # Bind to window resize to update overlay
+        Window.bind(size=self._on_window_resize)
+        
+        self._enabled = True
+        debug_logger.info("[WindowDebugOverlay] Enabled on Window.canvas.after")
+        
+    def _on_window_resize(self, instance, size):
+        """Update overlay position and size on window resize"""
+        if not self._enabled or len(self._overlay_instructions) < 2:
+            return
+        
+        w, h = size
+        
+        # Update overlay rectangle
+        self._overlay_instructions[0].pos = (0, 0)
+        self._overlay_instructions[0].size = (w, h)
+        
+        # Update banner rectangle
+        banner_w = 600
+        banner_h = 80
+        banner_x = (w - banner_w) / 2
+        banner_y = (h - banner_h) / 2
+        self._overlay_instructions[1].pos = (banner_x, banner_y)
+        
+        # Update label position
+        if self._label_widget:
+            self._label_widget.pos = (banner_x, banner_y)
+        
+        debug_logger.info(f"[WindowDebugOverlay] Updated for window size {w}x{h}")
+    
+    def get_label_widget(self):
+        """Get the label widget to add to the root widget tree"""
+        return self._label_widget
+
+# Global window debug overlay instance
+_window_debug_overlay = None
+
+def setup_window_debug_overlay():
+    """Setup window debug overlay if enabled"""
+    global _window_debug_overlay
+    if DEBUG_WINDOW_OVERLAY and not _window_debug_overlay:
+        _window_debug_overlay = WindowDebugOverlay()
+        _window_debug_overlay.enable()
+        debug_logger.info("[WindowDebugOverlay] Setup complete")
+    return _window_debug_overlay
 
 # ------------------ ORIENTATION PROVIDER ------------------
 class OrientationProvider:
@@ -465,6 +595,9 @@ class PortraitContainer(FloatLayout):
         self._transform_matrix = mat
         self._inverse_matrix = mat.inverse()
         
+        # Determine matrix implementation mode
+        use_rt_impl = PORTRAIT_MATRIX_IMPL == "rt"
+        
         # Create or update canvas instructions (one-time creation, then update values)
         if self._matrix_inst is None:
             # First time: create all instructions
@@ -478,8 +611,26 @@ class PortraitContainer(FloatLayout):
                 
                 # Apply transformation matrix
                 self._push_matrix = PushMatrix()
-                self._matrix_inst = MatrixInstruction()
-                self._matrix_inst.matrix = mat
+                
+                if use_rt_impl:
+                    # Alternative: explicit Translate/Rotate/Scale instructions (PORTRAIT_MATRIX_IMPL=rt)
+                    # This is more compatible with some GL drivers (e.g., Broadcom V3D on RPi)
+                    self._translate_pos = Translate(pos_x, pos_y, 0)
+                    self._translate_center = Translate(blit_w / 2, blit_h / 2, 0)
+                    self._scale_inst = Scale(scale_factor, scale_factor, 1)
+                    self._rotate_inst = Rotate(angle=PORTRAIT_ROTATION_DEGREES, axis=(0, 0, 1))
+                    self._translate_virtual = Translate(-self.virtual_w / 2, -self.virtual_h / 2, 0)
+                    self._matrix_inst = None  # Not used in RT mode
+                    debug_logger.info(f"[Portrait matrix] Using RT implementation (explicit Translate/Rotate/Scale)")
+                else:
+                    # Default: single MatrixInstruction (PORTRAIT_MATRIX_IMPL=mi)
+                    self._matrix_inst = MatrixInstruction()
+                    self._matrix_inst.matrix = mat
+                    debug_logger.info(f"[Portrait matrix] Using MI implementation (MatrixInstruction)")
+                
+                # CRITICAL: Enforce neutral color before any child draws to prevent black tinting
+                # This is essential on RPi/V3D where color state can taint textured draws
+                GColor(1, 1, 1, 1)  # Neutral white - children will inherit this
                 
                 # Diagnostic overlay: test pattern in transformed space
                 if DEBUG_ROTATION_OVERLAY:
@@ -490,6 +641,9 @@ class PortraitContainer(FloatLayout):
                     # Green border around virtual content
                     GColor(0, 1, 0, 0.8)  # Green
                     self._diag_green_border = Line(rectangle=(0, 0, self.virtual_w, self.virtual_h), width=4)
+                    
+                    # Reset to neutral after diagnostics
+                    GColor(1, 1, 1, 1)
             
             with self.canvas.after:
                 self._pop_matrix = PopMatrix()
@@ -544,12 +698,33 @@ class PortraitContainer(FloatLayout):
             # Update existing instructions (no recreation needed)
             self._bg_rect.pos = (0, 0)
             self._bg_rect.size = (w, h)
-            self._matrix_inst.matrix = mat
+            
+            if use_rt_impl:
+                # Update RT implementation instructions
+                if self._translate_pos:
+                    self._translate_pos.x = pos_x
+                    self._translate_pos.y = pos_y
+                if self._translate_center:
+                    self._translate_center.x = blit_w / 2
+                    self._translate_center.y = blit_h / 2
+                if self._scale_inst:
+                    self._scale_inst.x = scale_factor
+                    self._scale_inst.y = scale_factor
+                if self._rotate_inst:
+                    self._rotate_inst.angle = PORTRAIT_ROTATION_DEGREES
+                if self._translate_virtual:
+                    self._translate_virtual.x = -self.virtual_w / 2
+                    self._translate_virtual.y = -self.virtual_h / 2
+            else:
+                # Update MI implementation
+                if self._matrix_inst:
+                    self._matrix_inst.matrix = mat
             
             # Update diagnostic overlay elements if they exist
             if DEBUG_ROTATION_OVERLAY:
                 # Update second matrix instruction in canvas.after
                 # Find and update the second MatrixInstruction
+                from kivy.graphics import MatrixInstruction
                 for instr in self.canvas.after.children:
                     if isinstance(instr, MatrixInstruction):
                         instr.matrix = mat
@@ -1009,7 +1184,7 @@ class RotatingRootFbo(FloatLayout):
         
         # Apply to canvas - draw the FBO texture with transformations
         with self.canvas.before:
-            # Background clear
+            # Background clear with black letterboxing
             GColor(0, 0, 0, 1)
             Rectangle(pos=(0, 0), size=(w, h))
             
@@ -1017,8 +1192,9 @@ class RotatingRootFbo(FloatLayout):
             matrix_inst = MatrixInstruction()
             matrix_inst.matrix = mat
             
-            # Draw the FBO texture
-            GColor(1, 1, 1, 1)  # White color to show texture as-is
+            # CRITICAL: Enforce neutral color before textured draw to prevent black tinting
+            # This is essential on RPi/V3D where previous color state can taint the texture
+            GColor(1, 1, 1, 1)  # Neutral white - texture will render at full brightness
             self._fbo_rect = Rectangle(pos=(0, 0), size=(virtual_w, virtual_h), texture=self._fbo.texture)
         
         with self.canvas.after:
@@ -1044,6 +1220,9 @@ class RotatingRootFbo(FloatLayout):
                 # Debug rectangle marker in top-left of virtual space
                 GColor(0, 1, 0, 0.6)  # Green
                 Rectangle(pos=(10, virtual_h - 60), size=(300, 50))
+                
+                # CRITICAL: Restore neutral color after diagnostic overlays
+                GColor(1, 1, 1, 1)
                 
                 PopMatrix()
                 
@@ -5520,6 +5699,13 @@ if KIVYMD_OK:
             OrientationProvider().set_orientation(aspect)
             debug_logger.info(f"Early orientation initialized: {aspect}")
             
+            # Add window debug overlay label if enabled
+            if DEBUG_WINDOW_OVERLAY and _window_debug_overlay:
+                label = _window_debug_overlay.get_label_widget()
+                if label:
+                    self.root_widget.add_widget(label)
+                    debug_logger.info("[WindowDebugOverlay] Added label widget to root")
+            
             self.show_login()
             return self.root_widget
         def clear_root(self): self.root_widget.clear_widgets()
@@ -5550,6 +5736,13 @@ else:
             OrientationProvider().set_orientation(aspect)
             debug_logger.info(f"Early orientation initialized: {aspect}")
             
+            # Add window debug overlay label if enabled
+            if DEBUG_WINDOW_OVERLAY and _window_debug_overlay:
+                label = _window_debug_overlay.get_label_widget()
+                if label:
+                    self.root_widget.add_widget(label)
+                    debug_logger.info("[WindowDebugOverlay] Added label widget to root")
+            
             self.show_login()
             return self.root_widget
         def clear_root(self): self.root_widget.clear_widgets()
@@ -5568,14 +5761,46 @@ else:
                 self.slideshow.cleanup_on_exit()
             return True
 
+def apply_gl_pipeline_detection():
+    """Detect GL vendor and apply pipeline defaults"""
+    global PORTRAIT_PIPELINE
+    
+    # Detect GL vendor/renderer and adjust pipeline defaults
+    gl_vendor, gl_renderer = detect_gl_vendor()
+    
+    # Check if we're on Broadcom V3D (Raspberry Pi)
+    is_broadcom_v3d = False
+    if gl_vendor and gl_renderer:
+        is_broadcom_v3d = "broadcom" in gl_vendor.lower() and "v3d" in gl_renderer.lower()
+    
+    # Apply force overrides or auto-detect
+    if PORTRAIT_FORCE_FBO:
+        PORTRAIT_PIPELINE = "fbo"
+        debug_logger.info("[Startup] PORTRAIT_FORCE_FBO=1, using FBO pipeline")
+    elif PORTRAIT_FORCE_MATRIX:
+        PORTRAIT_PIPELINE = "matrix"
+        debug_logger.info("[Startup] PORTRAIT_FORCE_MATRIX=1, using matrix pipeline")
+    elif is_broadcom_v3d and not os.getenv("PORTRAIT_PIPELINE"):
+        # On Broadcom V3D, default to FBO unless explicitly overridden
+        PORTRAIT_PIPELINE = "fbo"
+        debug_logger.info(f"[Startup] Detected Broadcom V3D, defaulting to FBO pipeline (vendor={gl_vendor}, renderer={gl_renderer})")
+
 if __name__ == "__main__":
+    # Apply GL detection and pipeline selection
+    apply_gl_pipeline_detection()
+    
     # Log portrait pipeline configuration at startup
     aspect = detect_aspect_from_configs()
     if aspect == "9:16":
         overlay_status = "enabled" if DEBUG_ROTATION_OVERLAY else "disabled"
-        debug_logger.info(f"[Startup] Portrait mode active: pipeline={PORTRAIT_PIPELINE}, overlay={overlay_status}")
+        matrix_impl = PORTRAIT_MATRIX_IMPL if PORTRAIT_PIPELINE == "matrix" else "N/A"
+        debug_logger.info(f"[Startup] Portrait mode active: pipeline={PORTRAIT_PIPELINE}, matrix_impl={matrix_impl}, rotation={PORTRAIT_ROTATION_DEGREES}°, overlay={overlay_status}")
     else:
         debug_logger.info(f"[Startup] Landscape mode active (aspect={aspect})")
+    
+    # Setup window debug overlay if enabled
+    if DEBUG_WINDOW_OVERLAY:
+        setup_window_debug_overlay()
     
     # Start upload server in background thread
     try:
