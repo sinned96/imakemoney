@@ -130,16 +130,51 @@ python main.py
 - **vertex_ai_image_workflow.py**: KI-Bildgenerierung
 - **start_workflow_service.py**: Workflow-Orchestrierung
 
-## Portrait Matrix Pipeline - Diagnostics
+## Portrait Matrix Pipeline - Diagnostics & Configuration
+
+### Environment Variables for Raspberry Pi / Portrait Mode
+
+#### Pipeline Selection
+- **PORTRAIT_PIPELINE** - Choose rendering pipeline (default: auto-detected)
+  - `matrix` - Matrix-based rotation (default, reliable on most systems)
+  - `fbo` - FBO-based rendering with letterboxing (auto-selected on Broadcom V3D/RPi)
+  - `off` - Disable portrait rotation entirely (landscape mode)
+
+- **PORTRAIT_FORCE_FBO=1** - Force FBO pipeline regardless of hardware
+- **PORTRAIT_FORCE_MATRIX=1** - Force matrix pipeline regardless of hardware
+
+#### Matrix Implementation
+- **PORTRAIT_MATRIX_IMPL** - Matrix implementation mode (default: `mi`)
+  - `mi` - MatrixInstruction (single matrix, default)
+  - `rt` - Rotate/Translate/Scale (explicit instructions, better V3D compatibility)
+
+#### Rotation Settings
+- **PORTRAIT_ROTATION_DEGREES** - Rotation angle (default: `-90`)
+  - `-90` - Counterclockwise (left rotation)
+  - `90` - Clockwise (right rotation)
+  - `0` - No rotation
+
+- **PORTRAIT_SCALE_FIT** - Scale content to fit window (default: `1`)
+  - `1` - Enable scaling (recommended)
+  - `0` - Disable scaling
+
+#### Debug Overlays
+- **DEBUG_ROTATION_OVERLAY=1** - Show rotation diagnostics (magenta fill, green border, crosshair)
+- **DEBUG_TOP_OVERLAY=1** - Show top-most diagnostic banner
+- **DEBUG_FORCE_LOGIN_SIZE=1** - Force LoginScreen to known size for testing
+- **DEBUG_AUTO_SCREENSHOT=1** - Take screenshot on first rendered frame
+- **DEBUG_LOGIN_PAINT=1** - Add colored rectangle to LoginScreen
+- **DEBUG_WINDOW_OVERLAY=1** - Show Window-level debug overlay (red overlay + banner)
 
 ### Running Diagnostics
 When troubleshooting portrait mode (9:16) rendering issues on Raspberry Pi, use these diagnostic tools:
 
-#### Default (with diagnostics enabled)
+#### Default (auto-detect, with diagnostics)
 ```bash
 python3 main.py
 ```
 **Expected behavior:**
+- Auto-detects Broadcom V3D and uses FBO pipeline
 - Magenta semi-transparent test fill covers the portrait area
 - Green border (4px) outlines the virtual content area (1080x1920)
 - Yellow crosshair at center of portrait area
@@ -147,15 +182,35 @@ python3 main.py
 - LoginScreen should be visible and rotated left
 - Logs show per-frame child geometry for first 8 frames
 
+#### Test Window overlay (above everything)
+```bash
+DEBUG_WINDOW_OVERLAY=1 python3 main.py
+```
+Shows a red semi-transparent overlay with "DEBUG WINDOW OVERLAY" banner.
+This verifies GL draw state is working even if app content is black.
+
+#### Force matrix pipeline with RT implementation (RPi-friendly)
+```bash
+PORTRAIT_PIPELINE=matrix PORTRAIT_MATRIX_IMPL=rt python3 main.py
+```
+Uses explicit Rotate/Translate/Scale instructions instead of MatrixInstruction.
+Better compatibility with Broadcom V3D drivers.
+
+#### Force FBO pipeline
+```bash
+PORTRAIT_FORCE_FBO=1 python3 main.py
+```
+Forces FBO-based rendering with letterboxing (legacy mode).
+
 #### Disable forced LoginScreen size
 ```bash
 DEBUG_FORCE_LOGIN_SIZE=0 python3 main.py
 ```
 Use this to test if LoginScreen has natural size=(0,0) issues.
 
-#### Hide diagnostic overlay
+#### Hide diagnostic overlays
 ```bash
-DEBUG_ROTATION_OVERLAY=0 python3 main.py
+DEBUG_ROTATION_OVERLAY=0 DEBUG_TOP_OVERLAY=0 python3 main.py
 ```
 Hides magenta fill, borders, and banner for clean testing.
 
@@ -165,11 +220,11 @@ PORTRAIT_PIPELINE=off python3 main.py
 ```
 Tests in standard 16:9 landscape mode without rotation.
 
-#### Using FBO pipeline (legacy)
+#### Custom rotation angle
 ```bash
-PORTRAIT_PIPELINE=fbo python3 main.py
+PORTRAIT_ROTATION_DEGREES=90 python3 main.py
 ```
-Tests the legacy FBO-based rendering instead of matrix transforms.
+Rotate clockwise (right) instead of counterclockwise (left).
 
 ### Diagnostic Logs
 Check `projekt.log` for:
