@@ -165,6 +165,7 @@ python main.py
 - **DEBUG_AUTO_SCREENSHOT=1** - Take screenshot on first rendered frame
 - **DEBUG_LOGIN_PAINT=1** - Add colored rectangle to LoginScreen
 - **DEBUG_WINDOW_OVERLAY=1** - Show Window-level debug overlay (red overlay + banner)
+- **DEBUG_FRAME_CORNERS=1** - Show colored corner markers in virtual portrait space (red=top-left, green=top-right, blue=bottom-right, yellow=bottom-left)
 
 ### Running Diagnostics
 When troubleshooting portrait mode (9:16) rendering issues on Raspberry Pi, use these diagnostic tools:
