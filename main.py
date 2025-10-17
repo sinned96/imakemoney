@@ -269,6 +269,10 @@ DEBUG_FORCE_ROTATED_MODAL = os.getenv("DEBUG_FORCE_ROTATED_MODAL", "1") == "1"
 # This overlay appears above everything regardless of pipeline to verify draw state
 DEBUG_WINDOW_OVERLAY = os.getenv("DEBUG_WINDOW_OVERLAY", "0") == "1"
 
+# Debug frame corners configuration (env: DEBUG_FRAME_CORNERS)
+# When enabled, draws small colored corner markers in virtual portrait space to confirm rotation/scale mapping
+DEBUG_FRAME_CORNERS = os.getenv("DEBUG_FRAME_CORNERS", "0") == "1"
+
 # ------------------ WINDOW DEBUG OVERLAY ------------------
 class WindowDebugOverlay:
     """
@@ -1120,7 +1124,7 @@ class RotatingRootFbo(FloatLayout):
         
         # Portrait FBO mode: apply rotation and scale
         from kivy.graphics.transformation import Matrix
-        from kivy.graphics import PushMatrix, PopMatrix, MatrixInstruction, Line, Rectangle
+        from kivy.graphics import PushMatrix, PopMatrix, Translate, Rotate, Scale, Line, Rectangle
         from kivy.core.text import Label as CoreLabel
         
         # Virtual portrait size (1080x1920)
@@ -1145,11 +1149,19 @@ class RotatingRootFbo(FloatLayout):
         fbo_tex_size = self._fbo.texture.size if self._fbo.texture else (0, 0)
         debug_logger.info(f"[FBO State] FBO size={self._fbo.size}, texture size={fbo_tex_size}")
         
-        # After -90° rotation, the target frame is (rot_w, rot_h) = (virtual_h, virtual_w) = (1920, 1080)
-        rot_w = virtual_h  # 1920
-        rot_h = virtual_w  # 1080
+        # After rotation by PORTRAIT_ROTATION_DEGREES, compute the rotated frame dimensions
+        # For -90° rotation: (virtual_w, virtual_h) -> (virtual_h, virtual_w) = (1920, 1080)
+        # The rotated content will have dimensions (rot_w, rot_h)
+        if abs(PORTRAIT_ROTATION_DEGREES) == 90:
+            rot_w = virtual_h  # 1920
+            rot_h = virtual_w  # 1080
+        else:
+            # For 0° or 180°, dimensions stay the same
+            rot_w = virtual_w
+            rot_h = virtual_h
         
         # Compute scale: s = min(w / rot_w, h / rot_h)
+        # This scale ensures the rotated content fits within the window
         scale_factor = min(w / rot_w, h / rot_h)
         scale_factor = max(scale_factor, 1e-3)  # Safety clamp
         
@@ -1161,40 +1173,59 @@ class RotatingRootFbo(FloatLayout):
         pos_x = (w - blit_w) / 2
         pos_y = (h - blit_h) / 2
         
-        # Build transformation matrix:
-        # 1. Clear background
-        # 2. PushMatrix
-        # 3. Translate(pos_x, pos_y) - position the viewport
-        # 4. Translate(blit_w/2, blit_h/2) - move to center of blit area
-        # 5. Rotate(-90°)
-        # 6. Translate(-virtual_w/2, -virtual_h/2) - center virtual content
-        # 7. Draw FBO texture at (0, 0) with size (virtual_w, virtual_h)
-        # 8. PopMatrix
-        
+        # Build transformation matrix for touch input (inverse transform)
+        # This matrix applies the same sequence as our explicit instructions
         mat = Matrix()
-        mat.translate(pos_x, pos_y, 0)
-        mat.translate(blit_w / 2, blit_h / 2, 0)
-        mat.scale(scale_factor, scale_factor, 1)
+        mat.translate(w / 2, h / 2, 0)
         mat.rotate(PORTRAIT_ROTATION_DEGREES * 3.14159265359 / 180.0, 0, 0, 1)
+        mat.scale(scale_factor, scale_factor, 1)
         mat.translate(-virtual_w / 2, -virtual_h / 2, 0)
         
         # Store matrices for touch transformation
         self._transform_matrix = mat
         self._inverse_matrix = mat.inverse()
         
-        # Apply to canvas - draw the FBO texture with transformations
+        # Apply to canvas - draw letterbox bars and FBO texture with explicit transform sequence
         with self.canvas.before:
-            # Background clear with black letterboxing
+            # Step 1: Draw black letterbox bars to cover areas outside the rotated content
             GColor(0, 0, 0, 1)
-            Rectangle(pos=(0, 0), size=(w, h))
             
+            # Calculate letterbox bar dimensions
+            if blit_w < w:
+                # Side bars (left and right)
+                bar_width = (w - blit_w) / 2
+                # Left bar
+                Rectangle(pos=(0, 0), size=(bar_width, h))
+                # Right bar
+                Rectangle(pos=(w - bar_width, 0), size=(bar_width, h))
+            
+            if blit_h < h:
+                # Top/bottom bars
+                bar_height = (h - blit_h) / 2
+                # Bottom bar
+                Rectangle(pos=(0, 0), size=(w, bar_height))
+                # Top bar
+                Rectangle(pos=(0, h - bar_height), size=(w, bar_height))
+            
+            # Step 2: Apply explicit transform sequence for FBO blit
             PushMatrix()
-            matrix_inst = MatrixInstruction()
-            matrix_inst.matrix = mat
             
-            # CRITICAL: Enforce neutral color before textured draw to prevent black tinting
-            # This is essential on RPi/V3D where previous color state can taint the texture
-            GColor(1, 1, 1, 1)  # Neutral white - texture will render at full brightness
+            # 2.1: Translate to window center
+            Translate(w / 2, h / 2, 0)
+            
+            # 2.2: Rotate by PORTRAIT_ROTATION_DEGREES
+            Rotate(angle=PORTRAIT_ROTATION_DEGREES, axis=(0, 0, 1))
+            
+            # 2.3: Scale by computed fit_scale
+            Scale(scale_factor, scale_factor, 1)
+            
+            # 2.4: Translate to center the virtual content
+            Translate(-virtual_w / 2, -virtual_h / 2, 0)
+            
+            # 2.5: CRITICAL: Set neutral color before textured draw to prevent tinting
+            GColor(1, 1, 1, 1)
+            
+            # 2.6: Draw FBO texture
             self._fbo_rect = Rectangle(pos=(0, 0), size=(virtual_w, virtual_h), texture=self._fbo.texture)
         
         with self.canvas.after:
@@ -1202,10 +1233,14 @@ class RotatingRootFbo(FloatLayout):
             
             # Add debug overlay if enabled
             if DEBUG_ROTATION_OVERLAY:
-                # Draw debug elements using the same matrix stack
+                # Draw debug elements using the same transform sequence
                 PushMatrix()
-                matrix_inst2 = MatrixInstruction()
-                matrix_inst2.matrix = mat
+                
+                # Apply same transform as FBO blit
+                Translate(w / 2, h / 2, 0)
+                Rotate(angle=PORTRAIT_ROTATION_DEGREES, axis=(0, 0, 1))
+                Scale(scale_factor, scale_factor, 1)
+                Translate(-virtual_w / 2, -virtual_h / 2, 0)
                 
                 # Neon border around virtual content area
                 GColor(0, 1, 1, 0.8)  # Cyan
@@ -1239,6 +1274,41 @@ class RotatingRootFbo(FloatLayout):
                     self._child_container.add_widget(self._debug_label)
                 elif self._debug_label:
                     self._debug_label.text = f"DEBUG: portrait\nvirtual={virtual_w}x{virtual_h}\nscale={scale_factor:.3f}"
+            
+            # Add debug frame corners if enabled
+            if DEBUG_FRAME_CORNERS:
+                # Draw colored corner markers in virtual portrait space
+                PushMatrix()
+                
+                # Apply same transform as FBO blit
+                Translate(w / 2, h / 2, 0)
+                Rotate(angle=PORTRAIT_ROTATION_DEGREES, axis=(0, 0, 1))
+                Scale(scale_factor, scale_factor, 1)
+                Translate(-virtual_w / 2, -virtual_h / 2, 0)
+                
+                # Corner size
+                corner_size = 20
+                
+                # Top-left corner (red)
+                GColor(1, 0, 0, 0.9)
+                Rectangle(pos=(0, virtual_h - corner_size), size=(corner_size, corner_size))
+                
+                # Top-right corner (green)
+                GColor(0, 1, 0, 0.9)
+                Rectangle(pos=(virtual_w - corner_size, virtual_h - corner_size), size=(corner_size, corner_size))
+                
+                # Bottom-right corner (blue)
+                GColor(0, 0, 1, 0.9)
+                Rectangle(pos=(virtual_w - corner_size, 0), size=(corner_size, corner_size))
+                
+                # Bottom-left corner (yellow)
+                GColor(1, 1, 0, 0.9)
+                Rectangle(pos=(0, 0), size=(corner_size, corner_size))
+                
+                # Restore neutral color
+                GColor(1, 1, 1, 1)
+                
+                PopMatrix()
         
         # Update child container size if it exists
         if self._child_container:
@@ -1255,8 +1325,8 @@ class RotatingRootFbo(FloatLayout):
             self._fbo.draw()
             debug_logger.debug(f"[FBO] Updated and drew FBO")
         
-        # Log concise line per execution
-        debug_logger.info(f"[Portrait apply] event={w:.0f}x{h:.0f} s={scale_factor:.4f} blit={blit_w:.0f}x{blit_h:.0f} pos=({pos_x:.0f},{pos_y:.0f}) rot={PORTRAIT_ROTATION_DEGREES} fbo_tex={fbo_tex_size}")
+        # Log detailed transform info per execution
+        debug_logger.info(f"[Portrait apply] event={w:.0f}x{h:.0f} s={scale_factor:.4f} blit={blit_w:.0f}x{blit_h:.0f} pos=({pos_x:.0f},{pos_y:.0f}) rot={PORTRAIT_ROTATION_DEGREES}")
     
     def add_widget(self, widget, *args, **kwargs):
         """Override to properly size children for virtual portrait space"""
