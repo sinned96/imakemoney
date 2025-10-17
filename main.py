@@ -1008,6 +1008,8 @@ class RotatingRootFbo(FloatLayout):
         self._finalize_attempts = 0
         self._fbo = None
         self._fbo_rect = None
+        self._portrait_group = None  # InstructionGroup for blit/transform
+        self._portrait_group_weakref = None  # weakref to track attachment
         
         # Debouncing state
         self._last_resize_w = 0
@@ -1061,7 +1063,7 @@ class RotatingRootFbo(FloatLayout):
             Clock.unschedule(self._pending_apply_event)
         
         # Schedule one Clock task in the next frame
-        self._pending_apply_event = Clock.schedule_once(lambda dt: self._apply_transform(w, h), 0)
+        self._pending_apply_event = Clock.schedule_once(lambda dt: self._apply_portrait(w, h, event_source="resize"), 0)
         
     def _update_transform(self, *args):
         """Legacy method for compatibility - redirects to debounced apply"""
@@ -1100,20 +1102,95 @@ class RotatingRootFbo(FloatLayout):
         
         return True
     
-    def _apply_transform(self, w, h):
-        """Apply rotation and scale transform using FBO texture"""
+    def _ensure_fbo(self):
+        """
+        Ensure FBO exists and is properly configured.
+        
+        If FBO object or its texture does not exist or size mismatches virtual size,
+        (re)create it and bind the child container canvas to the FBO.
+        """
+        virtual_w = 1080
+        virtual_h = 1920
+        
+        # Check if FBO needs (re)creation
+        needs_creation = False
+        
+        if not self._fbo:
+            needs_creation = True
+            debug_logger.info("[FBO Init] FBO does not exist, creating...")
+        elif not self._fbo.texture:
+            needs_creation = True
+            debug_logger.info("[FBO Init] FBO texture is None, recreating FBO...")
+        elif self._fbo.size != (virtual_w, virtual_h):
+            needs_creation = True
+            debug_logger.info(f"[FBO Init] FBO size mismatch (expected {virtual_w}x{virtual_h}, got {self._fbo.size}), recreating...")
+        
+        if needs_creation:
+            self._create_fbo()
+            debug_logger.info(f"[FBO Init] Created FBO with size {virtual_w}x{virtual_h}, texture size: {self._fbo.texture.size if self._fbo.texture else 'None'}")
+            
+            # Bind child container canvas to FBO
+            if self._child_container:
+                debug_logger.info(f"[FBO Init] Bound child container canvas to FBO")
+    
+    def _ensure_bind(self):
+        """
+        Ensure the blit group is attached to Window.canvas.after.
+        
+        If the blit group is not attached, attach it and keep a weakref for later updates.
+        """
+        from kivy.core.window import Window
+        from kivy.graphics import InstructionGroup
+        import weakref
+        
+        # Check if portrait group exists and is still attached
+        is_attached = False
+        if self._portrait_group:
+            # Check if it's still in Window.canvas.after
+            try:
+                if self._portrait_group in Window.canvas.after.children:
+                    is_attached = True
+            except:
+                is_attached = False
+        
+        if not is_attached:
+            # Create new instruction group
+            if not self._portrait_group:
+                self._portrait_group = InstructionGroup()
+                debug_logger.info("[FBO Bind] Created new portrait blit group")
+            
+            # Attach to Window.canvas.after
+            Window.canvas.after.add(self._portrait_group)
+            self._portrait_group_weakref = weakref.ref(self._portrait_group)
+            debug_logger.info("[FBO Bind] Attached portrait blit group to Window.canvas.after")
+    
+    def _apply_portrait(self, w, h, event_source="resize"):
+        """
+        Apply portrait transform every frame or on size events.
+        
+        Clears and rebuilds self._portrait_group with:
+        - optional letterboxing (Color(0,0,0,1) + Rects)
+        - then Color(1,1,1,1)
+        - PushMatrix; Translate(win_w/2, win_h/2); Rotate(PORTRAIT_ROTATION_DEGREES); 
+          Scale(fit_scale,...); Translate(-virt_w/2, -virt_h/2); 
+          Rectangle(texture=self._fbo.texture, size=(virt_w, virt_h), pos=(0,0)); PopMatrix
+        """
         # Skip if not yet finalized
         if not self._finalized:
             return
         
         is_portrait = self.orientation_provider.is_portrait()
         
-        # Clear existing transforms
-        self.canvas.before.clear()
-        self.canvas.after.clear()
-        
         if not is_portrait or PORTRAIT_VIEW_MODE != "fbo":
-            # Not in FBO mode - destroy FBO if it exists
+            # Not in FBO mode - clean up
+            if self._portrait_group:
+                from kivy.core.window import Window
+                try:
+                    Window.canvas.after.remove(self._portrait_group)
+                except:
+                    pass
+                self._portrait_group = None
+                self._portrait_group_weakref = None
             if self._fbo:
                 debug_logger.info("[FBO] Cleaning up FBO (not in FBO mode)")
                 self._fbo = None
@@ -1122,10 +1199,10 @@ class RotatingRootFbo(FloatLayout):
             self._inverse_matrix = None
             return
         
-        # Portrait FBO mode: apply rotation and scale
+        # Portrait FBO mode: ensure FBO exists and blit group is bound
         from kivy.graphics.transformation import Matrix
         from kivy.graphics import PushMatrix, PopMatrix, Translate, Rotate, Scale, Line, Rectangle
-        from kivy.core.text import Label as CoreLabel
+        from kivy.core.window import Window
         
         # Virtual portrait size (1080x1920)
         virtual_w = 1080
@@ -1136,18 +1213,16 @@ class RotatingRootFbo(FloatLayout):
             debug_logger.warning(f"Invalid window size in apply: {w}x{h}, skipping")
             return
         
-        # Create FBO if not exists
-        if not self._fbo:
-            self._create_fbo()
+        # Ensure FBO exists and is properly configured
+        self._ensure_fbo()
         
         # Verify FBO texture exists
         if not self._fbo or not self._fbo.texture:
             debug_logger.error("[FBO] FBO or FBO texture is None - cannot render!")
             return
         
-        # Log FBO state
-        fbo_tex_size = self._fbo.texture.size if self._fbo.texture else (0, 0)
-        debug_logger.info(f"[FBO State] FBO size={self._fbo.size}, texture size={fbo_tex_size}")
+        # Ensure blit group is attached to Window.canvas.after
+        self._ensure_bind()
         
         # After rotation by PORTRAIT_ROTATION_DEGREES, compute the rotated frame dimensions
         # For -90° rotation: (virtual_w, virtual_h) -> (virtual_h, virtual_w) = (1920, 1080)
@@ -1185,8 +1260,10 @@ class RotatingRootFbo(FloatLayout):
         self._transform_matrix = mat
         self._inverse_matrix = mat.inverse()
         
-        # Apply to canvas - draw letterbox bars and FBO texture with explicit transform sequence
-        with self.canvas.before:
+        # Clear and rebuild the portrait group
+        self._portrait_group.clear()
+        
+        with self._portrait_group:
             # Step 1: Draw black letterbox bars to cover areas outside the rotated content
             GColor(0, 0, 0, 1)
             
@@ -1227,8 +1304,7 @@ class RotatingRootFbo(FloatLayout):
             
             # 2.6: Draw FBO texture
             self._fbo_rect = Rectangle(pos=(0, 0), size=(virtual_w, virtual_h), texture=self._fbo.texture)
-        
-        with self.canvas.after:
+            
             PopMatrix()
             
             # Add debug overlay if enabled
@@ -1260,20 +1336,6 @@ class RotatingRootFbo(FloatLayout):
                 GColor(1, 1, 1, 1)
                 
                 PopMatrix()
-                
-                # Add debug label if not already added
-                if not self._debug_label and self._child_container:
-                    self._debug_label = Label(
-                        text=f"DEBUG: portrait\nvirtual={virtual_w}x{virtual_h}\nscale={scale_factor:.3f}",
-                        size_hint=(None, None),
-                        size=(300, 80),
-                        pos=(10, virtual_h - 90),
-                        color=(0, 1, 0, 1),
-                        font_size=14
-                    )
-                    self._child_container.add_widget(self._debug_label)
-                elif self._debug_label:
-                    self._debug_label.text = f"DEBUG: portrait\nvirtual={virtual_w}x{virtual_h}\nscale={scale_factor:.3f}"
             
             # Add debug frame corners if enabled
             if DEBUG_FRAME_CORNERS:
@@ -1325,8 +1387,23 @@ class RotatingRootFbo(FloatLayout):
             self._fbo.draw()
             debug_logger.debug(f"[FBO] Updated and drew FBO")
         
+        # Add debug label if not already added
+        if DEBUG_ROTATION_OVERLAY:
+            if not self._debug_label and self._child_container:
+                self._debug_label = Label(
+                    text=f"DEBUG: portrait\nvirtual={virtual_w}x{virtual_h}\nscale={scale_factor:.3f}",
+                    size_hint=(None, None),
+                    size=(300, 80),
+                    pos=(10, virtual_h - 90),
+                    color=(0, 1, 0, 1),
+                    font_size=14
+                )
+                self._child_container.add_widget(self._debug_label)
+            elif self._debug_label:
+                self._debug_label.text = f"DEBUG: portrait\nvirtual={virtual_w}x{virtual_h}\nscale={scale_factor:.3f}"
+        
         # Log detailed transform info per execution
-        debug_logger.info(f"[Portrait apply] event={w:.0f}x{h:.0f} s={scale_factor:.4f} blit={blit_w:.0f}x{blit_h:.0f} pos=({pos_x:.0f},{pos_y:.0f}) rot={PORTRAIT_ROTATION_DEGREES}")
+        debug_logger.info(f"[Portrait apply] event={event_source} s={scale_factor:.4f} blit={blit_w:.0f}x{blit_h:.0f} pos=({pos_x:.0f},{pos_y:.0f}) rot={PORTRAIT_ROTATION_DEGREES}")
     
     def add_widget(self, widget, *args, **kwargs):
         """Override to properly size children for virtual portrait space"""
@@ -1403,6 +1480,17 @@ class RotatingRootFbo(FloatLayout):
         if self._child_container:
             self._child_container.clear_widgets()
             self._debug_label = None  # Will be recreated if needed
+        
+        # Clean up portrait group
+        if self._portrait_group:
+            from kivy.core.window import Window
+            try:
+                Window.canvas.after.remove(self._portrait_group)
+            except:
+                pass
+            self._portrait_group = None
+            self._portrait_group_weakref = None
+            debug_logger.info("[FBO] Cleaned up portrait group on clear_widgets")
         
         # Clean up FBO
         if self._fbo:
