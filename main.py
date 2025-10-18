@@ -192,6 +192,9 @@ from kivy.app import App
 from kivy.core.window import Window
 from kivy.uix.modalview import ModalView
 
+# Import portrait matrix input coordinate mapper
+from portrait_matrix2 import PortraitMatrixContainer
+
 # Set neutral clear color to help diagnose out-of-bounds content
 Window.clearcolor = (0.15, 0.15, 0.15, 1)  # Dark gray
 
@@ -1531,11 +1534,11 @@ class RotatingRoot(FloatLayout):
         if is_portrait:
             # Portrait mode: choose rendering method based on PORTRAIT_PIPELINE
             if PORTRAIT_PIPELINE == "matrix":
-                # Matrix-based rotation (new default)
+                # Matrix-based rotation (new default) with enhanced input mapping
                 if not self._rotating_surface:
-                    self._rotating_surface = PortraitContainer()
+                    self._rotating_surface = PortraitMatrixContainer()
                     super().add_widget(self._rotating_surface, *args, **kwargs)
-                    debug_logger.info("[Portrait] Using matrix pipeline for rendering")
+                    debug_logger.info("[Portrait] Using matrix pipeline with PortraitMatrixContainer for enhanced input mapping")
                 self._content_widget = widget
                 self._rotating_surface.add_widget(widget)
                 # Log what widget is being shown
@@ -1568,6 +1571,9 @@ class RotatingRoot(FloatLayout):
     def clear_widgets(self):
         """Override to properly clean up rotating surface"""
         if self._rotating_surface:
+            # Clear inverse matrix if the surface supports it (for PortraitMatrixContainer)
+            if hasattr(self._rotating_surface, 'set_inverse_matrix'):
+                self._rotating_surface.set_inverse_matrix(None)
             self._rotating_surface.clear_widgets()
         super().clear_widgets()
         self._rotating_surface = None
@@ -1581,6 +1587,9 @@ class RotatingRoot(FloatLayout):
             content = self._content_widget
             # Clear and re-add to trigger proper wrapping based on new orientation
             if self._rotating_surface:
+                # Clear inverse matrix if the surface supports it (for PortraitMatrixContainer)
+                if hasattr(self._rotating_surface, 'set_inverse_matrix'):
+                    self._rotating_surface.set_inverse_matrix(None)
                 self._rotating_surface.clear_widgets()
             super().clear_widgets()
             self._rotating_surface = None
