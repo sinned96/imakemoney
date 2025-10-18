@@ -1571,6 +1571,9 @@ class RotatingRoot(FloatLayout):
     def clear_widgets(self):
         """Override to properly clean up rotating surface"""
         if self._rotating_surface:
+            # Clear inverse matrix if the surface supports it (for PortraitMatrixContainer)
+            if hasattr(self._rotating_surface, 'set_inverse_matrix'):
+                self._rotating_surface.set_inverse_matrix(None)
             self._rotating_surface.clear_widgets()
         super().clear_widgets()
         self._rotating_surface = None
@@ -1584,6 +1587,9 @@ class RotatingRoot(FloatLayout):
             content = self._content_widget
             # Clear and re-add to trigger proper wrapping based on new orientation
             if self._rotating_surface:
+                # Clear inverse matrix if the surface supports it (for PortraitMatrixContainer)
+                if hasattr(self._rotating_surface, 'set_inverse_matrix'):
+                    self._rotating_surface.set_inverse_matrix(None)
                 self._rotating_surface.clear_widgets()
             super().clear_widgets()
             self._rotating_surface = None
