@@ -195,6 +195,9 @@ from kivy.uix.modalview import ModalView
 # Import portrait matrix input coordinate mapper
 from portrait_matrix2 import PortraitMatrixContainer
 
+# Import input overlay for matrix portrait pipeline hitbox fix
+from portrait_input_overlay import InputOverlayContainer
+
 # Set neutral clear color to help diagnose out-of-bounds content
 Window.clearcolor = (0.15, 0.15, 0.15, 1)  # Dark gray
 
@@ -555,6 +558,11 @@ class PortraitContainer(FloatLayout):
                 self._pop_matrix = None
             self._transform_matrix = None
             self._inverse_matrix = None
+            
+            # Clear overlay's inverse matrix if it exists
+            if self.parent and hasattr(self.parent, '_input_overlay') and self.parent._input_overlay:
+                self.parent._input_overlay.set_inverse_matrix(None)
+            
             return
         
         # Get window dimensions
@@ -601,6 +609,12 @@ class PortraitContainer(FloatLayout):
         # Store matrices (inverse is available for optional manual touch handling)
         self._transform_matrix = mat
         self._inverse_matrix = mat.inverse()
+        
+        # Update overlay's inverse matrix if it exists
+        # The overlay is added to the RotatingRoot (parent), so we need to access it via parent
+        if self.parent and hasattr(self.parent, '_input_overlay') and self.parent._input_overlay:
+            self.parent._input_overlay.set_inverse_matrix(self._inverse_matrix)
+            debug_logger.info("[Portrait matrix] Updated overlay inverse matrix")
         
         # Determine matrix implementation mode
         use_rt_impl = PORTRAIT_MATRIX_IMPL == "rt"
@@ -1512,6 +1526,7 @@ class RotatingRoot(FloatLayout):
         self.orientation_provider = OrientationProvider()
         self._rotating_surface = None
         self._content_widget = None
+        self._input_overlay = None  # Input overlay for matrix pipeline hitbox fix
     
     def add_widget(self, widget, *args, **kwargs):
         """Override to wrap content in appropriate container when in portrait mode"""
@@ -1539,6 +1554,13 @@ class RotatingRoot(FloatLayout):
                     self._rotating_surface = PortraitMatrixContainer()
                     super().add_widget(self._rotating_surface, *args, **kwargs)
                     debug_logger.info("[Portrait] Using matrix pipeline with PortraitMatrixContainer for enhanced input mapping")
+                    
+                    # Install input overlay on top of rotating_surface for hitbox fix
+                    self._input_overlay = InputOverlayContainer()
+                    super().add_widget(self._input_overlay)
+                    self._input_overlay.set_target_widget(self._rotating_surface)
+                    debug_logger.info("[InputOverlay] Installed overlay on top of rotating_surface")
+                    
                 self._content_widget = widget
                 self._rotating_surface.add_widget(widget)
                 # Log what widget is being shown
@@ -1569,7 +1591,14 @@ class RotatingRoot(FloatLayout):
             super().add_widget(widget, *args, **kwargs)
     
     def clear_widgets(self):
-        """Override to properly clean up rotating surface"""
+        """Override to properly clean up rotating surface and overlay"""
+        if self._input_overlay:
+            # Clear overlay's inverse matrix and target widget
+            self._input_overlay.set_inverse_matrix(None)
+            self._input_overlay.set_target_widget(None)
+            self._input_overlay = None
+            debug_logger.info("[InputOverlay] Overlay removed and cleared")
+        
         if self._rotating_surface:
             # Clear inverse matrix if the surface supports it (for PortraitMatrixContainer)
             if hasattr(self._rotating_surface, 'set_inverse_matrix'):
@@ -1585,6 +1614,11 @@ class RotatingRoot(FloatLayout):
         # to properly wrap/unwrap the RotatingSurface
         if self._content_widget:
             content = self._content_widget
+            # Clear overlay first
+            if self._input_overlay:
+                self._input_overlay.set_inverse_matrix(None)
+                self._input_overlay.set_target_widget(None)
+                self._input_overlay = None
             # Clear and re-add to trigger proper wrapping based on new orientation
             if self._rotating_surface:
                 # Clear inverse matrix if the surface supports it (for PortraitMatrixContainer)
