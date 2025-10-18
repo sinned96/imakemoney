@@ -192,9 +192,6 @@ from kivy.app import App
 from kivy.core.window import Window
 from kivy.uix.modalview import ModalView
 
-# Import portrait matrix input coordinate mapper
-from portrait_matrix2 import PortraitMatrixContainer
-
 # Import input overlay for matrix portrait pipeline hitbox fix
 from portrait_input_overlay import InputOverlayContainer
 
@@ -1549,11 +1546,11 @@ class RotatingRoot(FloatLayout):
         if is_portrait:
             # Portrait mode: choose rendering method based on PORTRAIT_PIPELINE
             if PORTRAIT_PIPELINE == "matrix":
-                # Matrix-based rotation (new default) with enhanced input mapping
+                # Matrix-based rotation using original PortraitContainer (pr-88) with InputOverlayContainer for hitbox fix
                 if not self._rotating_surface:
-                    self._rotating_surface = PortraitMatrixContainer()
+                    self._rotating_surface = PortraitContainer()
                     super().add_widget(self._rotating_surface, *args, **kwargs)
-                    debug_logger.info("[Portrait] Using matrix pipeline with PortraitMatrixContainer for enhanced input mapping")
+                    debug_logger.info("[Portrait] Using matrix pipeline with original PortraitContainer (pr-88)")
                     
                     # Install input overlay on top of rotating_surface for hitbox fix
                     self._input_overlay = InputOverlayContainer()
