@@ -1,206 +1,135 @@
-"""
-portrait_matrix2.py - Helper module for portrait matrix container with enhanced input mapping.
+# portrait_matrix2.py
+# PortraitMatrixContainer: maps input coordinates through inverse transform and
+# stays sized/positioned to Window so mapping matches visible content.
+#
+# Usage:
+# - Import PortraitMatrixContainer and use it as the rotating root for the matrix pipeline.
+# - After computing the inverse Matrix in _apply_portrait(), call:
+#     self._rotating_surface.set_inverse_matrix(self._inverse_matrix)
+#
+# This version binds to Window.size/pos so it always covers the whole window and
+# avoids the layout/position drift that caused the visible displacement.
 
-This module provides PortraitMatrixContainer, which extends the base PortraitContainer
-with explicit set_inverse_matrix support and enhanced logging for debugging input
-coordinate transformation issues.
-
-This is used when PORTRAIT_PIPELINE=matrix and PORTRAIT_MATRIX_IMPL=rt to ensure
-touch/mouse coordinates are correctly mapped to the rotated portrait UI.
-"""
-
-import logging
-
-# Debug flag - set to True to enable verbose logging of coordinate mapping
-DEBUG = False
-
-logger = logging.getLogger(__name__)
-
-# Import PortraitContainer from main module - we'll inherit from it
-# This import happens at runtime to avoid circular dependencies
-def get_portrait_container_class():
-    """Lazy import to get PortraitContainer class"""
-    import main
-    return main.PortraitContainer
+from kivy.uix.floatlayout import FloatLayout
+from kivy.properties import ObjectProperty, BooleanProperty
+from kivy.logger import Logger
+from kivy.core.window import Window
 
 
-class PortraitMatrixContainer:
+class PortraitMatrixContainer(FloatLayout):
     """
-    Enhanced portrait container with explicit inverse matrix management.
+    Container that forwards touches to its children after mapping screen coords
+    through a provided inverse matrix (inverse of the transform used for drawing).
+
+    The container auto-fills the Window (size/pos bound) so that mapped coordinates
+    align with the visible, transformed UI.
     
-    This class inherits from PortraitContainer (from main.py) to get all visual
-    transformation logic, and adds explicit set_inverse_matrix() support for
-    external matrix updates.
-    
-    The set_inverse_matrix() method allows external code to update the inverse
-    transformation matrix used for touch coordinate mapping.
-    
-    Key features:
-    - Inherits all visual transformation from PortraitContainer
-    - Inherits touch coordinate transformation from PortraitContainer
-    - Adds set_inverse_matrix() for explicit matrix updates
-    - Logs matrix updates and touch mapping for debugging
-    
-    Usage:
-        container = PortraitMatrixContainer()
-        # ... add children to container ...
-        # When portrait transform is calculated externally:
-        container.set_inverse_matrix(inverse_matrix)
+    This container wraps a PortraitContainer internally to handle visual transformation,
+    while providing enhanced input coordinate mapping through set_inverse_matrix().
     """
-    
-    def __new__(cls, **kwargs):
-        """
-        Create instance by dynamically inheriting from PortraitContainer.
+    _inverse_matrix = ObjectProperty(None, allownone=True)
+    _debug = BooleanProperty(False)
+
+    def __init__(self, **kwargs):
+        # Create as full-window widget by default
+        super().__init__(**kwargs)
+        # Make explicit size/pos (don't rely on size_hint for predictable mapping)
+        self.size_hint = (None, None)
+        self.pos = (0, 0)
+        self.size = Window.size
         
-        This uses dynamic class creation to inherit from PortraitContainer
-        without causing circular import issues.
-        """
-        # Get PortraitContainer class
-        PortraitContainerBase = get_portrait_container_class()
+        # Import PortraitContainer here to avoid circular imports
+        import main
+        self._portrait_container = main.PortraitContainer()
+        super().add_widget(self._portrait_container)
         
-        # Create a new class that inherits from PortraitContainer
-        class _PortraitMatrixContainer(PortraitContainerBase):
-            """Dynamic subclass of PortraitContainer with set_inverse_matrix support"""
-            
-            def __init__(self, **kwargs):
-                super().__init__(**kwargs)
-                logger.info("[PortraitMatrixContainer] Container initialized (enhanced input mapping)")
-            
-            def set_inverse_matrix(self, matrix):
-                """
-                Set the inverse transformation matrix for input coordinate mapping.
-                
-                This method allows external code to update the inverse matrix used
-                for touch coordinate transformation. The matrix is stored in self._inverse_matrix
-                which is already used by the inherited touch handlers from PortraitContainer.
-                
-                Args:
-                    matrix: Kivy Matrix object representing the inverse of the portrait transform,
-                            or None to disable coordinate mapping.
-                """
-                self._inverse_matrix = matrix
-                if DEBUG:
-                    if matrix:
-                        logger.debug(f"[PortraitMatrixContainer] Inverse matrix updated: {matrix}")
-                    else:
-                        logger.debug("[PortraitMatrixContainer] Inverse matrix cleared (None)")
-                
-                # Always log matrix updates at INFO level (non-DEBUG)
-                if matrix:
-                    logger.info("[PortraitMatrixContainer] Inverse matrix updated for input coordinate mapping")
-                else:
-                    logger.info("[PortraitMatrixContainer] Inverse matrix cleared")
-            
-            def on_touch_down(self, touch):
-                """Override to add debug logging for touch events"""
-                if DEBUG and self._inverse_matrix:
-                    orig_x, orig_y = touch.x, touch.y
-                    tx, ty, _ = self._inverse_matrix.transform_point(touch.x, touch.y, 0)
-                    logger.debug(f"[PortraitMatrixContainer] Touch down: ({orig_x:.1f}, {orig_y:.1f}) -> ({tx:.1f}, {ty:.1f})")
-                return super().on_touch_down(touch)
-            
-            def on_touch_move(self, touch):
-                """Override to add debug logging for touch events"""
-                if DEBUG and self._inverse_matrix:
-                    orig_x, orig_y = touch.x, touch.y
-                    tx, ty, _ = self._inverse_matrix.transform_point(touch.x, touch.y, 0)
-                    logger.debug(f"[PortraitMatrixContainer] Touch move: ({orig_x:.1f}, {orig_y:.1f}) -> ({tx:.1f}, {ty:.1f})")
-                return super().on_touch_move(touch)
-            
-            def on_touch_up(self, touch):
-                """Override to add debug logging for touch events"""
-                if DEBUG and self._inverse_matrix:
-                    orig_x, orig_y = touch.x, touch.y
-                    tx, ty, _ = self._inverse_matrix.transform_point(touch.x, touch.y, 0)
-                    logger.debug(f"[PortraitMatrixContainer] Touch up: ({orig_x:.1f}, {orig_y:.1f}) -> ({tx:.1f}, {ty:.1f})")
-                return super().on_touch_up(touch)
+        # Keep in sync with Window
+        Window.bind(size=self._on_window_size, top=self._on_window_pos, left=self._on_window_pos)
         
-        # Create and return an instance of the dynamic class
-        return _PortraitMatrixContainer(**kwargs)
-    
+        Logger.info("[portrait_matrix2]: [PortraitMatrixContainer] Container initialized (enhanced input mapping)")
+
+    def _on_window_size(self, instance, size):
+        try:
+            self.size = size
+            if self._debug:
+                Logger.debug(f"[PortraitMatrix] Window size updated -> container.size={self.size}")
+        except Exception as e:
+            Logger.warning(f"[PortraitMatrix] Error setting container size: {e}")
+
+    def _on_window_pos(self, *args):
+        # Most desktops keep Window pos 0,0; keep for completeness
+        # If you need to account for non-zero window origin, update pos here.
+        try:
+            self.pos = (0, 0)
+        except Exception as e:
+            Logger.warning(f"[PortraitMatrix] Error setting container pos: {e}")
+
+    def set_inverse_matrix(self, matrix):
+        """Set the inverse Matrix used to transform incoming screen coordinates
+        into virtual (portrait) coordinates. Pass None to disable mapping."""
+        self._inverse_matrix = matrix
+        Logger.info(f"[portrait_matrix2]: [PortraitMatrix] set_inverse_matrix: {bool(matrix)}")
+        if self._debug and matrix:
+            Logger.debug(f"[PortraitMatrix] inverse matrix: {matrix}")
+
+    def add_widget(self, widget, *args, **kwargs):
+        """Override to add widgets to the wrapped PortraitContainer instead of directly to self"""
+        if hasattr(self, '_portrait_container') and widget is not self._portrait_container:
+            # Add to the wrapped container
+            self._portrait_container.add_widget(widget, *args, **kwargs)
+        else:
+            # This is the initial add of _portrait_container itself
+            super().add_widget(widget, *args, **kwargs)
+
+    def _map_point(self, x, y):
+        """Map a window point (x,y) through the inverse matrix.
+        Returns (mx, my) or original (x,y) on failure."""
+        mat = self._inverse_matrix
+        if not mat:
+            return x, y
+        try:
+            tx, ty, tz = mat.transform_point(x, y, 0)
+            if self._debug:
+                Logger.debug(f"[PortraitMatrix] map_point {x:.1f},{y:.1f} -> {tx:.1f},{ty:.1f}")
+            return tx, ty
+        except Exception as exc:
+            Logger.warning(f"[PortraitMatrix] transform_point failed: {exc}")
+            return x, y
+
+    # Touch handlers: temporarily modify touch.pos before forwarding to children,
+    # then restore original pos so other handlers (or Window) are unaffected.
     def on_touch_down(self, touch):
-        """
-        Transform touch coordinates before dispatching to children.
-        
-        If an inverse matrix is set, temporarily replaces touch position with
-        the transformed coordinates, dispatches to children, then restores original position.
-        """
-        if self._inverse_matrix:
-            # Save original position via push
-            touch.push()
-            
-            # Apply inverse transform to map screen coordinates to virtual space
-            tx, ty, _ = self._inverse_matrix.transform_point(touch.x, touch.y, 0)
-            
-            if DEBUG:
-                logger.debug(f"[PortraitMatrixContainer] on_touch_down: ({touch.x:.1f}, {touch.y:.1f}) -> ({tx:.1f}, {ty:.1f})")
-            
-            # Update touch position
-            touch.x, touch.y = tx, ty
-        
-        # Dispatch to children with transformed coordinates
-        ret = super().on_touch_down(touch)
-        
-        # Restore original position
-        if self._inverse_matrix:
-            touch.pop()
-        
-        return ret
-    
+        orig_pos = touch.pos
+        try:
+            mx, my = self._map_point(*orig_pos)
+            touch.pos = (mx, my)
+            return super().on_touch_down(touch)
+        finally:
+            try:
+                touch.pos = orig_pos
+            except Exception:
+                pass
+
     def on_touch_move(self, touch):
-        """
-        Transform touch coordinates before dispatching to children.
-        
-        If an inverse matrix is set, temporarily replaces touch position with
-        the transformed coordinates, dispatches to children, then restores original position.
-        """
-        if self._inverse_matrix:
-            # Save original position via push
-            touch.push()
-            
-            # Apply inverse transform
-            tx, ty, _ = self._inverse_matrix.transform_point(touch.x, touch.y, 0)
-            
-            if DEBUG:
-                logger.debug(f"[PortraitMatrixContainer] on_touch_move: ({touch.x:.1f}, {touch.y:.1f}) -> ({tx:.1f}, {ty:.1f})")
-            
-            # Update touch position
-            touch.x, touch.y = tx, ty
-        
-        # Dispatch to children
-        ret = super().on_touch_move(touch)
-        
-        # Restore original position
-        if self._inverse_matrix:
-            touch.pop()
-        
-        return ret
-    
+        orig_pos = touch.pos
+        try:
+            mx, my = self._map_point(*orig_pos)
+            touch.pos = (mx, my)
+            return super().on_touch_move(touch)
+        finally:
+            try:
+                touch.pos = orig_pos
+            except Exception:
+                pass
+
     def on_touch_up(self, touch):
-        """
-        Transform touch coordinates before dispatching to children.
-        
-        If an inverse matrix is set, temporarily replaces touch position with
-        the transformed coordinates, dispatches to children, then restores original position.
-        """
-        if self._inverse_matrix:
-            # Save original position via push
-            touch.push()
-            
-            # Apply inverse transform
-            tx, ty, _ = self._inverse_matrix.transform_point(touch.x, touch.y, 0)
-            
-            if DEBUG:
-                logger.debug(f"[PortraitMatrixContainer] on_touch_up: ({touch.x:.1f}, {touch.y:.1f}) -> ({tx:.1f}, {ty:.1f})")
-            
-            # Update touch position
-            touch.x, touch.y = tx, ty
-        
-        # Dispatch to children
-        ret = super().on_touch_up(touch)
-        
-        # Restore original position
-        if self._inverse_matrix:
-            touch.pop()
-        
-        return ret
+        orig_pos = touch.pos
+        try:
+            mx, my = self._map_point(*orig_pos)
+            touch.pos = (mx, my)
+            return super().on_touch_up(touch)
+        finally:
+            try:
+                touch.pos = orig_pos
+            except Exception:
+                pass

@@ -555,6 +555,15 @@ class PortraitContainer(FloatLayout):
                 self._pop_matrix = None
             self._transform_matrix = None
             self._inverse_matrix = None
+            
+            # Clear inverse matrix on parent container if it supports it
+            if hasattr(self.parent, 'set_inverse_matrix'):
+                try:
+                    self.parent.set_inverse_matrix(None)
+                    debug_logger.info('[Portrait matrix] Cleared parent container inverse matrix')
+                except Exception as e:
+                    debug_logger.warning(f"[Portrait matrix] Failed to clear inverse matrix on parent: {e}")
+            
             return
         
         # Get window dimensions
@@ -601,6 +610,14 @@ class PortraitContainer(FloatLayout):
         # Store matrices (inverse is available for optional manual touch handling)
         self._transform_matrix = mat
         self._inverse_matrix = mat.inverse()
+        
+        # Notify parent container if it supports input mapping (PortraitMatrixContainer)
+        if hasattr(self.parent, 'set_inverse_matrix'):
+            try:
+                self.parent.set_inverse_matrix(self._inverse_matrix)
+                debug_logger.info('[Portrait matrix] Updated parent container inverse matrix')
+            except Exception as e:
+                debug_logger.warning(f"[Portrait matrix] Failed to set inverse matrix on parent: {e}")
         
         # Determine matrix implementation mode
         use_rt_impl = PORTRAIT_MATRIX_IMPL == "rt"
