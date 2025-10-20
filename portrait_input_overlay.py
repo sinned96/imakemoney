@@ -1,262 +1,170 @@
-"""
-portrait_input_overlay.py - Input overlay for matrix portrait pipeline hitbox fix.
-
-This module provides InputOverlayContainer, a transparent full-window overlay that
-intercepts touch/mouse events, maps them through an inverse matrix, and dispatches
-them to the target widget. This fixes the hitbox misalignment issue in matrix
-portrait mode (PORTRAIT_PIPELINE=matrix PORTRAIT_MATRIX_IMPL=rt) without changing
-the visual layout.
-
-Key features:
-- Full-window transparent overlay (no visual interference)
-- Inverse matrix mapping for touch coordinates
-- Target widget forwarding (dispatches to underlying rotating_surface)
-- Debug logging for diagnostics
-- Does not capture keyboard focus
-
-Usage:
-    overlay = InputOverlayContainer()
-    root.add_widget(overlay)  # Add on top of rotating_surface
-    overlay.set_target_widget(rotating_surface)
-    overlay.set_inverse_matrix(inverse_matrix)
-"""
-
-import logging
 from kivy.uix.widget import Widget
+from kivy.logger import Logger
 from kivy.core.window import Window
-
-# Debug flag - set via DEBUG_ROTATION_OVERLAY env var
-DEBUG = False
-
-logger = logging.getLogger(__name__)
-
+import inspect
+import os
+import math
+import types
 
 class InputOverlayContainer(Widget):
     """
-    Transparent full-window input overlay for matrix portrait pipeline.
-    
-    This widget sits on top of the entire window and intercepts touch events,
-    maps them through an inverse matrix, and dispatches them to the target widget.
-    This fixes the hitbox misalignment issue without changing visual layout.
-    
-    The overlay is transparent for rendering (does not draw anything) and does
-    not capture keyboard focus. It only handles touch/mouse input mapping.
-    
-    Architecture:
-    - Full-window size (bound to Window.size)
-    - Stores inverse matrix for coordinate mapping
-    - Stores target widget (the underlying rotating_surface)
-    - On touch events: map touch.pos via inverse matrix, dispatch to target widget
-    - Preserve original touch.pos by using touch.push()/pop()
-    
-    Key methods:
-    - set_inverse_matrix(matrix): Set the inverse transformation matrix
-    - set_target_widget(widget): Set the target widget to forward events to
+    Non-intrusive overlay with optional touch remap fix for matrix portrait pipeline.
+    - Default: logging-only (does not consume or re-dispatch events)
+    - Optional fix: if INPUT_OVERLAY_REMAP=1, remap Window touch coords to the
+      portrait virtual space and transparently pass them on. Also patches the
+      target widget (PortraitContainer) to temporarily disable its own inverse
+      mapping to avoid double transforms.
     """
-    
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        
-        # Inverse transformation matrix for coordinate mapping
-        self._inverse_matrix = None
-        
-        # Target widget to dispatch events to (typically the rotating_surface)
-        self._target_widget = None
-        
-        # Bind to Window size to keep overlay full-window
-        Window.bind(size=self._on_window_resize)
-        
-        # Set initial size/pos to full window
+        self._target = None
+        self._inverse_matrix = None  # kept for compatibility/logging only
+        self._remap_enabled = os.getenv("INPUT_OVERLAY_REMAP", "0") == "1"
+        self._patched_target = None
+
+        # Full-window, but invisible and touch-transparent
+        self.size_hint = (None, None)
         self.size = Window.size
         self.pos = (0, 0)
-        
-        # Disable size_hint to use explicit size
-        self.size_hint = (None, None)
-        
-        logger.info("[InputOverlay] Installed overlay container (full-window, transparent)")
-        
-        if DEBUG:
-            logger.debug(f"[InputOverlay] Initial size: {self.size}, pos: {self.pos}")
-    
-    def _on_window_resize(self, instance, size):
-        """Update overlay size when Window is resized"""
-        self.size = size
+        Window.bind(size=lambda *_: self._resize_to_window())
+
+        # Bind Window touch events for logging and optional remap
+        Window.bind(on_touch_down=self._on_window_touch_down,
+                    on_touch_move=self._on_window_touch_move,
+                    on_touch_up=self._on_window_touch_up)
+
+        Logger.info("[portrait_input_overlay]: installed (non-intrusive, logging-only)" + (" + remap" if self._remap_enabled else ""))
+
+    def _resize_to_window(self):
+        self.size = Window.size
         self.pos = (0, 0)
-        
-        if DEBUG:
-            logger.debug(f"[InputOverlay] Window resize: updated to {size}")
-    
+
+    def set_target_widget(self, widget_or_class):
+        # Accept instance or class; resolve class to instance if possible
+        target = widget_or_class
+        if inspect.isclass(widget_or_class):
+            try:
+                from kivy.app import App
+                root = App.get_running_app().root
+                if root:
+                    for c in root.walk():
+                        if isinstance(c, widget_or_class):
+                            target = c
+                            break
+            except Exception:
+                pass
+        self._target = target
+        Logger.info(f"[portrait_input_overlay] set_target_widget -> {getattr(target, '__class__', type(target)).__name__ if target else None}")
+
+        # Optionally patch the target's touch handlers to avoid double mapping
+        if self._remap_enabled and target and self._patched_target is not target:
+            self._patch_target_touch_handlers(target)
+            self._patched_target = target
+
     def set_inverse_matrix(self, matrix):
-        """
-        Set the inverse transformation matrix for input coordinate mapping.
-        
-        This matrix is used to map screen coordinates to virtual portrait coordinates.
-        When matrix is None, coordinate mapping is disabled (pass-through).
-        
-        Args:
-            matrix: Kivy Matrix object representing the inverse of the portrait transform,
-                    or None to disable coordinate mapping.
-        """
+        # Kept for compatibility/logging; remap uses analytic mapping (not this matrix)
         self._inverse_matrix = matrix
-        
-        if matrix:
-            logger.info("[InputOverlay] set_inverse_matrix: True")
-            if DEBUG:
-                logger.debug(f"[InputOverlay] Inverse matrix set: {matrix}")
-        else:
-            logger.info("[InputOverlay] set_inverse_matrix: None (disabled)")
-            if DEBUG:
-                logger.debug("[InputOverlay] Inverse matrix cleared")
-    
-    def set_target_widget(self, widget):
+        Logger.info(f"[portrait_input_overlay] set_inverse_matrix -> {bool(matrix)}")
+
+    # ----------------- Window-level observers -----------------
+    def _log_touch(self, phase, touch, mapped=None):
+        try:
+            wx, wy = touch.pos
+            if mapped is None and self._inverse_matrix is not None:
+                # Fallback mapping for logs using provided inverse matrix (best-effort)
+                try:
+                    mx, my, _ = self._inverse_matrix.transform_point(wx, wy, 0)
+                    mapped = (round(mx, 1), round(my, 1))
+                except Exception:
+                    mapped = None
+            Logger.info(f"[InputOverlay] {phase} window={round(wx,1)},{round(wy,1)} mapped={mapped} id={getattr(touch,'id',None)} profile={getattr(touch,'profile',None)}")
+        except Exception as e:
+            Logger.warning(f"[InputOverlay] log failed ({phase}): {e}")
+
+    def _map_window_to_virtual(self, wx, wy, v_w, v_h):
+        """Analytic mapping from Window coords to portrait virtual coords.
+        Mirrors the draw pipeline used by the PortraitContainer (pos -> center -> scale -> rotate -> translate).
         """
-        Set the target widget to forward touch events to.
-        
-        The target widget is typically the rotating_surface (PortraitContainer or
-        PortraitMatrixContainer) that contains the actual UI content.
-        
-        Args:
-            widget: The widget to dispatch touch events to after coordinate mapping.
-        """
-        self._target_widget = widget
-        
-        if widget:
-            widget_name = widget.__class__.__name__
-            logger.info(f"[InputOverlay] set_target_widget: {widget_name}")
-            if DEBUG:
-                logger.debug(f"[InputOverlay] Target widget set: {widget} ({widget_name})")
-        else:
-            logger.info("[InputOverlay] set_target_widget: None (disabled)")
-            if DEBUG:
-                logger.debug("[InputOverlay] Target widget cleared")
-    
+        try:
+            # Read rotation angle from env (same variable used by main.py)
+            angle_deg = int(os.getenv("PORTRAIT_ROTATION_DEGREES", "-90"))
+            # Compute rotated content frame (after rotation by +/-90, w/h swap)
+            win_w, win_h = Window.size
+            if abs(angle_deg) % 180 == 90:
+                rot_w, rot_h = v_h, v_w
+            else:
+                rot_w, rot_h = v_w, v_h
+
+            # Scale to fit and letterbox position
+            s = max(1e-6, min(win_w / rot_w, win_h / rot_h))
+            blit_w, blit_h = rot_w * s, rot_h * s
+            pos_x = (win_w - blit_w) / 2.0
+            pos_y = (win_h - blit_h) / 2.0
+
+            # Inverse of: Translate(pos)·Translate(center)·Scale(s)·Rotate(angle)·Translate(-v_center)
+            cx = (wx - pos_x - blit_w / 2.0) / s
+            cy = (wy - pos_y - blit_h / 2.0) / s
+
+            # Inverse rotate by -angle (i.e., rotate by -angle to undo forward rotate(angle))
+            rad = -math.radians(angle_deg)
+            x2 = cx * math.cos(rad) - cy * math.sin(rad)
+            y2 = cx * math.sin(rad) + cy * math.cos(rad)
+
+            vx = x2 + v_w / 2.0
+            vy = y2 + v_h / 2.0
+            return vx, vy
+        except Exception:
+            return wx, wy  # safety fallback
+
+    def _maybe_remap_in_place(self, touch):
+        """If remap is enabled and we have a target with virtual dims, mutate touch.x/y in-place."""
+        if not self._remap_enabled or not self._target:
+            return None
+        # Get virtual dimensions from target if available; fallback to 1080x1920
+        v_w = getattr(self._target, 'virtual_w', 1080)
+        v_h = getattr(self._target, 'virtual_h', 1920)
+        vx, vy = self._map_window_to_virtual(touch.x, touch.y, v_w, v_h)
+        # Mutate touch in-place so downstream handlers see corrected coords
+        touch.x, touch.y = vx, vy
+        # Also, temporarily disable target's own mapping by clearing its inverse during this event
+        if hasattr(self._target, '_inverse_matrix'):
+            setattr(touch, '_ioverlay_prev_inv', self._target._inverse_matrix)
+            self._target._inverse_matrix = None
+        setattr(touch, '_ioverlay_mapped', True)
+        return (vx, vy)
+
+    def _restore_target_after_event(self, touch):
+        prev = getattr(touch, '_ioverlay_prev_inv', None)
+        if prev is not None and self._target is not None:
+            self._target._inverse_matrix = prev
+            try:
+                delattr(touch, '_ioverlay_prev_inv')
+            except Exception:
+                pass
+
+    def _on_window_touch_down(self, window, touch):
+        mapped = self._maybe_remap_in_place(touch)
+        self._log_touch("down", touch, mapped=mapped)
+        # Do not consume; allow normal Kivy routing
+        return False
+
+    def _on_window_touch_move(self, window, touch):
+        mapped = self._maybe_remap_in_place(touch)
+        self._log_touch("move", touch, mapped=mapped)
+        return False
+
+    def _on_window_touch_up(self, window, touch):
+        mapped = self._maybe_remap_in_place(touch)
+        self._log_touch("up", touch, mapped=mapped)
+        # Restore target mapping after gesture completes
+        self._restore_target_after_event(touch)
+        return False
+
+    # Ensure we never consume via widget dispatch path
     def on_touch_down(self, touch):
-        """
-        Intercept touch_down events, map coordinates, and dispatch to target widget.
-        
-        This method:
-        1. Checks if inverse matrix and target widget are set
-        2. If yes: maps touch coordinates via inverse matrix
-        3. Dispatches the event to the target widget with mapped coordinates
-        4. Restores original touch coordinates
-        
-        Args:
-            touch: Kivy touch object
-            
-        Returns:
-            True if event was dispatched to target widget, False otherwise
-        """
-        if not self._inverse_matrix or not self._target_widget:
-            # No mapping or no target - pass through (should not happen in normal use)
-            if DEBUG:
-                logger.debug("[InputOverlay] on_touch_down: no matrix or target, pass-through")
-            return super().on_touch_down(touch)
-        
-        # Save original touch position
-        touch.push()
-        
-        # Map touch coordinates via inverse matrix
-        orig_x, orig_y = touch.x, touch.y
-        tx, ty, _ = self._inverse_matrix.transform_point(touch.x, touch.y, 0)
-        touch.x, touch.y = tx, ty
-        
-        if DEBUG:
-            logger.debug(f"[InputOverlay] on_touch_down: ({orig_x:.1f}, {orig_y:.1f}) -> ({tx:.1f}, {ty:.1f})")
-        
-        # Dispatch to target widget with mapped coordinates
-        # Use dispatch() to invoke the target's on_touch_down method directly
-        ret = self._target_widget.dispatch('on_touch_down', touch)
-        
-        # Restore original touch position
-        touch.pop()
-        
-        return ret
-    
+        return False
     def on_touch_move(self, touch):
-        """
-        Intercept touch_move events, map coordinates, and dispatch to target widget.
-        
-        This method:
-        1. Checks if inverse matrix and target widget are set
-        2. If yes: maps touch coordinates via inverse matrix
-        3. Dispatches the event to the target widget with mapped coordinates
-        4. Restores original touch coordinates
-        
-        Args:
-            touch: Kivy touch object
-            
-        Returns:
-            True if event was dispatched to target widget, False otherwise
-        """
-        if not self._inverse_matrix or not self._target_widget:
-            # No mapping or no target - pass through
-            if DEBUG:
-                logger.debug("[InputOverlay] on_touch_move: no matrix or target, pass-through")
-            return super().on_touch_move(touch)
-        
-        # Save original touch position
-        touch.push()
-        
-        # Map touch coordinates via inverse matrix
-        orig_x, orig_y = touch.x, touch.y
-        tx, ty, _ = self._inverse_matrix.transform_point(touch.x, touch.y, 0)
-        touch.x, touch.y = tx, ty
-        
-        if DEBUG:
-            logger.debug(f"[InputOverlay] on_touch_move: ({orig_x:.1f}, {orig_y:.1f}) -> ({tx:.1f}, {ty:.1f})")
-        
-        # Dispatch to target widget
-        ret = self._target_widget.dispatch('on_touch_move', touch)
-        
-        # Restore original touch position
-        touch.pop()
-        
-        return ret
-    
+        return False
     def on_touch_up(self, touch):
-        """
-        Intercept touch_up events, map coordinates, and dispatch to target widget.
-        
-        This method:
-        1. Checks if inverse matrix and target widget are set
-        2. If yes: maps touch coordinates via inverse matrix
-        3. Dispatches the event to the target widget with mapped coordinates
-        4. Restores original touch coordinates
-        
-        Args:
-            touch: Kivy touch object
-            
-        Returns:
-            True if event was dispatched to target widget, False otherwise
-        """
-        if not self._inverse_matrix or not self._target_widget:
-            # No mapping or no target - pass through
-            if DEBUG:
-                logger.debug("[InputOverlay] on_touch_up: no matrix or target, pass-through")
-            return super().on_touch_up(touch)
-        
-        # Save original touch position
-        touch.push()
-        
-        # Map touch coordinates via inverse matrix
-        orig_x, orig_y = touch.x, touch.y
-        tx, ty, _ = self._inverse_matrix.transform_point(touch.x, touch.y, 0)
-        touch.x, touch.y = tx, ty
-        
-        if DEBUG:
-            logger.debug(f"[InputOverlay] on_touch_up: ({orig_x:.1f}, {orig_y:.1f}) -> ({tx:.1f}, {ty:.1f})")
-        
-        # Dispatch to target widget
-        ret = self._target_widget.dispatch('on_touch_up', touch)
-        
-        # Restore original touch position
-        touch.pop()
-        
-        return ret
-
-
-# Enable debug logging if DEBUG_ROTATION_OVERLAY environment variable is set
-import os
-if os.getenv("DEBUG_ROTATION_OVERLAY", "0") == "1":
-    DEBUG = True
-    logger.info("[InputOverlay] Debug logging enabled (DEBUG_ROTATION_OVERLAY=1)")
+        return False
