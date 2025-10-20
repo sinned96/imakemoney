@@ -817,7 +817,7 @@ class PortraitContainer(FloatLayout):
         """Transform touch coordinates using Kivy's built-in push/pop mechanism"""
         # Check if overlay already remapped this touch - bypass container transform if so
         if getattr(touch, '_ioverlay_mapped', False):
-            Logger.debug("[Portrait] Bypass mapping for overlay-remapped touch in on_touch_down")
+            Logger.info("[Portrait] Bypass mapping for overlay-remapped touch in on_touch_down")
             return super(PortraitContainer, self).on_touch_down(touch)
         
         if self._inverse_matrix:
@@ -839,7 +839,7 @@ class PortraitContainer(FloatLayout):
         """Transform touch coordinates using Kivy's built-in push/pop mechanism"""
         # Check if overlay already remapped this touch - bypass container transform if so
         if getattr(touch, '_ioverlay_mapped', False):
-            Logger.debug("[Portrait] Bypass mapping for overlay-remapped touch in on_touch_move")
+            Logger.info("[Portrait] Bypass mapping for overlay-remapped touch in on_touch_move")
             return super(PortraitContainer, self).on_touch_move(touch)
         
         if self._inverse_matrix:
@@ -858,7 +858,7 @@ class PortraitContainer(FloatLayout):
         """Transform touch coordinates using Kivy's built-in push/pop mechanism"""
         # Check if overlay already remapped this touch - bypass container transform if so
         if getattr(touch, '_ioverlay_mapped', False):
-            Logger.debug("[Portrait] Bypass mapping for overlay-remapped touch in on_touch_up")
+            Logger.info("[Portrait] Bypass mapping for overlay-remapped touch in on_touch_up")
             return super(PortraitContainer, self).on_touch_up(touch)
         
         if self._inverse_matrix:
@@ -1562,11 +1562,19 @@ class RotatingRoot(FloatLayout):
         if is_portrait:
             # Portrait mode: choose rendering method based on PORTRAIT_PIPELINE
             if PORTRAIT_PIPELINE == "matrix":
-                # Matrix-based rotation using original PortraitContainer (pr-88) with InputOverlayContainer for hitbox fix
+                # Matrix-based rotation using Variant B PortraitContainer (pr-96) with InputOverlayContainer for hitbox fix
                 if not self._rotating_surface:
                     self._rotating_surface = PortraitContainer()
                     super().add_widget(self._rotating_surface, *args, **kwargs)
-                    debug_logger.info("[Portrait] Using matrix pipeline with original PortraitContainer (pr-88)")
+                    debug_logger.info("[Portrait] Using matrix pipeline with Variant B PortraitContainer (pr-96)")
+                    
+                    # Log startup diagnostics to prove which PortraitContainer class is active
+                    import inspect
+                    pc = self._rotating_surface
+                    debug_logger.info("[Portrait] Active container: %s.%s file=%s", 
+                                    pc.__class__.__module__, 
+                                    pc.__class__.__name__, 
+                                    inspect.getsourcefile(pc.__class__) or "unknown")
                     
                     # Install input overlay on top of rotating_surface for hitbox fix
                     self._input_overlay = InputOverlayContainer()
