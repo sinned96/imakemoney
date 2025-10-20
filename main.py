@@ -6014,4 +6014,19 @@ if __name__ == "__main__":
                 hasattr(app,'root_widget') and app.root_widget.children and
                 hasattr(app.root_widget.children[-1],'on_mouse_down') and
                 app.root_widget.children[-1].on_mouse_down(w,x,y,b,m))
+    
+    # --- DEBUG TOUCH LOGGER (TEMP) ---
+    from kivy.core.window import Window
+    from kivy.logger import Logger
+
+    def _touch_debug(window, touch):
+        try:
+            tid = getattr(touch, 'id', None)
+            Logger.info(f"[TouchDebug] type={touch.__class__.__name__} id={tid} pos={touch.pos} sx={getattr(touch,'sx',0):.3f} sy={getattr(touch,'sy',0):.3f} profile={getattr(touch,'profile',None)}")
+        except Exception as e:
+            Logger.warning(f"[TouchDebug] logging failed: {e}")
+
+    Window.bind(on_touch_down=_touch_debug, on_touch_move=_touch_debug, on_touch_up=_touch_debug)
+    # --- END DEBUG TOUCH LOGGER ---
+    
     app.run()

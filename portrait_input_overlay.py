@@ -4,24 +4,21 @@ from kivy.core.window import Window
 import inspect
 import os
 import math
-import types
 
 class InputOverlayContainer(Widget):
     """
     Non-intrusive overlay with optional touch remap fix for matrix portrait pipeline.
     - Default: logging-only (does not consume or re-dispatch events)
     - Optional fix: if INPUT_OVERLAY_REMAP=1, remap Window touch coords to the
-      portrait virtual space and transparently pass them on. Also patches the
-      target widget (PortraitContainer) to temporarily disable its own inverse
-      mapping to avoid double transforms.
+      portrait virtual space and transparently pass them on. Dabei wird pro Event
+      die inverse Matrix des Zielwidgets vorübergehend deaktiviert (kein Double-Mapping).
     """
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._target = None
-        self._inverse_matrix = None  # kept for compatibility/logging only
+        self._inverse_matrix = None  # for logging only
         self._remap_enabled = os.getenv("INPUT_OVERLAY_REMAP", "0") == "1"
-        self._patched_target = None
 
         # Full-window, but invisible and touch-transparent
         self.size_hint = (None, None)
@@ -34,7 +31,8 @@ class InputOverlayContainer(Widget):
                     on_touch_move=self._on_window_touch_move,
                     on_touch_up=self._on_window_touch_up)
 
-        Logger.info("[portrait_input_overlay]: installed (non-intrusive, logging-only)" + (" + remap" if self._remap_enabled else ""))
+        Logger.info("[portrait_input_overlay]: installed (non-intrusive, logging-only)" +
+                    (" + remap" if self._remap_enabled else ""))
 
     def _resize_to_window(self):
         self.size = Window.size
@@ -55,12 +53,8 @@ class InputOverlayContainer(Widget):
             except Exception:
                 pass
         self._target = target
-        Logger.info(f"[portrait_input_overlay] set_target_widget -> {getattr(target, '__class__', type(target)).__name__ if target else None}")
-
-        # Optionally patch the target's touch handlers to avoid double mapping
-        if self._remap_enabled and target and self._patched_target is not target:
-            self._patch_target_touch_handlers(target)
-            self._patched_target = target
+        Logger.info(f"[portrait_input_overlay] set_target_widget -> "
+                    f"{getattr(target, '__class__', type(target)).__name__ if target else None}")
 
     def set_inverse_matrix(self, matrix):
         # Kept for compatibility/logging; remap uses analytic mapping (not this matrix)
@@ -78,36 +72,34 @@ class InputOverlayContainer(Widget):
                     mapped = (round(mx, 1), round(my, 1))
                 except Exception:
                     mapped = None
-            Logger.info(f"[InputOverlay] {phase} window={round(wx,1)},{round(wy,1)} mapped={mapped} id={getattr(touch,'id',None)} profile={getattr(touch,'profile',None)}")
+            Logger.info(f"[InputOverlay] {phase} window={round(wx,1)},{round(wy,1)} "
+                        f"mapped={mapped} id={getattr(touch,'id',None)} "
+                        f"profile={getattr(touch,'profile',None)}")
         except Exception as e:
             Logger.warning(f"[InputOverlay] log failed ({phase}): {e}")
 
     def _map_window_to_virtual(self, wx, wy, v_w, v_h):
         """Analytic mapping from Window coords to portrait virtual coords.
-        Mirrors the draw pipeline used by the PortraitContainer (pos -> center -> scale -> rotate -> translate).
+        Mirrors: Translate(pos) · Translate(center) · Scale(s) · Rotate(angle) · Translate(-v_center)
         """
         try:
-            # Read rotation angle from env (same variable used by main.py)
             angle_deg = int(os.getenv("PORTRAIT_ROTATION_DEGREES", "-90"))
-            # Compute rotated content frame (after rotation by +/-90, w/h swap)
             win_w, win_h = Window.size
             if abs(angle_deg) % 180 == 90:
                 rot_w, rot_h = v_h, v_w
             else:
                 rot_w, rot_h = v_w, v_h
 
-            # Scale to fit and letterbox position
             s = max(1e-6, min(win_w / rot_w, win_h / rot_h))
             blit_w, blit_h = rot_w * s, rot_h * s
             pos_x = (win_w - blit_w) / 2.0
             pos_y = (win_h - blit_h) / 2.0
 
-            # Inverse of: Translate(pos)·Translate(center)·Scale(s)·Rotate(angle)·Translate(-v_center)
+            # Inverse of the forward pipeline
             cx = (wx - pos_x - blit_w / 2.0) / s
             cy = (wy - pos_y - blit_h / 2.0) / s
 
-            # Inverse rotate by -angle (i.e., rotate by -angle to undo forward rotate(angle))
-            rad = -math.radians(angle_deg)
+            rad = -math.radians(angle_deg)  # inverse rotate
             x2 = cx * math.cos(rad) - cy * math.sin(rad)
             y2 = cx * math.sin(rad) + cy * math.cos(rad)
 
@@ -118,21 +110,25 @@ class InputOverlayContainer(Widget):
             return wx, wy  # safety fallback
 
     def _maybe_remap_in_place(self, touch):
-        """If remap is enabled and we have a target with virtual dims, mutate touch.x/y in-place."""
+        """If remap is enabled and target exists, mutate touch.x/y to virtual coords.
+           Also disable target's own mapping temporarily to avoid double-transform."""
         if not self._remap_enabled or not self._target:
             return None
-        # Get virtual dimensions from target if available; fallback to 1080x1920
+
         v_w = getattr(self._target, 'virtual_w', 1080)
         v_h = getattr(self._target, 'virtual_h', 1920)
         vx, vy = self._map_window_to_virtual(touch.x, touch.y, v_w, v_h)
+
         # Mutate touch in-place so downstream handlers see corrected coords
         touch.x, touch.y = vx, vy
-        # Also, temporarily disable target's own mapping by clearing its inverse during this event
+
+        # Temporarily disable the target's inverse mapping for this event
         if hasattr(self._target, '_inverse_matrix'):
             setattr(touch, '_ioverlay_prev_inv', self._target._inverse_matrix)
             self._target._inverse_matrix = None
+
         setattr(touch, '_ioverlay_mapped', True)
-        return (vx, vy)
+        return (round(vx, 1), round(vy, 1))
 
     def _restore_target_after_event(self, touch):
         prev = getattr(touch, '_ioverlay_prev_inv', None)
@@ -162,9 +158,6 @@ class InputOverlayContainer(Widget):
         return False
 
     # Ensure we never consume via widget dispatch path
-    def on_touch_down(self, touch):
-        return False
-    def on_touch_move(self, touch):
-        return False
-    def on_touch_up(self, touch):
-        return False
+    def on_touch_down(self, touch): return False
+    def on_touch_move(self, touch): return False
+    def on_touch_up(self, touch): return False
