@@ -191,6 +191,7 @@ from kivy.uix.widget import Widget
 from kivy.app import App
 from kivy.core.window import Window
 from kivy.uix.modalview import ModalView
+from kivy.logger import Logger
 
 # Import input overlay for matrix portrait pipeline hitbox fix
 from portrait_input_overlay import InputOverlayContainer
@@ -814,6 +815,11 @@ class PortraitContainer(FloatLayout):
     
     def on_touch_down(self, touch):
         """Transform touch coordinates using Kivy's built-in push/pop mechanism"""
+        # Check if overlay already remapped this touch - bypass container transform if so
+        if getattr(touch, '_ioverlay_mapped', False):
+            Logger.debug("[Portrait] Bypass mapping for overlay-remapped touch in on_touch_down")
+            return super(PortraitContainer, self).on_touch_down(touch)
+        
         if self._inverse_matrix:
             # Use Kivy's built-in coordinate transformation
             # This applies the inverse matrix to map screen coords to widget coords
@@ -831,6 +837,11 @@ class PortraitContainer(FloatLayout):
     
     def on_touch_move(self, touch):
         """Transform touch coordinates using Kivy's built-in push/pop mechanism"""
+        # Check if overlay already remapped this touch - bypass container transform if so
+        if getattr(touch, '_ioverlay_mapped', False):
+            Logger.debug("[Portrait] Bypass mapping for overlay-remapped touch in on_touch_move")
+            return super(PortraitContainer, self).on_touch_move(touch)
+        
         if self._inverse_matrix:
             touch.push()
             tx, ty, _ = self._inverse_matrix.transform_point(touch.x, touch.y, 0)
@@ -845,6 +856,11 @@ class PortraitContainer(FloatLayout):
     
     def on_touch_up(self, touch):
         """Transform touch coordinates using Kivy's built-in push/pop mechanism"""
+        # Check if overlay already remapped this touch - bypass container transform if so
+        if getattr(touch, '_ioverlay_mapped', False):
+            Logger.debug("[Portrait] Bypass mapping for overlay-remapped touch in on_touch_up")
+            return super(PortraitContainer, self).on_touch_up(touch)
+        
         if self._inverse_matrix:
             touch.push()
             tx, ty, _ = self._inverse_matrix.transform_point(touch.x, touch.y, 0)
