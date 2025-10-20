@@ -828,7 +828,7 @@ class PortraitContainer(FloatLayout):
             tx, ty, _ = self._inverse_matrix.transform_point(touch.x, touch.y, 0)
             touch.x, touch.y = tx, ty
         
-        ret = super().on_touch_down(touch)
+        ret = super(PortraitContainer, self).on_touch_down(touch)
         
         if self._inverse_matrix:
             touch.pop()
@@ -847,7 +847,7 @@ class PortraitContainer(FloatLayout):
             tx, ty, _ = self._inverse_matrix.transform_point(touch.x, touch.y, 0)
             touch.x, touch.y = tx, ty
         
-        ret = super().on_touch_move(touch)
+        ret = super(PortraitContainer, self).on_touch_move(touch)
         
         if self._inverse_matrix:
             touch.pop()
@@ -866,7 +866,7 @@ class PortraitContainer(FloatLayout):
             tx, ty, _ = self._inverse_matrix.transform_point(touch.x, touch.y, 0)
             touch.x, touch.y = tx, ty
         
-        ret = super().on_touch_up(touch)
+        ret = super(PortraitContainer, self).on_touch_up(touch)
         
         if self._inverse_matrix:
             touch.pop()
