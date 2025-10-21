@@ -398,6 +398,28 @@ class OrientationProvider:
         """Check if we're in portrait mode"""
         return self.aspect_ratio == "9:16"
 
+# ------------------ ANALYTICAL MAPPING HELPERS ------------------
+def window_to_portrait(xw, yw, ox, oy, s, Pw):
+    """
+    Analytically map window coordinates to portrait coordinates for -90° rotation.
+    
+    This is the exact inverse of the forward mapping:
+    - Forward: xw = ox + s*v, yw = oy + s*(Pw - u)
+    - Inverse: u = Pw - (yw - oy)/s, v = (xw - ox)/s
+    
+    Args:
+        xw, yw: Window coordinates
+        ox, oy: Letterbox offset (position of rotated viewport in window)
+        s: Scale factor
+        Pw: Portrait width (1080 for this app)
+    
+    Returns:
+        (u, v): Portrait coordinates
+    """
+    u = Pw - (yw - oy) / s
+    v = (xw - ox) / s
+    return u, v
+
 # ------------------ PORTRAIT CONTAINER (MATRIX PIPELINE) ------------------
 class PortraitContainer(FloatLayout):
     """
@@ -421,6 +443,9 @@ class PortraitContainer(FloatLayout):
         self._last_inverse_matrix = None  # Cached inverse matrix for fallback
         self._frame_count = 0
         self._app_loop_frames = 0  # Track frames after app loop starts
+        
+        # Portrait pipeline params for analytical mapping
+        self._portrait_params = None
         
         # Virtual portrait size (same as FBO virtual size for consistency)
         self.virtual_w = 1080
@@ -588,27 +613,32 @@ class PortraitContainer(FloatLayout):
         pos_x = (w - blit_w) / 2
         pos_y = (h - blit_h) / 2
         
-        # Build transformation matrix:
-        # 1. PushMatrix
-        # 2. Translate(pos_x, pos_y) - position the viewport
-        # 3. Translate(blit_w/2, blit_h/2) - move to center of blit area
-        # 4. Scale(s, s, 1)
-        # 5. Rotate(-90°)
-        # 6. Translate(-virtual_w/2, -virtual_h/2) - center virtual content
+        # Build transformation matrix for -90° rotation:
+        # Forward mapping (portrait→window): M_fwd = T(ox,oy) · S(s) · T(0,Pw) · R(-90°)
+        # This gives: xw = ox + s*v, yw = oy + s*(Pw - u)
+        # Where portrait coords are (u,v) with size Pw x Ph (1080 x 1920)
         from kivy.graphics.transformation import Matrix
         from kivy.graphics import PushMatrix, PopMatrix, MatrixInstruction
         
         mat = Matrix()
         mat.translate(pos_x, pos_y, 0)
-        mat.translate(blit_w / 2, blit_h / 2, 0)
         mat.scale(scale_factor, scale_factor, 1)
+        mat.translate(0, self.virtual_w, 0)  # T(0, Pw) where Pw=1080
         mat.rotate(PORTRAIT_ROTATION_DEGREES * 3.14159265359 / 180.0, 0, 0, 1)
-        mat.translate(-self.virtual_w / 2, -self.virtual_h / 2, 0)
         
         # Store matrices (inverse is available for optional manual touch handling)
         self._transform_matrix = mat
         self._inverse_matrix = mat.inverse()
         self._last_inverse_matrix = self._inverse_matrix  # Cache for fallback
+        
+        # Store pipeline params for analytical mapping fallback
+        self._portrait_params = {
+            'ox': pos_x,
+            'oy': pos_y,
+            's': scale_factor,
+            'Pw': self.virtual_w,
+            'Ph': self.virtual_h
+        }
         
         # Update overlay's inverse matrix if it exists
         # The overlay is added to the RotatingRoot (parent), so we need to access it via parent
@@ -618,6 +648,47 @@ class PortraitContainer(FloatLayout):
         
         # Determine matrix implementation mode
         use_rt_impl = PORTRAIT_MATRIX_IMPL == "rt"
+        
+        # Log transform details and corner validation
+        debug_logger.info(
+            f"[Portrait matrix] Pipeline params: event={w:.0f}x{h:.0f} "
+            f"s={scale_factor:.4f} pos=({pos_x:.0f},{pos_y:.0f}) "
+            f"forced_size=({self.virtual_w},{self.virtual_h}) rot={PORTRAIT_ROTATION_DEGREES}"
+        )
+        
+        # Log corner validation: forward mapping of 4 portrait corners
+        portrait_corners = [
+            (0, 0, "bottom-left"),
+            (self.virtual_w, 0, "bottom-right"),
+            (self.virtual_w, self.virtual_h, "top-right"),
+            (0, self.virtual_h, "top-left")
+        ]
+        debug_logger.info("[Portrait matrix] Forward mapping (portrait→window):")
+        for u, v, label in portrait_corners:
+            xw, yw, _ = self._transform_matrix.transform_point(u, v, 0)
+            debug_logger.info(f"  portrait ({u},{v}) [{label}] → window ({xw:.1f},{yw:.1f})")
+        
+        # Log corner validation: inverse mapping of 4 window corners
+        window_corners = [
+            (0, 0, "bottom-left"),
+            (w, 0, "bottom-right"),
+            (w, h, "top-right"),
+            (0, h, "top-left")
+        ]
+        debug_logger.info("[Portrait matrix] Inverse mapping (window→portrait):")
+        for xw, yw, label in window_corners:
+            u, v, _ = self._inverse_matrix.transform_point(xw, yw, 0)
+            debug_logger.info(f"  window ({xw:.1f},{yw:.1f}) [{label}] → portrait ({u:.1f},{v:.1f})")
+        
+        # Validate analytical mapping matches matrix inverse
+        test_win_x, test_win_y = w / 2, h / 2
+        u_mat, v_mat, _ = self._inverse_matrix.transform_point(test_win_x, test_win_y, 0)
+        u_ana, v_ana = window_to_portrait(test_win_x, test_win_y, pos_x, pos_y, scale_factor, self.virtual_w)
+        debug_logger.info(
+            f"[Portrait matrix] Analytical validation at window center ({test_win_x:.1f},{test_win_y:.1f}): "
+            f"matrix=({u_mat:.1f},{v_mat:.1f}) analytical=({u_ana:.1f},{v_ana:.1f}) "
+            f"diff=({abs(u_mat - u_ana):.3f},{abs(v_mat - v_ana):.3f})"
+        )
         
         # Create or update canvas instructions (one-time creation, then update values)
         if self._matrix_inst is None:
@@ -750,9 +821,6 @@ class PortraitContainer(FloatLayout):
                     if isinstance(instr, MatrixInstruction):
                         instr.matrix = mat
                         break
-        
-        # Log transform details once per resize event
-        debug_logger.info(f"[Portrait matrix] event={w:.0f}x{h:.0f} s={scale_factor:.4f} blit={blit_w:.0f}x{blit_h:.0f} pos=({pos_x:.0f},{pos_y:.0f}) rot={PORTRAIT_ROTATION_DEGREES}")
     
     def add_widget(self, widget, *args, **kwargs):
         """Override to set child size to virtual dimensions"""
@@ -816,11 +884,29 @@ class PortraitContainer(FloatLayout):
         debug_logger.info(f"[Portrait matrix] Added widget: {widget_name} (title/class: {title})")
     
     def on_touch_down(self, touch):
-        """Transform touch coordinates using Kivy's built-in push/pop mechanism"""
+        """Transform touch coordinates using Kivy's built-in push/pop mechanism or analytical mapping"""
         # Check if overlay already remapped this touch - bypass container transform if so
         if getattr(touch, '_ioverlay_mapped', False):
             Logger.info("[Portrait] Bypass mapping for overlay-remapped touch in on_touch_down")
             return super(PortraitContainer, self).on_touch_down(touch)
+        
+        # Check if analytical mapping is enabled via env var
+        use_analytic = os.getenv("INPUT_ANALYTIC_MAP", "0") == "1"
+        
+        if use_analytic and self._portrait_params:
+            # Use analytical mapping
+            params = self._portrait_params
+            u, v = window_to_portrait(touch.x, touch.y, params['ox'], params['oy'], params['s'], params['Pw'])
+            Logger.info(
+                f"[Portrait] on_touch_down analytic map from=({round(touch.x,1)},{round(touch.y,1)}) "
+                f"to=({round(u,1)},{round(v,1)}) s={params['s']:.4f} pos=({params['ox']:.1f},{params['oy']:.1f}) Pw={params['Pw']}"
+            )
+            # Apply analytical mapping
+            touch.push()
+            touch.x, touch.y = u, v
+            ret = super(PortraitContainer, self).on_touch_down(touch)
+            touch.pop()
+            return ret
         
         # Use inverse matrix if available, otherwise use cached fallback
         inv = self._inverse_matrix
@@ -850,11 +936,29 @@ class PortraitContainer(FloatLayout):
         return ret
     
     def on_touch_move(self, touch):
-        """Transform touch coordinates using Kivy's built-in push/pop mechanism"""
+        """Transform touch coordinates using Kivy's built-in push/pop mechanism or analytical mapping"""
         # Check if overlay already remapped this touch - bypass container transform if so
         if getattr(touch, '_ioverlay_mapped', False):
             Logger.info("[Portrait] Bypass mapping for overlay-remapped touch in on_touch_move")
             return super(PortraitContainer, self).on_touch_move(touch)
+        
+        # Check if analytical mapping is enabled via env var
+        use_analytic = os.getenv("INPUT_ANALYTIC_MAP", "0") == "1"
+        
+        if use_analytic and self._portrait_params:
+            # Use analytical mapping
+            params = self._portrait_params
+            u, v = window_to_portrait(touch.x, touch.y, params['ox'], params['oy'], params['s'], params['Pw'])
+            Logger.info(
+                f"[Portrait] on_touch_move analytic map from=({round(touch.x,1)},{round(touch.y,1)}) "
+                f"to=({round(u,1)},{round(v,1)}) s={params['s']:.4f} pos=({params['ox']:.1f},{params['oy']:.1f}) Pw={params['Pw']}"
+            )
+            # Apply analytical mapping
+            touch.push()
+            touch.x, touch.y = u, v
+            ret = super(PortraitContainer, self).on_touch_move(touch)
+            touch.pop()
+            return ret
         
         # Use inverse matrix if available, otherwise use cached fallback
         inv = self._inverse_matrix
@@ -881,11 +985,29 @@ class PortraitContainer(FloatLayout):
         return ret
     
     def on_touch_up(self, touch):
-        """Transform touch coordinates using Kivy's built-in push/pop mechanism"""
+        """Transform touch coordinates using Kivy's built-in push/pop mechanism or analytical mapping"""
         # Check if overlay already remapped this touch - bypass container transform if so
         if getattr(touch, '_ioverlay_mapped', False):
             Logger.info("[Portrait] Bypass mapping for overlay-remapped touch in on_touch_up")
             return super(PortraitContainer, self).on_touch_up(touch)
+        
+        # Check if analytical mapping is enabled via env var
+        use_analytic = os.getenv("INPUT_ANALYTIC_MAP", "0") == "1"
+        
+        if use_analytic and self._portrait_params:
+            # Use analytical mapping
+            params = self._portrait_params
+            u, v = window_to_portrait(touch.x, touch.y, params['ox'], params['oy'], params['s'], params['Pw'])
+            Logger.info(
+                f"[Portrait] on_touch_up analytic map from=({round(touch.x,1)},{round(touch.y,1)}) "
+                f"to=({round(u,1)},{round(v,1)}) s={params['s']:.4f} pos=({params['ox']:.1f},{params['oy']:.1f}) Pw={params['Pw']}"
+            )
+            # Apply analytical mapping
+            touch.push()
+            touch.x, touch.y = u, v
+            ret = super(PortraitContainer, self).on_touch_up(touch)
+            touch.pop()
+            return ret
         
         # Use inverse matrix if available, otherwise use cached fallback
         inv = self._inverse_matrix
