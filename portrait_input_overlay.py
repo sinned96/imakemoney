@@ -5,6 +5,27 @@ import inspect
 import os
 import math
 
+def window_to_portrait_overlay(xw, yw, ox, oy, s, Pw):
+    """
+    Analytically map window coordinates to portrait coordinates for -90° rotation.
+    
+    This is the exact inverse of the forward mapping:
+    - Forward: xw = ox + s*v, yw = oy + s*(Pw - u)
+    - Inverse: u = Pw - (yw - oy)/s, v = (xw - ox)/s
+    
+    Args:
+        xw, yw: Window coordinates
+        ox, oy: Letterbox offset (position of rotated viewport in window)
+        s: Scale factor
+        Pw: Portrait width (1080 for this app)
+    
+    Returns:
+        (u, v): Portrait coordinates
+    """
+    u = Pw - (yw - oy) / s
+    v = (xw - ox) / s
+    return u, v
+
 class InputOverlayContainer(Widget):
     """
     Non-intrusive overlay with optional touch remap fix for matrix portrait pipeline.
@@ -19,6 +40,7 @@ class InputOverlayContainer(Widget):
         self._target = None
         self._inverse_matrix = None  # for logging only
         self._remap_enabled = os.getenv("INPUT_OVERLAY_REMAP", "0") == "1"
+        self._use_analytic = os.getenv("INPUT_OVERLAY_ANALYTIC", "0") == "1"
 
         # Full-window, but invisible and touch-transparent
         self.size_hint = (None, None)
@@ -32,7 +54,8 @@ class InputOverlayContainer(Widget):
                     on_touch_up=self._on_window_touch_up)
 
         mode = "remap" if self._remap_enabled else "logging-only"
-        Logger.info(f"[portrait_input_overlay]: installed mode={mode}")
+        mapping = "analytical" if self._use_analytic else "matrix"
+        Logger.info(f"[portrait_input_overlay]: installed mode={mode} mapping={mapping}")
 
     def _resize_to_window(self):
         self.size = Window.size
@@ -64,25 +87,46 @@ class InputOverlayContainer(Widget):
     # ----------------- Window-level observers -----------------
     def _maybe_remap_in_place(self, touch):
         """
-        If remap is enabled, use target's actual inverse matrix to transform touch coords.
-        Returns tuple (tx, ty, inv_present) if remapped, None otherwise.
+        If remap is enabled, use target's analytical mapping or inverse matrix to transform touch coords.
+        Returns tuple (wx, wy, tx, ty, inv_present) if remapped, None otherwise.
         """
         if not self._remap_enabled or not self._target:
             return None
         
-        # Get inverse matrix from target
+        # Store original window coordinates
+        orig_x, orig_y = touch.x, touch.y
+        
+        # Try analytical mapping first if enabled
+        if self._use_analytic:
+            params = getattr(self._target, '_portrait_params', None)
+            if params:
+                try:
+                    tx, ty = window_to_portrait_overlay(
+                        orig_x, orig_y, 
+                        params['ox'], params['oy'], 
+                        params['s'], params['Pw']
+                    )
+                    
+                    # Mutate touch in-place
+                    touch.x, touch.y = tx, ty
+                    
+                    # Tag the event so PortraitContainer bypasses its own transform
+                    touch._ioverlay_mapped = True
+                    
+                    return (orig_x, orig_y, tx, ty, True)
+                except Exception as e:
+                    Logger.warning(f"[InputOverlay] Analytical mapping failed: {e}")
+        
+        # Fallback to inverse matrix
         inv = getattr(self._target, '_inverse_matrix', None)
         if inv is None:
             return None
         
         # Transform using the target's actual inverse matrix
         try:
-            tx, ty, _ = inv.transform_point(touch.x, touch.y, 0)
+            tx, ty, _ = inv.transform_point(orig_x, orig_y, 0)
         except Exception:
             return None
-        
-        # Store original coordinates
-        orig_x, orig_y = touch.x, touch.y
         
         # Mutate touch in-place
         touch.x, touch.y = tx, ty
