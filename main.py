@@ -418,6 +418,7 @@ class PortraitContainer(FloatLayout):
         self.orientation_provider = OrientationProvider()
         self._transform_matrix = None
         self._inverse_matrix = None
+        self._last_inverse_matrix = None  # Cached inverse matrix for fallback
         self._frame_count = 0
         self._app_loop_frames = 0  # Track frames after app loop starts
         
@@ -607,6 +608,7 @@ class PortraitContainer(FloatLayout):
         # Store matrices (inverse is available for optional manual touch handling)
         self._transform_matrix = mat
         self._inverse_matrix = mat.inverse()
+        self._last_inverse_matrix = self._inverse_matrix  # Cache for fallback
         
         # Update overlay's inverse matrix if it exists
         # The overlay is added to the RotatingRoot (parent), so we need to access it via parent
@@ -820,17 +822,29 @@ class PortraitContainer(FloatLayout):
             Logger.info("[Portrait] Bypass mapping for overlay-remapped touch in on_touch_down")
             return super(PortraitContainer, self).on_touch_down(touch)
         
-        if self._inverse_matrix:
+        # Use inverse matrix if available, otherwise use cached fallback
+        inv = self._inverse_matrix
+        if inv is None and self._last_inverse_matrix is not None:
+            inv = self._last_inverse_matrix
+            Logger.info(f"[Portrait] on_touch_down map using cached inv=True from=({round(touch.x,1)},{round(touch.y,1)})")
+        
+        if inv:
             # Use Kivy's built-in coordinate transformation
             # This applies the inverse matrix to map screen coords to widget coords
             touch.push()
             # Apply inverse transform to map screen coordinates to virtual space
-            tx, ty, _ = self._inverse_matrix.transform_point(touch.x, touch.y, 0)
+            tx, ty, _ = inv.transform_point(touch.x, touch.y, 0)
+            if inv == self._inverse_matrix:
+                Logger.info(f"[Portrait] on_touch_down map inv=True from=({round(touch.x,1)},{round(touch.y,1)}) to=({round(tx,1)},{round(ty,1)})")
+            else:
+                Logger.info(f"[Portrait] on_touch_down (cached) to=({round(tx,1)},{round(ty,1)})")
             touch.x, touch.y = tx, ty
+        else:
+            Logger.info(f"[Portrait] on_touch_down passthrough (no inv) pos=({round(touch.x,1)},{round(touch.y,1)})")
         
         ret = super(PortraitContainer, self).on_touch_down(touch)
         
-        if self._inverse_matrix:
+        if inv:
             touch.pop()
         
         return ret
@@ -842,14 +856,26 @@ class PortraitContainer(FloatLayout):
             Logger.info("[Portrait] Bypass mapping for overlay-remapped touch in on_touch_move")
             return super(PortraitContainer, self).on_touch_move(touch)
         
-        if self._inverse_matrix:
+        # Use inverse matrix if available, otherwise use cached fallback
+        inv = self._inverse_matrix
+        if inv is None and self._last_inverse_matrix is not None:
+            inv = self._last_inverse_matrix
+            Logger.info(f"[Portrait] on_touch_move map using cached inv=True from=({round(touch.x,1)},{round(touch.y,1)})")
+        
+        if inv:
             touch.push()
-            tx, ty, _ = self._inverse_matrix.transform_point(touch.x, touch.y, 0)
+            tx, ty, _ = inv.transform_point(touch.x, touch.y, 0)
+            if inv == self._inverse_matrix:
+                Logger.info(f"[Portrait] on_touch_move map inv=True from=({round(touch.x,1)},{round(touch.y,1)}) to=({round(tx,1)},{round(ty,1)})")
+            else:
+                Logger.info(f"[Portrait] on_touch_move (cached) to=({round(tx,1)},{round(ty,1)})")
             touch.x, touch.y = tx, ty
+        else:
+            Logger.info(f"[Portrait] on_touch_move passthrough (no inv) pos=({round(touch.x,1)},{round(touch.y,1)})")
         
         ret = super(PortraitContainer, self).on_touch_move(touch)
         
-        if self._inverse_matrix:
+        if inv:
             touch.pop()
         
         return ret
@@ -861,14 +887,26 @@ class PortraitContainer(FloatLayout):
             Logger.info("[Portrait] Bypass mapping for overlay-remapped touch in on_touch_up")
             return super(PortraitContainer, self).on_touch_up(touch)
         
-        if self._inverse_matrix:
+        # Use inverse matrix if available, otherwise use cached fallback
+        inv = self._inverse_matrix
+        if inv is None and self._last_inverse_matrix is not None:
+            inv = self._last_inverse_matrix
+            Logger.info(f"[Portrait] on_touch_up map using cached inv=True from=({round(touch.x,1)},{round(touch.y,1)})")
+        
+        if inv:
             touch.push()
-            tx, ty, _ = self._inverse_matrix.transform_point(touch.x, touch.y, 0)
+            tx, ty, _ = inv.transform_point(touch.x, touch.y, 0)
+            if inv == self._inverse_matrix:
+                Logger.info(f"[Portrait] on_touch_up map inv=True from=({round(touch.x,1)},{round(touch.y,1)}) to=({round(tx,1)},{round(ty,1)})")
+            else:
+                Logger.info(f"[Portrait] on_touch_up (cached) to=({round(tx,1)},{round(ty,1)})")
             touch.x, touch.y = tx, ty
+        else:
+            Logger.info(f"[Portrait] on_touch_up passthrough (no inv) pos=({round(touch.x,1)},{round(touch.y,1)})")
         
         ret = super(PortraitContainer, self).on_touch_up(touch)
         
-        if self._inverse_matrix:
+        if inv:
             touch.pop()
         
         return ret
@@ -1576,11 +1614,14 @@ class RotatingRoot(FloatLayout):
                                     pc.__class__.__name__, 
                                     inspect.getsourcefile(pc.__class__) or "unknown")
                     
-                    # Install input overlay on top of rotating_surface for hitbox fix
-                    self._input_overlay = InputOverlayContainer()
-                    super().add_widget(self._input_overlay)
-                    self._input_overlay.set_target_widget(self._rotating_surface)
-                    debug_logger.info("[InputOverlay] Installed overlay on top of rotating_surface")
+                    # Install input overlay on top of rotating_surface for hitbox fix (unless disabled)
+                    if os.environ.get("INPUT_OVERLAY_ENABLE", "1") == "0":
+                        debug_logger.info("[InputOverlay] disabled by env")
+                    else:
+                        self._input_overlay = InputOverlayContainer()
+                        super().add_widget(self._input_overlay)
+                        self._input_overlay.set_target_widget(self._rotating_surface)
+                        debug_logger.info("[InputOverlay] Installed overlay on top of rotating_surface")
                     
                 self._content_widget = widget
                 self._rotating_surface.add_widget(widget)
