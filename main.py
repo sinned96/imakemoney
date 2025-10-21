@@ -196,6 +196,9 @@ from kivy.logger import Logger
 # Import input overlay for matrix portrait pipeline hitbox fix
 from portrait_input_overlay import InputOverlayContainer
 
+# Import touch diagnostics controller
+from diag_touch import get_controller as get_diag_controller
+
 # Set neutral clear color to help diagnose out-of-bounds content
 Window.clearcolor = (0.15, 0.15, 0.15, 1)  # Dark gray
 
@@ -885,10 +888,29 @@ class PortraitContainer(FloatLayout):
     
     def on_touch_down(self, touch):
         """Transform touch coordinates using Kivy's built-in push/pop mechanism or analytical mapping"""
+        # Get diagnostics controller
+        diag = get_diag_controller()
+        
+        # Collect dispatch path if diagnostics enabled
+        path_entries = []
+        accepted_by = None
+        
         # Check if overlay already remapped this touch - bypass container transform if so
         if getattr(touch, '_ioverlay_mapped', False):
             Logger.info("[Portrait] Bypass mapping for overlay-remapped touch in on_touch_down")
-            return super(PortraitContainer, self).on_touch_down(touch)
+            ret = super(PortraitContainer, self).on_touch_down(touch)
+            
+            # Log diagnostics if enabled
+            if diag.enabled():
+                # Simple path entry for bypassed touch
+                path_entries.append((self, True, ret))
+                if ret:
+                    accepted_by = self
+                diag.log_touch_event("down", touch, path_entries, accepted_by)
+                if diag.overlay_enabled():
+                    diag.mark_point(self.canvas.after, touch.pos)
+            
+            return ret
         
         # Check if analytical mapping is enabled via env var
         use_analytic = os.getenv("INPUT_ANALYTIC_MAP", "0") == "1"
@@ -906,6 +928,16 @@ class PortraitContainer(FloatLayout):
             touch.x, touch.y = u, v
             ret = super(PortraitContainer, self).on_touch_down(touch)
             touch.pop()
+            
+            # Log diagnostics if enabled
+            if diag.enabled():
+                path_entries.append((self, True, ret))
+                if ret:
+                    accepted_by = self
+                diag.log_touch_event("down", touch, path_entries, accepted_by)
+                if diag.overlay_enabled():
+                    diag.mark_point(self.canvas.after, (u, v))
+            
             return ret
         
         # Use inverse matrix if available, otherwise use cached fallback
@@ -913,6 +945,10 @@ class PortraitContainer(FloatLayout):
         if inv is None and self._last_inverse_matrix is not None:
             inv = self._last_inverse_matrix
             Logger.info(f"[Portrait] on_touch_down map using cached inv=True from=({round(touch.x,1)},{round(touch.y,1)})")
+        
+        # Store original coordinates for diagnostics
+        orig_x, orig_y = touch.x, touch.y
+        mapped_x, mapped_y = orig_x, orig_y
         
         if inv:
             # Use Kivy's built-in coordinate transformation
@@ -925,6 +961,7 @@ class PortraitContainer(FloatLayout):
             else:
                 Logger.info(f"[Portrait] on_touch_down (cached) to=({round(tx,1)},{round(ty,1)})")
             touch.x, touch.y = tx, ty
+            mapped_x, mapped_y = tx, ty
         else:
             Logger.info(f"[Portrait] on_touch_down passthrough (no inv) pos=({round(touch.x,1)},{round(touch.y,1)})")
         
@@ -933,14 +970,48 @@ class PortraitContainer(FloatLayout):
         if inv:
             touch.pop()
         
+        # Log diagnostics if enabled
+        if diag.enabled():
+            # Collect path by walking children and checking collide_point
+            for child in self.children:
+                collide = child.collide_point(*touch.pos)
+                # We can't easily know if child returned True without instrumenting all widgets,
+                # so we approximate based on ret value
+                child_ret = ret  # Approximation
+                path_entries.append((child, collide, child_ret))
+                if collide and ret:
+                    accepted_by = child
+            
+            diag.log_touch_event("down", touch, path_entries, accepted_by)
+            if diag.overlay_enabled():
+                diag.mark_point(self.canvas.after, (mapped_x, mapped_y))
+        
         return ret
     
     def on_touch_move(self, touch):
         """Transform touch coordinates using Kivy's built-in push/pop mechanism or analytical mapping"""
+        # Get diagnostics controller
+        diag = get_diag_controller()
+        
+        # Collect dispatch path if diagnostics enabled
+        path_entries = []
+        accepted_by = None
+        
         # Check if overlay already remapped this touch - bypass container transform if so
         if getattr(touch, '_ioverlay_mapped', False):
             Logger.info("[Portrait] Bypass mapping for overlay-remapped touch in on_touch_move")
-            return super(PortraitContainer, self).on_touch_move(touch)
+            ret = super(PortraitContainer, self).on_touch_move(touch)
+            
+            # Log diagnostics if enabled
+            if diag.enabled():
+                path_entries.append((self, True, ret))
+                if ret:
+                    accepted_by = self
+                diag.log_touch_event("move", touch, path_entries, accepted_by)
+                if diag.overlay_enabled():
+                    diag.mark_point(self.canvas.after, touch.pos)
+            
+            return ret
         
         # Check if analytical mapping is enabled via env var
         use_analytic = os.getenv("INPUT_ANALYTIC_MAP", "0") == "1"
@@ -958,6 +1029,16 @@ class PortraitContainer(FloatLayout):
             touch.x, touch.y = u, v
             ret = super(PortraitContainer, self).on_touch_move(touch)
             touch.pop()
+            
+            # Log diagnostics if enabled
+            if diag.enabled():
+                path_entries.append((self, True, ret))
+                if ret:
+                    accepted_by = self
+                diag.log_touch_event("move", touch, path_entries, accepted_by)
+                if diag.overlay_enabled():
+                    diag.mark_point(self.canvas.after, (u, v))
+            
             return ret
         
         # Use inverse matrix if available, otherwise use cached fallback
@@ -965,6 +1046,10 @@ class PortraitContainer(FloatLayout):
         if inv is None and self._last_inverse_matrix is not None:
             inv = self._last_inverse_matrix
             Logger.info(f"[Portrait] on_touch_move map using cached inv=True from=({round(touch.x,1)},{round(touch.y,1)})")
+        
+        # Store original coordinates for diagnostics
+        orig_x, orig_y = touch.x, touch.y
+        mapped_x, mapped_y = orig_x, orig_y
         
         if inv:
             touch.push()
@@ -974,6 +1059,7 @@ class PortraitContainer(FloatLayout):
             else:
                 Logger.info(f"[Portrait] on_touch_move (cached) to=({round(tx,1)},{round(ty,1)})")
             touch.x, touch.y = tx, ty
+            mapped_x, mapped_y = tx, ty
         else:
             Logger.info(f"[Portrait] on_touch_move passthrough (no inv) pos=({round(touch.x,1)},{round(touch.y,1)})")
         
@@ -982,14 +1068,52 @@ class PortraitContainer(FloatLayout):
         if inv:
             touch.pop()
         
+        # Log diagnostics if enabled (only log occasionally to avoid spam)
+        if diag.enabled() and hasattr(touch, 'uid'):
+            # Log every 5th move event to reduce spam
+            if not hasattr(self, '_diag_move_counter'):
+                self._diag_move_counter = {}
+            touch_id = touch.uid
+            self._diag_move_counter[touch_id] = self._diag_move_counter.get(touch_id, 0) + 1
+            
+            if self._diag_move_counter[touch_id] % 5 == 1:  # Log 1st, 6th, 11th, etc.
+                for child in self.children:
+                    collide = child.collide_point(*touch.pos)
+                    child_ret = ret
+                    path_entries.append((child, collide, child_ret))
+                    if collide and ret:
+                        accepted_by = child
+                
+                diag.log_touch_event("move", touch, path_entries, accepted_by)
+                if diag.overlay_enabled():
+                    diag.mark_point(self.canvas.after, (mapped_x, mapped_y))
+        
         return ret
     
     def on_touch_up(self, touch):
         """Transform touch coordinates using Kivy's built-in push/pop mechanism or analytical mapping"""
+        # Get diagnostics controller
+        diag = get_diag_controller()
+        
+        # Collect dispatch path if diagnostics enabled
+        path_entries = []
+        accepted_by = None
+        
         # Check if overlay already remapped this touch - bypass container transform if so
         if getattr(touch, '_ioverlay_mapped', False):
             Logger.info("[Portrait] Bypass mapping for overlay-remapped touch in on_touch_up")
-            return super(PortraitContainer, self).on_touch_up(touch)
+            ret = super(PortraitContainer, self).on_touch_up(touch)
+            
+            # Log diagnostics if enabled
+            if diag.enabled():
+                path_entries.append((self, True, ret))
+                if ret:
+                    accepted_by = self
+                diag.log_touch_event("up", touch, path_entries, accepted_by)
+                if diag.overlay_enabled():
+                    diag.mark_point(self.canvas.after, touch.pos)
+            
+            return ret
         
         # Check if analytical mapping is enabled via env var
         use_analytic = os.getenv("INPUT_ANALYTIC_MAP", "0") == "1"
@@ -1007,6 +1131,16 @@ class PortraitContainer(FloatLayout):
             touch.x, touch.y = u, v
             ret = super(PortraitContainer, self).on_touch_up(touch)
             touch.pop()
+            
+            # Log diagnostics if enabled
+            if diag.enabled():
+                path_entries.append((self, True, ret))
+                if ret:
+                    accepted_by = self
+                diag.log_touch_event("up", touch, path_entries, accepted_by)
+                if diag.overlay_enabled():
+                    diag.mark_point(self.canvas.after, (u, v))
+            
             return ret
         
         # Use inverse matrix if available, otherwise use cached fallback
@@ -1014,6 +1148,10 @@ class PortraitContainer(FloatLayout):
         if inv is None and self._last_inverse_matrix is not None:
             inv = self._last_inverse_matrix
             Logger.info(f"[Portrait] on_touch_up map using cached inv=True from=({round(touch.x,1)},{round(touch.y,1)})")
+        
+        # Store original coordinates for diagnostics
+        orig_x, orig_y = touch.x, touch.y
+        mapped_x, mapped_y = orig_x, orig_y
         
         if inv:
             touch.push()
@@ -1023,6 +1161,7 @@ class PortraitContainer(FloatLayout):
             else:
                 Logger.info(f"[Portrait] on_touch_up (cached) to=({round(tx,1)},{round(ty,1)})")
             touch.x, touch.y = tx, ty
+            mapped_x, mapped_y = tx, ty
         else:
             Logger.info(f"[Portrait] on_touch_up passthrough (no inv) pos=({round(touch.x,1)},{round(touch.y,1)})")
         
@@ -1030,6 +1169,23 @@ class PortraitContainer(FloatLayout):
         
         if inv:
             touch.pop()
+        
+        # Clean up move counter for this touch
+        if hasattr(self, '_diag_move_counter') and hasattr(touch, 'uid'):
+            self._diag_move_counter.pop(touch.uid, None)
+        
+        # Log diagnostics if enabled
+        if diag.enabled():
+            for child in self.children:
+                collide = child.collide_point(*touch.pos)
+                child_ret = ret
+                path_entries.append((child, collide, child_ret))
+                if collide and ret:
+                    accepted_by = child
+            
+            diag.log_touch_event("up", touch, path_entries, accepted_by)
+            if diag.overlay_enabled():
+                diag.mark_point(self.canvas.after, (mapped_x, mapped_y))
         
         return ret
 
@@ -1705,6 +1861,11 @@ class RotatingRoot(FloatLayout):
         """Override to wrap content in appropriate container when in portrait mode"""
         is_portrait = self.orientation_provider.is_portrait()
         
+        # Log z-order diagnostics if enabled
+        diag = get_diag_controller()
+        if diag.enabled():
+            diag.log_z_order(self)
+        
         # If we're switching orientation, clean up old structure
         if self._rotating_surface or self._content_widget:
             self.clear_widgets()
@@ -2314,7 +2475,18 @@ class LoginScreen(FloatLayout):
         self.pw=make_text_field("Passwort", password=True)
         for w in (self.user,self.pw):
             ti=get_underlying_textinput(w)
-            if ti: ti.bind(focus=self._on_focus)
+            if ti: 
+                ti.bind(focus=self._on_focus)
+                # Add diagnostics focus logging
+                diag = get_diag_controller()
+                if diag.enabled():
+                    # Bind focus logging separately to avoid interfering with existing logic
+                    ti.bind(focus=lambda inst, val, d=diag: d.log_focus_change(inst, val))
+                    # Set widget ID for better diagnostics
+                    if w == self.user:
+                        ti.id = 'username'
+                    elif w == self.pw:
+                        ti.id = 'password'
         card.add_widget(self.user); card.add_widget(self.pw)
         kb_btn=Button(text="Tastatur", size_hint_y=None, height=dp(50),
                       background_normal='', background_color=(0.3,0.35,0.5,1),
