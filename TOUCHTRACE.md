@@ -168,8 +168,25 @@ If touches on a TextInput don't focus it, check for:
 ## Related Files
 
 - `main.py` - Contains PortraitContainer and LoginScreen implementations
-- `test_touchtrace.py` - Static tests to verify TouchTrace implementation
+- `test_touchtrace.py` - Static tests to verify TouchTrace implementation (not tracked in git due to .gitignore)
 - `ENV_PORTRAIT_MAPPING.md` - Documentation for portrait coordinate mapping
+
+## Testing
+
+A static verification test script (`test_touchtrace.py`) is available to verify the implementation:
+
+```bash
+python test_touchtrace.py
+```
+
+This performs static code analysis to verify:
+- TouchTrace methods exist in PortraitContainer
+- LoginScreen schedules focus diagnostics
+- Logging format matches requirements
+- Original coordinates are preserved
+- No behavior changes (dispatch order preserved)
+
+Note: The test file is excluded from git by `.gitignore` (test_*.py pattern).
 
 ## Troubleshooting
 
