@@ -528,6 +528,99 @@ class PortraitContainer(FloatLayout):
         except Exception as e:
             debug_logger.error(f"[DEBUG_AUTO_SCREENSHOT] Failed to take screenshot: {e}")
     
+    def _log_touch_candidates(self, touch, orig_wx, orig_wy, phase):
+        """
+        Log which direct children of PortraitContainer collide with the touch.
+        
+        Args:
+            touch: Touch object (with potentially mapped coordinates)
+            orig_wx: Original window x coordinate
+            orig_wy: Original window y coordinate
+            phase: Touch phase ("down", "move", or "up")
+        """
+        candidates = []
+        for child in self.children:
+            # Check collision with mapped coordinates
+            collides = child.collide_point(touch.x, touch.y)
+            
+            # Build candidate info dict
+            info = {
+                'cls': child.__class__.__name__,
+                'id': getattr(child, 'id', None) or getattr(child, 'name', None),
+                'pos': (round(child.x, 1), round(child.y, 1)),
+                'size': (round(child.width, 1), round(child.height, 1)),
+                'collide': collides
+            }
+            
+            # Add visible/disabled status if available
+            if hasattr(child, 'opacity'):
+                info['opacity'] = round(child.opacity, 2)
+            if hasattr(child, 'disabled'):
+                info['disabled'] = child.disabled
+            
+            candidates.append(info)
+        
+        # Log the candidates
+        Logger.info(
+            f"[TouchTrace] phase={phase} at=({round(orig_wx,1)},{round(orig_wy,1)})->({round(touch.x,1)},{round(touch.y,1)}) "
+            f"candidates={candidates}"
+        )
+    
+    def _log_accepted_by(self, touch, phase, ret_value):
+        """
+        Log which widget accepted the touch event.
+        
+        Args:
+            touch: Touch object
+            phase: Touch phase ("down", "move", or "up")
+            ret_value: Return value from super().on_touch_* call
+        """
+        # Check if touch.ud contains 'accepted_by' marker
+        if hasattr(touch, 'ud') and 'accepted_by' in touch.ud:
+            widget = touch.ud['accepted_by']
+            widget_path = self._get_widget_path(widget)
+            Logger.info(f"[TouchTrace] phase={phase} accepted_by={widget.__class__.__name__} path={widget_path}")
+            return
+        
+        # Best-effort guess: find first collided child that might accept touches
+        if ret_value:
+            # Touch was handled - try to guess which child
+            from kivy.uix.textinput import TextInput
+            from kivy.uix.button import Button
+            
+            for child in self.children:
+                if child.collide_point(touch.x, touch.y):
+                    # Check if it's a known touch-accepting widget
+                    widget_name = child.__class__.__name__
+                    is_interactive = (
+                        isinstance(child, (TextInput, Button)) or
+                        widget_name.startswith('MD') or
+                        widget_name in ['LoginScreen', 'Slideshow']
+                    )
+                    
+                    if is_interactive:
+                        widget_path = self._get_widget_path(child)
+                        Logger.info(f"[TouchTrace] phase={phase} accepted_by_guess={widget_name} path={widget_path}")
+                        return
+            
+            # If no specific guess, just log that it was handled
+            Logger.info(f"[TouchTrace] phase={phase} accepted_by_guess=unknown (ret={ret_value})")
+        else:
+            Logger.info(f"[TouchTrace] phase={phase} not_accepted (ret=False)")
+    
+    def _get_widget_path(self, widget):
+        """Get a string representation of the widget path in the tree"""
+        path_parts = []
+        current = widget
+        while current is not None:
+            name = getattr(current, 'id', None) or getattr(current, 'name', None) or current.__class__.__name__
+            path_parts.append(name)
+            current = current.parent
+            # Limit depth to avoid super long paths
+            if len(path_parts) > 5:
+                break
+        return '/'.join(reversed(path_parts))
+    
     def _log_child_diagnostics(self, context):
         """Log verbose child diagnostics"""
         if not self.orientation_provider.is_portrait() or PORTRAIT_PIPELINE != "matrix":
@@ -885,6 +978,9 @@ class PortraitContainer(FloatLayout):
     
     def on_touch_down(self, touch):
         """Transform touch coordinates using Kivy's built-in push/pop mechanism or analytical mapping"""
+        # Store original window coordinates for logging
+        orig_wx, orig_wy = touch.x, touch.y
+        
         # Check if overlay already remapped this touch - bypass container transform if so
         if getattr(touch, '_ioverlay_mapped', False):
             Logger.info("[Portrait] Bypass mapping for overlay-remapped touch in on_touch_down")
@@ -904,7 +1000,11 @@ class PortraitContainer(FloatLayout):
             # Apply analytical mapping
             touch.push()
             touch.x, touch.y = u, v
+            # Log touch candidates AFTER coordinate mapping
+            self._log_touch_candidates(touch, orig_wx, orig_wy, "down")
             ret = super(PortraitContainer, self).on_touch_down(touch)
+            # Log accepted-by information
+            self._log_accepted_by(touch, "down", ret)
             touch.pop()
             return ret
         
@@ -928,7 +1028,19 @@ class PortraitContainer(FloatLayout):
         else:
             Logger.info(f"[Portrait] on_touch_down passthrough (no inv) pos=({round(touch.x,1)},{round(touch.y,1)})")
         
+        # Log touch candidates AFTER coordinate mapping
+        self._log_touch_candidates(touch, orig_wx, orig_wy, "down")
+        
         ret = super(PortraitContainer, self).on_touch_down(touch)
+        
+        # Mark this container as accepting the touch if it handled it
+        if ret and not hasattr(touch, 'ud'):
+            touch.ud = {}
+        if ret:
+            touch.ud['accepted_by'] = self
+        
+        # Log accepted-by information
+        self._log_accepted_by(touch, "down", ret)
         
         if inv:
             touch.pop()
@@ -937,6 +1049,9 @@ class PortraitContainer(FloatLayout):
     
     def on_touch_move(self, touch):
         """Transform touch coordinates using Kivy's built-in push/pop mechanism or analytical mapping"""
+        # Store original window coordinates for logging
+        orig_wx, orig_wy = touch.x, touch.y
+        
         # Check if overlay already remapped this touch - bypass container transform if so
         if getattr(touch, '_ioverlay_mapped', False):
             Logger.info("[Portrait] Bypass mapping for overlay-remapped touch in on_touch_move")
@@ -956,7 +1071,11 @@ class PortraitContainer(FloatLayout):
             # Apply analytical mapping
             touch.push()
             touch.x, touch.y = u, v
+            # Log touch candidates AFTER coordinate mapping
+            self._log_touch_candidates(touch, orig_wx, orig_wy, "move")
             ret = super(PortraitContainer, self).on_touch_move(touch)
+            # Log accepted-by information
+            self._log_accepted_by(touch, "move", ret)
             touch.pop()
             return ret
         
@@ -977,7 +1096,19 @@ class PortraitContainer(FloatLayout):
         else:
             Logger.info(f"[Portrait] on_touch_move passthrough (no inv) pos=({round(touch.x,1)},{round(touch.y,1)})")
         
+        # Log touch candidates AFTER coordinate mapping
+        self._log_touch_candidates(touch, orig_wx, orig_wy, "move")
+        
         ret = super(PortraitContainer, self).on_touch_move(touch)
+        
+        # Mark this container as accepting the touch if it handled it
+        if ret and not hasattr(touch, 'ud'):
+            touch.ud = {}
+        if ret:
+            touch.ud['accepted_by'] = self
+        
+        # Log accepted-by information
+        self._log_accepted_by(touch, "move", ret)
         
         if inv:
             touch.pop()
@@ -986,6 +1117,9 @@ class PortraitContainer(FloatLayout):
     
     def on_touch_up(self, touch):
         """Transform touch coordinates using Kivy's built-in push/pop mechanism or analytical mapping"""
+        # Store original window coordinates for logging
+        orig_wx, orig_wy = touch.x, touch.y
+        
         # Check if overlay already remapped this touch - bypass container transform if so
         if getattr(touch, '_ioverlay_mapped', False):
             Logger.info("[Portrait] Bypass mapping for overlay-remapped touch in on_touch_up")
@@ -1005,7 +1139,11 @@ class PortraitContainer(FloatLayout):
             # Apply analytical mapping
             touch.push()
             touch.x, touch.y = u, v
+            # Log touch candidates AFTER coordinate mapping
+            self._log_touch_candidates(touch, orig_wx, orig_wy, "up")
             ret = super(PortraitContainer, self).on_touch_up(touch)
+            # Log accepted-by information
+            self._log_accepted_by(touch, "up", ret)
             touch.pop()
             return ret
         
@@ -1026,7 +1164,19 @@ class PortraitContainer(FloatLayout):
         else:
             Logger.info(f"[Portrait] on_touch_up passthrough (no inv) pos=({round(touch.x,1)},{round(touch.y,1)})")
         
+        # Log touch candidates AFTER coordinate mapping
+        self._log_touch_candidates(touch, orig_wx, orig_wy, "up")
+        
         ret = super(PortraitContainer, self).on_touch_up(touch)
+        
+        # Mark this container as accepting the touch if it handled it
+        if ret and not hasattr(touch, 'ud'):
+            touch.ud = {}
+        if ret:
+            touch.ud['accepted_by'] = self
+        
+        # Log accepted-by information
+        self._log_accepted_by(touch, "up", ret)
         
         if inv:
             touch.pop()
@@ -2353,6 +2503,70 @@ class LoginScreen(FloatLayout):
             self.add_widget(self._debug_paint_label)
             # Bind to update position when screen is resized
             self.bind(size=lambda *args: setattr(self._debug_paint_label, 'pos', (10, self.height - 70)))
+        
+        # Schedule focus diagnostics setup after widget tree is built
+        Clock.schedule_once(lambda dt: self._setup_focus_diagnostics(), 0.1)
+    
+    def _setup_focus_diagnostics(self):
+        """Setup focus event logging for all TextInput widgets in LoginScreen"""
+        from kivy.uix.textinput import TextInput
+        
+        # Walk the widget tree to find all TextInput widgets
+        textinput_widgets = []
+        for widget in self.walk():
+            if isinstance(widget, TextInput):
+                textinput_widgets.append(widget)
+                # Bind to focus event
+                widget.bind(focus=self._on_textinput_focus)
+        
+        Logger.info(f"[TouchTrace] Found {len(textinput_widgets)} TextInput widgets in LoginScreen")
+    
+    def _on_textinput_focus(self, textinput, focused):
+        """Log TextInput focus events for diagnostics"""
+        widget_path = self._get_widget_path(textinput)
+        focus_state = "gained" if focused else "lost"
+        Logger.info(f"[TouchTrace] focus widget={textinput.__class__.__name__} state={focus_state} path={widget_path}")
+    
+    def _get_widget_path(self, widget):
+        """Get a string representation of the widget path in the tree"""
+        path_parts = []
+        current = widget
+        while current is not None:
+            name = getattr(current, 'id', None) or getattr(current, 'name', None) or current.__class__.__name__
+            path_parts.append(name)
+            current = current.parent
+            # Limit depth to avoid super long paths
+            if len(path_parts) > 5:
+                break
+        return '/'.join(reversed(path_parts))
+    
+    def on_touch_down(self, touch):
+        """Override to mark accepted touches"""
+        ret = super().on_touch_down(touch)
+        if ret and not hasattr(touch, 'ud'):
+            touch.ud = {}
+        if ret:
+            touch.ud['accepted_by'] = self
+        return ret
+    
+    def on_touch_move(self, touch):
+        """Override to mark accepted touches"""
+        ret = super().on_touch_move(touch)
+        if ret and not hasattr(touch, 'ud'):
+            touch.ud = {}
+        if ret:
+            touch.ud['accepted_by'] = self
+        return ret
+    
+    def on_touch_up(self, touch):
+        """Override to mark accepted touches"""
+        ret = super().on_touch_up(touch)
+        if ret and not hasattr(touch, 'ud'):
+            touch.ud = {}
+        if ret:
+            touch.ud['accepted_by'] = self
+        return ret
+    
     def _on_focus(self, textinput, focused):
         if focused:
             self.last_input=textinput
