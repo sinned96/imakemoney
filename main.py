@@ -2114,9 +2114,12 @@ class RotatedModalView(ModalView):
         mat.translate(0, virtual_w, 0)
         mat.rotate(PORTRAIT_ROTATION_DEGREES * 3.14159265359 / 180.0, 0, 0, 1)
         
-        # Store matrices for touch transformation
+        # Store forward matrix (used to detect whether canvas was already set, for clearing logic).
+        # Do NOT store _inverse_matrix in matrix pipeline: the canvas MatrixInstruction already
+        # positions children in the correct coordinate space, so manually applying the inverse
+        # to every touch would double-transform coordinates and produce a ghost input field.
         self._transform_matrix = mat
-        self._inverse_matrix = mat.inverse()
+        self._inverse_matrix = None
         
         # Apply to canvas
         with self.canvas.before:
