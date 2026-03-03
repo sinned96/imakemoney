@@ -1011,16 +1011,17 @@ class PortraitContainer(FloatLayout):
         if use_analytic and self._portrait_params:
             # Use analytical mapping
             params = self._portrait_params
-            u, v = window_to_portrait(touch.x, touch.y, params['ox'], params['oy'], params['s'], params['Pw'])
+            orig_x, orig_y = touch.x, touch.y
+            u, v = window_to_portrait(orig_x, orig_y, params['ox'], params['oy'], params['s'], params['Pw'])
             Logger.info(
-                f"[Portrait] on_touch_down analytic map from=({round(touch.x,1)},{round(touch.y,1)}) "
+                f"[Portrait] on_touch_down analytic map from=({round(orig_x,1)},{round(orig_y,1)}) "
                 f"to=({round(u,1)},{round(v,1)}) s={params['s']:.4f} pos=({params['ox']:.1f},{params['oy']:.1f}) Pw={params['Pw']}"
             )
             # Apply analytical mapping
             touch.push()
             touch.x, touch.y = u, v
             # Log touch candidates AFTER coordinate mapping
-            self._log_touch_candidates(touch, orig_wx, orig_wy, "down")
+            self._log_touch_candidates(touch, orig_x, orig_y, "down")
             ret = super(PortraitContainer, self).on_touch_down(touch)
             # Log accepted-by information
             self._log_accepted_by(touch, "down", ret)
@@ -1063,7 +1064,7 @@ class PortraitContainer(FloatLayout):
             Logger.info(f"[Portrait] on_touch_down passthrough (no inv) pos=({round(touch.x,1)},{round(touch.y,1)})")
         
         # Log touch candidates AFTER coordinate mapping
-        self._log_touch_candidates(touch, orig_wx, orig_wy, "down")
+        self._log_touch_candidates(touch, orig_x, orig_y, "down")
         
         ret = super(PortraitContainer, self).on_touch_down(touch)
         
@@ -1128,16 +1129,17 @@ class PortraitContainer(FloatLayout):
         if use_analytic and self._portrait_params:
             # Use analytical mapping
             params = self._portrait_params
-            u, v = window_to_portrait(touch.x, touch.y, params['ox'], params['oy'], params['s'], params['Pw'])
+            orig_x, orig_y = touch.x, touch.y
+            u, v = window_to_portrait(orig_x, orig_y, params['ox'], params['oy'], params['s'], params['Pw'])
             Logger.info(
-                f"[Portrait] on_touch_move analytic map from=({round(touch.x,1)},{round(touch.y,1)}) "
+                f"[Portrait] on_touch_move analytic map from=({round(orig_x,1)},{round(orig_y,1)}) "
                 f"to=({round(u,1)},{round(v,1)}) s={params['s']:.4f} pos=({params['ox']:.1f},{params['oy']:.1f}) Pw={params['Pw']}"
             )
             # Apply analytical mapping
             touch.push()
             touch.x, touch.y = u, v
             # Log touch candidates AFTER coordinate mapping
-            self._log_touch_candidates(touch, orig_wx, orig_wy, "move")
+            self._log_touch_candidates(touch, orig_x, orig_y, "move")
             ret = super(PortraitContainer, self).on_touch_move(touch)
             # Log accepted-by information
             self._log_accepted_by(touch, "move", ret)
@@ -1177,7 +1179,7 @@ class PortraitContainer(FloatLayout):
             Logger.info(f"[Portrait] on_touch_move passthrough (no inv) pos=({round(touch.x,1)},{round(touch.y,1)})")
         
         # Log touch candidates AFTER coordinate mapping
-        self._log_touch_candidates(touch, orig_wx, orig_wy, "move")
+        self._log_touch_candidates(touch, orig_x, orig_y, "move")
         
         ret = super(PortraitContainer, self).on_touch_move(touch)
         
@@ -1246,16 +1248,17 @@ class PortraitContainer(FloatLayout):
         if use_analytic and self._portrait_params:
             # Use analytical mapping
             params = self._portrait_params
-            u, v = window_to_portrait(touch.x, touch.y, params['ox'], params['oy'], params['s'], params['Pw'])
+            orig_x, orig_y = touch.x, touch.y
+            u, v = window_to_portrait(orig_x, orig_y, params['ox'], params['oy'], params['s'], params['Pw'])
             Logger.info(
-                f"[Portrait] on_touch_up analytic map from=({round(touch.x,1)},{round(touch.y,1)}) "
+                f"[Portrait] on_touch_up analytic map from=({round(orig_x,1)},{round(orig_y,1)}) "
                 f"to=({round(u,1)},{round(v,1)}) s={params['s']:.4f} pos=({params['ox']:.1f},{params['oy']:.1f}) Pw={params['Pw']}"
             )
             # Apply analytical mapping
             touch.push()
             touch.x, touch.y = u, v
             # Log touch candidates AFTER coordinate mapping
-            self._log_touch_candidates(touch, orig_wx, orig_wy, "up")
+            self._log_touch_candidates(touch, orig_x, orig_y, "up")
             ret = super(PortraitContainer, self).on_touch_up(touch)
             # Log accepted-by information
             self._log_accepted_by(touch, "up", ret)
@@ -1295,7 +1298,7 @@ class PortraitContainer(FloatLayout):
             Logger.info(f"[Portrait] on_touch_up passthrough (no inv) pos=({round(touch.x,1)},{round(touch.y,1)})")
         
         # Log touch candidates AFTER coordinate mapping
-        self._log_touch_candidates(touch, orig_wx, orig_wy, "up")
+        self._log_touch_candidates(touch, orig_x, orig_y, "up")
         
         ret = super(PortraitContainer, self).on_touch_up(touch)
         
@@ -2135,41 +2138,44 @@ class RotatedModalView(ModalView):
         self.bind(size=self._update_modal_transform, pos=self._update_modal_transform)
     
     def _update_modal_transform(self, *args):
-        """Apply rotation transform to modal when in portrait mode"""
+        """Apply rotation transform to modal when in portrait mode using matrix pipeline transform"""
         is_portrait = self.orientation_provider.is_portrait()
         
         # Clear existing transforms
         self.canvas.before.clear()
         self.canvas.after.clear()
         
-        if not is_portrait:
-            # Landscape mode: no transformation needed
+        if not is_portrait or PORTRAIT_PIPELINE != "matrix":
+            # Landscape mode or non-matrix pipeline: no transformation needed
             self._transform_matrix = None
             self._inverse_matrix = None
             return
         
-        # Portrait mode: apply same rotation and scale as RotatingSurface
+        # Portrait mode (matrix pipeline): apply same transform as PortraitContainer._update_transform
+        # M_fwd = T(ox,oy) · S(s) · T(0,Pw) · R(deg)  which maps virtual portrait → window
         from kivy.graphics.transformation import Matrix
         from kivy.graphics import PushMatrix, PopMatrix, MatrixInstruction
         from kivy.core.window import Window
         
-        # Calculate center point for rotation anchor (use Window center for modals)
-        cx, cy = Window.width / 2, Window.height / 2
+        w, h = Window.size
+        if w <= 0 or h <= 0:
+            return
         
-        # Build transformation matrix: Translate(cx, cy) · Scale · Rotate · Translate(-cx, -cy)
+        virtual_w, virtual_h = PORTRAIT_VIRTUAL_SIZE  # (1080, 1920)
+        rot_w = virtual_h   # 1920 – width of rotated frame in window
+        rot_h = virtual_w   # 1080 – height of rotated frame in window
+        scale_factor = min(w / rot_w, h / rot_h)
+        scale_factor = max(scale_factor, 1e-3)
+        blit_w = rot_w * scale_factor
+        blit_h = rot_h * scale_factor
+        pos_x = (w - blit_w) / 2
+        pos_y = (h - blit_h) / 2
+        
         mat = Matrix()
-        mat.translate(cx, cy, 0)
-        
-        # Optional: Scale to fit rotated content within window (same as RotatingSurface)
-        if PORTRAIT_SCALE_FIT:
-            if Window.width > 0 and Window.height > 0:
-                scale_factor = min(Window.width / Window.height, Window.height / Window.width)
-                scale_factor = max(scale_factor, 1e-3)
-                if scale_factor < 1.0:
-                    mat.scale(scale_factor, scale_factor, 1)
-        
+        mat.translate(pos_x, pos_y, 0)
+        mat.scale(scale_factor, scale_factor, 1)
+        mat.translate(0, virtual_w, 0)
         mat.rotate(PORTRAIT_ROTATION_DEGREES * 3.14159265359 / 180.0, 0, 0, 1)
-        mat.translate(-cx, -cy, 0)
         
         # Store matrices for touch transformation
         self._transform_matrix = mat
@@ -2226,13 +2232,20 @@ class RotatedModalView(ModalView):
     def open(self, *args, **kwargs):
         """Override open to ensure transform is applied after opening"""
         result = super().open(*args, **kwargs)
+        
+        # In matrix pipeline portrait mode, size the modal to virtual portrait dimensions
+        # so that the same matrix transform (T·S·T·R) maps content correctly to window
+        if self.orientation_provider.is_portrait() and PORTRAIT_PIPELINE == "matrix":
+            virtual_w, virtual_h = PORTRAIT_VIRTUAL_SIZE
+            self.size = (virtual_w, virtual_h)
+            self.pos = (0, 0)
+        
         # Force transform update after modal is opened and sized
         self._update_modal_transform()
         
         # Log modal opening details (always log for debugging)
         modal_class = self.__class__.__name__
         modal_size = self.size if hasattr(self, 'size') else (0, 0)
-        is_rotated = True  # RotatedModalView always applies rotation in portrait mode
         orientation = OrientationProvider().aspect_ratio
         debug_logger.info(
             f"[Modal Open] class={modal_class}, size={modal_size[0]:.0f}x{modal_size[1]:.0f}, "
