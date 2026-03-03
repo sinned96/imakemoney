@@ -433,7 +433,8 @@ class PortraitContainer(FloatLayout):
       Rotate(-90) → Scale(s, s, 1) → Translate(-virtual_w/2, -virtual_h/2)
     - In canvas.after: PopMatrix
     - Children are added under this container and rendered within the transformed space
-    - Touch coordinates are automatically handled by Kivy's event system (no manual transform)
+    - Touch coordinates are explicitly remapped via the inverse matrix so that
+      child widget collide_point calls work correctly in portrait (virtual) space
     
     This approach avoids FBO texture pitfalls on Raspberry Pi by directly transforming
     the widget tree canvas, which is more reliable with hardware GL drivers.
@@ -1038,26 +1039,30 @@ class PortraitContainer(FloatLayout):
             
             return ret
         
-        # Matrix pipeline: the canvas MatrixInstruction already handles coordinate
-        # transformation internally via Kivy's rendering pipeline.  Applying the
-        # inverse matrix manually here would cause a double-transform (ghost field).
-        # Only the analytic path (INPUT_ANALYTIC_MAP=1) performs an explicit remap.
+        # Apply inverse matrix to map window coordinates to portrait (virtual) space.
+        # The canvas MatrixInstruction only affects rendering; Kivy does not auto-transform touch events.
+        inv = self._inverse_matrix
         orig_x, orig_y = touch.x, touch.y
-        Logger.info(f"[Portrait] on_touch_down passthrough pos=({round(touch.x,1)},{round(touch.y,1)})")
-        
-        # Log touch candidates before dispatching
-        self._log_touch_candidates(touch, orig_x, orig_y, "down")
-        
-        ret = super(PortraitContainer, self).on_touch_down(touch)
-        
-        # Mark this container as accepting the touch if it handled it
-        if ret and not hasattr(touch, 'ud'):
-            touch.ud = {}
-        if ret:
-            touch.ud['accepted_by'] = self
-        
-        # Log accepted-by information
-        self._log_accepted_by(touch, "down", ret)
+        if inv is not None:
+            Logger.info(f"[Portrait] on_touch_down matrix map pos=({round(touch.x,1)},{round(touch.y,1)})")
+            touch.push()
+            touch.apply_transform_2d(lambda x, y: inv.transform_point(x, y, 0)[:2])
+            # Log touch candidates AFTER coordinate mapping
+            self._log_touch_candidates(touch, orig_x, orig_y, "down")
+            ret = super(PortraitContainer, self).on_touch_down(touch)
+            # Log accepted-by information
+            self._log_accepted_by(touch, "down", ret)
+            touch.pop()
+        else:
+            # Fallback: inverse matrix not yet available (e.g. before first layout)
+            Logger.info(f"[Portrait] on_touch_down passthrough (no inv matrix) pos=({round(touch.x,1)},{round(touch.y,1)})")
+            self._log_touch_candidates(touch, orig_x, orig_y, "down")
+            ret = super(PortraitContainer, self).on_touch_down(touch)
+            if ret and not hasattr(touch, 'ud'):
+                touch.ud = {}
+            if ret:
+                touch.ud['accepted_by'] = self
+            self._log_accepted_by(touch, "down", ret)
         
         # Log diagnostics if enabled
         if diag.enabled():
@@ -1132,23 +1137,28 @@ class PortraitContainer(FloatLayout):
             
             return ret
         
-        # Matrix pipeline: passthrough – no manual inverse mapping (would double-transform).
+        # Apply inverse matrix to map window coordinates to portrait (virtual) space.
+        # The canvas MatrixInstruction only affects rendering; Kivy does not auto-transform touch events.
+        inv = self._inverse_matrix
         orig_x, orig_y = touch.x, touch.y
-        Logger.info(f"[Portrait] on_touch_move passthrough pos=({round(touch.x,1)},{round(touch.y,1)})")
-        
-        # Log touch candidates before dispatching
-        self._log_touch_candidates(touch, orig_x, orig_y, "move")
-        
-        ret = super(PortraitContainer, self).on_touch_move(touch)
-        
-        # Mark this container as accepting the touch if it handled it
-        if ret and not hasattr(touch, 'ud'):
-            touch.ud = {}
-        if ret:
-            touch.ud['accepted_by'] = self
-        
-        # Log accepted-by information
-        self._log_accepted_by(touch, "move", ret)
+        if inv is not None:
+            Logger.info(f"[Portrait] on_touch_move matrix map pos=({round(touch.x,1)},{round(touch.y,1)})")
+            touch.push()
+            touch.apply_transform_2d(lambda x, y: inv.transform_point(x, y, 0)[:2])
+            self._log_touch_candidates(touch, orig_x, orig_y, "move")
+            ret = super(PortraitContainer, self).on_touch_move(touch)
+            self._log_accepted_by(touch, "move", ret)
+            touch.pop()
+        else:
+            # Fallback: inverse matrix not yet available (e.g. before first layout)
+            Logger.info(f"[Portrait] on_touch_move passthrough (no inv matrix) pos=({round(touch.x,1)},{round(touch.y,1)})")
+            self._log_touch_candidates(touch, orig_x, orig_y, "move")
+            ret = super(PortraitContainer, self).on_touch_move(touch)
+            if ret and not hasattr(touch, 'ud'):
+                touch.ud = {}
+            if ret:
+                touch.ud['accepted_by'] = self
+            self._log_accepted_by(touch, "move", ret)
         
         # Log diagnostics if enabled (only log occasionally to avoid spam)
         if diag.enabled() and hasattr(touch, 'uid'):
@@ -1158,12 +1168,9 @@ class PortraitContainer(FloatLayout):
             self._diag_move_counter[touch_id] = self._diag_move_counter.get(touch_id, 0) + 1
             
             if self._diag_move_counter[touch_id] % 5 == 1:  # Log 1st, 6th, 11th, etc.
-                for child in self.children:
-                    collide = child.collide_point(*touch.pos)
-                    child_ret = ret
-                    path_entries.append((child, collide, child_ret))
-                    if collide and ret:
-                        accepted_by = child
+                path_entries.append((self, True, ret))
+                if ret:
+                    accepted_by = self
                 
                 diag.log_touch_event("move", touch, path_entries, accepted_by)
                 if diag.overlay_enabled():
@@ -1229,23 +1236,28 @@ class PortraitContainer(FloatLayout):
             
             return ret
         
-        # Matrix pipeline: passthrough – no manual inverse mapping (would double-transform).
+        # Apply inverse matrix to map window coordinates to portrait (virtual) space.
+        # The canvas MatrixInstruction only affects rendering; Kivy does not auto-transform touch events.
+        inv = self._inverse_matrix
         orig_x, orig_y = touch.x, touch.y
-        Logger.info(f"[Portrait] on_touch_up passthrough pos=({round(touch.x,1)},{round(touch.y,1)})")
-        
-        # Log touch candidates before dispatching
-        self._log_touch_candidates(touch, orig_x, orig_y, "up")
-        
-        ret = super(PortraitContainer, self).on_touch_up(touch)
-        
-        # Mark this container as accepting the touch if it handled it
-        if ret and not hasattr(touch, 'ud'):
-            touch.ud = {}
-        if ret:
-            touch.ud['accepted_by'] = self
-        
-        # Log accepted-by information
-        self._log_accepted_by(touch, "up", ret)
+        if inv is not None:
+            Logger.info(f"[Portrait] on_touch_up matrix map pos=({round(touch.x,1)},{round(touch.y,1)})")
+            touch.push()
+            touch.apply_transform_2d(lambda x, y: inv.transform_point(x, y, 0)[:2])
+            self._log_touch_candidates(touch, orig_x, orig_y, "up")
+            ret = super(PortraitContainer, self).on_touch_up(touch)
+            self._log_accepted_by(touch, "up", ret)
+            touch.pop()
+        else:
+            # Fallback: inverse matrix not yet available (e.g. before first layout)
+            Logger.info(f"[Portrait] on_touch_up passthrough (no inv matrix) pos=({round(touch.x,1)},{round(touch.y,1)})")
+            self._log_touch_candidates(touch, orig_x, orig_y, "up")
+            ret = super(PortraitContainer, self).on_touch_up(touch)
+            if ret and not hasattr(touch, 'ud'):
+                touch.ud = {}
+            if ret:
+                touch.ud['accepted_by'] = self
+            self._log_accepted_by(touch, "up", ret)
         
         # Clean up move counter for this touch
         if hasattr(self, '_diag_move_counter') and hasattr(touch, 'uid'):
@@ -1253,13 +1265,9 @@ class PortraitContainer(FloatLayout):
         
         # Log diagnostics if enabled
         if diag.enabled():
-            for child in self.children:
-                collide = child.collide_point(*touch.pos)
-                child_ret = ret
-                path_entries.append((child, collide, child_ret))
-                if collide and ret:
-                    accepted_by = child
-            
+            path_entries.append((self, True, ret))
+            if ret:
+                accepted_by = self
             diag.log_touch_event("up", touch, path_entries, accepted_by)
             if diag.overlay_enabled():
                 diag.mark_point(self.canvas.after, (orig_x, orig_y))
