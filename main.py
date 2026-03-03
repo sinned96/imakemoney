@@ -531,14 +531,14 @@ class PortraitContainer(FloatLayout):
         except Exception as e:
             debug_logger.error(f"[DEBUG_AUTO_SCREENSHOT] Failed to take screenshot: {e}")
     
-    def _log_touch_candidates(self, touch, orig_wx, orig_wy, phase):
+    def _log_touch_candidates(self, touch, orig_x, orig_y, phase):
         """
         Log which direct children of PortraitContainer collide with the touch.
         
         Args:
             touch: Touch object (with potentially mapped coordinates)
-            orig_wx: Original window x coordinate
-            orig_wy: Original window y coordinate
+            orig_x: Original window x coordinate
+            orig_y: Original window y coordinate
             phase: Touch phase ("down", "move", or "up")
         """
         candidates = []
@@ -565,7 +565,7 @@ class PortraitContainer(FloatLayout):
         
         # Log the candidates
         Logger.info(
-            f"[TouchTrace] phase={phase} at=({round(orig_wx,1)},{round(orig_wy,1)})->({round(touch.x,1)},{round(touch.y,1)}) "
+            f"[TouchTrace] phase={phase} at=({round(orig_x,1)},{round(orig_y,1)})->({round(touch.x,1)},{round(touch.y,1)}) "
             f"candidates={candidates}"
         )
     
@@ -1038,32 +1038,14 @@ class PortraitContainer(FloatLayout):
             
             return ret
         
-        # Use inverse matrix if available, otherwise use cached fallback
-        inv = self._inverse_matrix
-        if inv is None and self._last_inverse_matrix is not None:
-            inv = self._last_inverse_matrix
-            Logger.info(f"[Portrait] on_touch_down map using cached inv=True from=({round(touch.x,1)},{round(touch.y,1)})")
-        
-        # Store original coordinates for diagnostics
+        # Matrix pipeline: the canvas MatrixInstruction already handles coordinate
+        # transformation internally via Kivy's rendering pipeline.  Applying the
+        # inverse matrix manually here would cause a double-transform (ghost field).
+        # Only the analytic path (INPUT_ANALYTIC_MAP=1) performs an explicit remap.
         orig_x, orig_y = touch.x, touch.y
-        mapped_x, mapped_y = orig_x, orig_y
+        Logger.info(f"[Portrait] on_touch_down passthrough pos=({round(touch.x,1)},{round(touch.y,1)})")
         
-        if inv:
-            # Use Kivy's built-in coordinate transformation
-            # This applies the inverse matrix to map screen coords to widget coords
-            touch.push()
-            # Apply inverse transform to map screen coordinates to virtual space
-            tx, ty, _ = inv.transform_point(touch.x, touch.y, 0)
-            if inv == self._inverse_matrix:
-                Logger.info(f"[Portrait] on_touch_down map inv=True from=({round(touch.x,1)},{round(touch.y,1)}) to=({round(tx,1)},{round(ty,1)})")
-            else:
-                Logger.info(f"[Portrait] on_touch_down (cached) to=({round(tx,1)},{round(ty,1)})")
-            touch.x, touch.y = tx, ty
-            mapped_x, mapped_y = tx, ty
-        else:
-            Logger.info(f"[Portrait] on_touch_down passthrough (no inv) pos=({round(touch.x,1)},{round(touch.y,1)})")
-        
-        # Log touch candidates AFTER coordinate mapping
+        # Log touch candidates before dispatching
         self._log_touch_candidates(touch, orig_x, orig_y, "down")
         
         ret = super(PortraitContainer, self).on_touch_down(touch)
@@ -1077,16 +1059,10 @@ class PortraitContainer(FloatLayout):
         # Log accepted-by information
         self._log_accepted_by(touch, "down", ret)
         
-        if inv:
-            touch.pop()
-        
         # Log diagnostics if enabled
         if diag.enabled():
-            # Collect path by walking children and checking collide_point
             for child in self.children:
                 collide = child.collide_point(*touch.pos)
-                # We can't easily know if child returned True without instrumenting all widgets,
-                # so we approximate based on ret value
                 child_ret = ret  # Approximation
                 path_entries.append((child, collide, child_ret))
                 if collide and ret:
@@ -1094,7 +1070,7 @@ class PortraitContainer(FloatLayout):
             
             diag.log_touch_event("down", touch, path_entries, accepted_by)
             if diag.overlay_enabled():
-                diag.mark_point(self.canvas.after, (mapped_x, mapped_y))
+                diag.mark_point(self.canvas.after, (orig_x, orig_y))
         
         return ret
     
@@ -1156,29 +1132,11 @@ class PortraitContainer(FloatLayout):
             
             return ret
         
-        # Use inverse matrix if available, otherwise use cached fallback
-        inv = self._inverse_matrix
-        if inv is None and self._last_inverse_matrix is not None:
-            inv = self._last_inverse_matrix
-            Logger.info(f"[Portrait] on_touch_move map using cached inv=True from=({round(touch.x,1)},{round(touch.y,1)})")
-        
-        # Store original coordinates for diagnostics
+        # Matrix pipeline: passthrough – no manual inverse mapping (would double-transform).
         orig_x, orig_y = touch.x, touch.y
-        mapped_x, mapped_y = orig_x, orig_y
+        Logger.info(f"[Portrait] on_touch_move passthrough pos=({round(touch.x,1)},{round(touch.y,1)})")
         
-        if inv:
-            touch.push()
-            tx, ty, _ = inv.transform_point(touch.x, touch.y, 0)
-            if inv == self._inverse_matrix:
-                Logger.info(f"[Portrait] on_touch_move map inv=True from=({round(touch.x,1)},{round(touch.y,1)}) to=({round(tx,1)},{round(ty,1)})")
-            else:
-                Logger.info(f"[Portrait] on_touch_move (cached) to=({round(tx,1)},{round(ty,1)})")
-            touch.x, touch.y = tx, ty
-            mapped_x, mapped_y = tx, ty
-        else:
-            Logger.info(f"[Portrait] on_touch_move passthrough (no inv) pos=({round(touch.x,1)},{round(touch.y,1)})")
-        
-        # Log touch candidates AFTER coordinate mapping
+        # Log touch candidates before dispatching
         self._log_touch_candidates(touch, orig_x, orig_y, "move")
         
         ret = super(PortraitContainer, self).on_touch_move(touch)
@@ -1192,12 +1150,8 @@ class PortraitContainer(FloatLayout):
         # Log accepted-by information
         self._log_accepted_by(touch, "move", ret)
         
-        if inv:
-            touch.pop()
-        
         # Log diagnostics if enabled (only log occasionally to avoid spam)
         if diag.enabled() and hasattr(touch, 'uid'):
-            # Log every 5th move event to reduce spam
             if not hasattr(self, '_diag_move_counter'):
                 self._diag_move_counter = {}
             touch_id = touch.uid
@@ -1213,7 +1167,7 @@ class PortraitContainer(FloatLayout):
                 
                 diag.log_touch_event("move", touch, path_entries, accepted_by)
                 if diag.overlay_enabled():
-                    diag.mark_point(self.canvas.after, (mapped_x, mapped_y))
+                    diag.mark_point(self.canvas.after, (orig_x, orig_y))
         
         return ret
     
@@ -1275,29 +1229,11 @@ class PortraitContainer(FloatLayout):
             
             return ret
         
-        # Use inverse matrix if available, otherwise use cached fallback
-        inv = self._inverse_matrix
-        if inv is None and self._last_inverse_matrix is not None:
-            inv = self._last_inverse_matrix
-            Logger.info(f"[Portrait] on_touch_up map using cached inv=True from=({round(touch.x,1)},{round(touch.y,1)})")
-        
-        # Store original coordinates for diagnostics
+        # Matrix pipeline: passthrough – no manual inverse mapping (would double-transform).
         orig_x, orig_y = touch.x, touch.y
-        mapped_x, mapped_y = orig_x, orig_y
+        Logger.info(f"[Portrait] on_touch_up passthrough pos=({round(touch.x,1)},{round(touch.y,1)})")
         
-        if inv:
-            touch.push()
-            tx, ty, _ = inv.transform_point(touch.x, touch.y, 0)
-            if inv == self._inverse_matrix:
-                Logger.info(f"[Portrait] on_touch_up map inv=True from=({round(touch.x,1)},{round(touch.y,1)}) to=({round(tx,1)},{round(ty,1)})")
-            else:
-                Logger.info(f"[Portrait] on_touch_up (cached) to=({round(tx,1)},{round(ty,1)})")
-            touch.x, touch.y = tx, ty
-            mapped_x, mapped_y = tx, ty
-        else:
-            Logger.info(f"[Portrait] on_touch_up passthrough (no inv) pos=({round(touch.x,1)},{round(touch.y,1)})")
-        
-        # Log touch candidates AFTER coordinate mapping
+        # Log touch candidates before dispatching
         self._log_touch_candidates(touch, orig_x, orig_y, "up")
         
         ret = super(PortraitContainer, self).on_touch_up(touch)
@@ -1310,9 +1246,6 @@ class PortraitContainer(FloatLayout):
         
         # Log accepted-by information
         self._log_accepted_by(touch, "up", ret)
-        
-        if inv:
-            touch.pop()
         
         # Clean up move counter for this touch
         if hasattr(self, '_diag_move_counter') and hasattr(touch, 'uid'):
@@ -1329,7 +1262,7 @@ class PortraitContainer(FloatLayout):
             
             diag.log_touch_event("up", touch, path_entries, accepted_by)
             if diag.overlay_enabled():
-                diag.mark_point(self.canvas.after, (mapped_x, mapped_y))
+                diag.mark_point(self.canvas.after, (orig_x, orig_y))
         
         return ret
 
@@ -2141,12 +2074,12 @@ class RotatedModalView(ModalView):
         """Apply rotation transform to modal when in portrait mode using matrix pipeline transform"""
         is_portrait = self.orientation_provider.is_portrait()
         
-        # Clear existing transforms
-        self.canvas.before.clear()
-        self.canvas.after.clear()
-        
         if not is_portrait or PORTRAIT_PIPELINE != "matrix":
-            # Landscape mode or non-matrix pipeline: no transformation needed
+            # Landscape mode or non-matrix pipeline: only clear if we previously set a transform,
+            # to avoid erasing default ModalView canvas instructions (e.g. FBO pipeline background).
+            if self._transform_matrix is not None:
+                self.canvas.before.clear()
+                self.canvas.after.clear()
             self._transform_matrix = None
             self._inverse_matrix = None
             return
@@ -2156,6 +2089,10 @@ class RotatedModalView(ModalView):
         from kivy.graphics.transformation import Matrix
         from kivy.graphics import PushMatrix, PopMatrix, MatrixInstruction
         from kivy.core.window import Window
+        
+        # Clear existing transforms before rebuilding
+        self.canvas.before.clear()
+        self.canvas.after.clear()
         
         w, h = Window.size
         if w <= 0 or h <= 0:
