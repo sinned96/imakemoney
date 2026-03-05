@@ -1270,13 +1270,22 @@ class PortraitContainer(FloatLayout):
         if inv is not None:
             if touch.ud.get('_portrait_transformed'):
                 # Touch was kept in portrait coords since on_touch_down (grab path).
-                # Dispatch directly, then pop (paired with the push in on_touch_down)
-                # and clear the flag so subsequent phantom events are handled cleanly.
+                # Dispatch directly – the push from on_touch_down has not been popped.
                 self._log_touch_candidates(touch, orig_x, orig_y, "up")
                 ret = super(PortraitContainer, self).on_touch_up(touch)
                 self._log_accepted_by(touch, "up", ret)
-                touch.pop()  # Restore to window coords
-                touch.ud.pop('_portrait_transformed', None)
+                # Defer the pop to the next clock tick so that Kivy's Window-level
+                # grab-dispatch (which fires after the normal widget-tree walk) still
+                # sees portrait-space coordinates.  ButtonBehavior.on_touch_up checks
+                # collide_point when grab_current is self; an immediate pop restores
+                # window-space coords too early and prevents on_release from firing.
+                def _deferred_pop(dt, _touch=touch):
+                    try:
+                        _touch.pop()  # paired with push in on_touch_down
+                    except IndexError:
+                        pass
+                    _touch.ud.pop('_portrait_transformed', None)
+                Clock.schedule_once(_deferred_pop, 0)
             else:
                 Logger.info(f"[Portrait] on_touch_up matrix map pos=({round(touch.x,1)},{round(touch.y,1)})")
                 touch.push()
