@@ -1047,12 +1047,32 @@ class PortraitContainer(FloatLayout):
             Logger.info(f"[Portrait] on_touch_down matrix map pos=({round(touch.x,1)},{round(touch.y,1)})")
             touch.push()
             touch.apply_transform_2d(lambda x, y: inv.transform_point(x, y, 0)[:2])
+            # Bounds check: ignore touches that land outside the virtual portrait area
+            # (e.g. in letterboxed black bars).  Still pop before returning False.
+            if (touch.x < 0 or touch.x >= self.virtual_w or
+                    touch.y < 0 or touch.y >= self.virtual_h):
+                Logger.info(
+                    f"[Portrait] on_touch_down out-of-bounds portrait=({round(touch.x,1)},{round(touch.y,1)}) "
+                    f"virtual=({self.virtual_w},{self.virtual_h}), ignoring"
+                )
+                touch.pop()
+                return False
             # Log touch candidates AFTER coordinate mapping
             self._log_touch_candidates(touch, orig_x, orig_y, "down")
             ret = super(PortraitContainer, self).on_touch_down(touch)
             # Log accepted-by information
             self._log_accepted_by(touch, "down", ret)
-            touch.pop()
+            # If any widget grabbed the touch (e.g. Button), keep the touch in
+            # portrait (transformed) space across the whole gesture lifecycle so
+            # that Kivy's grab-dispatch phase on move/up sees consistent coords.
+            # ButtonBehavior.on_touch_up checks collide_point when grab_current is
+            # self; without this the window-space position fails that check and
+            # on_release never fires.
+            if touch.grab_list:
+                touch.ud['_portrait_transformed'] = True
+                # Do NOT pop – touch remains in portrait space until on_touch_up
+            else:
+                touch.pop()
         else:
             # Fallback: inverse matrix not yet available (e.g. before first layout)
             Logger.info(f"[Portrait] on_touch_down passthrough (no inv matrix) pos=({round(touch.x,1)},{round(touch.y,1)})")
@@ -1142,13 +1162,20 @@ class PortraitContainer(FloatLayout):
         inv = self._inverse_matrix
         orig_x, orig_y = touch.x, touch.y
         if inv is not None:
-            Logger.info(f"[Portrait] on_touch_move matrix map pos=({round(touch.x,1)},{round(touch.y,1)})")
-            touch.push()
-            touch.apply_transform_2d(lambda x, y: inv.transform_point(x, y, 0)[:2])
-            self._log_touch_candidates(touch, orig_x, orig_y, "move")
-            ret = super(PortraitContainer, self).on_touch_move(touch)
-            self._log_accepted_by(touch, "move", ret)
-            touch.pop()
+            if touch.ud.get('_portrait_transformed'):
+                # Touch is already in portrait coords (grab path from on_touch_down);
+                # dispatch directly without re-applying the transform.
+                self._log_touch_candidates(touch, orig_x, orig_y, "move")
+                ret = super(PortraitContainer, self).on_touch_move(touch)
+                self._log_accepted_by(touch, "move", ret)
+            else:
+                Logger.info(f"[Portrait] on_touch_move matrix map pos=({round(touch.x,1)},{round(touch.y,1)})")
+                touch.push()
+                touch.apply_transform_2d(lambda x, y: inv.transform_point(x, y, 0)[:2])
+                self._log_touch_candidates(touch, orig_x, orig_y, "move")
+                ret = super(PortraitContainer, self).on_touch_move(touch)
+                self._log_accepted_by(touch, "move", ret)
+                touch.pop()
         else:
             # Fallback: inverse matrix not yet available (e.g. before first layout)
             Logger.info(f"[Portrait] on_touch_move passthrough (no inv matrix) pos=({round(touch.x,1)},{round(touch.y,1)})")
@@ -1241,13 +1268,23 @@ class PortraitContainer(FloatLayout):
         inv = self._inverse_matrix
         orig_x, orig_y = touch.x, touch.y
         if inv is not None:
-            Logger.info(f"[Portrait] on_touch_up matrix map pos=({round(touch.x,1)},{round(touch.y,1)})")
-            touch.push()
-            touch.apply_transform_2d(lambda x, y: inv.transform_point(x, y, 0)[:2])
-            self._log_touch_candidates(touch, orig_x, orig_y, "up")
-            ret = super(PortraitContainer, self).on_touch_up(touch)
-            self._log_accepted_by(touch, "up", ret)
-            touch.pop()
+            if touch.ud.get('_portrait_transformed'):
+                # Touch was kept in portrait coords since on_touch_down (grab path).
+                # Dispatch directly, then pop (paired with the push in on_touch_down)
+                # and clear the flag so subsequent phantom events are handled cleanly.
+                self._log_touch_candidates(touch, orig_x, orig_y, "up")
+                ret = super(PortraitContainer, self).on_touch_up(touch)
+                self._log_accepted_by(touch, "up", ret)
+                touch.pop()  # Restore to window coords
+                touch.ud.pop('_portrait_transformed', None)
+            else:
+                Logger.info(f"[Portrait] on_touch_up matrix map pos=({round(touch.x,1)},{round(touch.y,1)})")
+                touch.push()
+                touch.apply_transform_2d(lambda x, y: inv.transform_point(x, y, 0)[:2])
+                self._log_touch_candidates(touch, orig_x, orig_y, "up")
+                ret = super(PortraitContainer, self).on_touch_up(touch)
+                self._log_accepted_by(touch, "up", ret)
+                touch.pop()
         else:
             # Fallback: inverse matrix not yet available (e.g. before first layout)
             Logger.info(f"[Portrait] on_touch_up passthrough (no inv matrix) pos=({round(touch.x,1)},{round(touch.y,1)})")
@@ -2670,7 +2707,8 @@ class LoginScreen(FloatLayout):
         if ret and not hasattr(touch, 'ud'):
             touch.ud = {}
         if ret:
-            touch.ud['accepted_by'] = self
+            # Only set accepted_by if a child has not already set a more specific value
+            touch.ud.setdefault('accepted_by', self)
         return ret
     
     def on_touch_move(self, touch):
@@ -2679,7 +2717,7 @@ class LoginScreen(FloatLayout):
         if ret and not hasattr(touch, 'ud'):
             touch.ud = {}
         if ret:
-            touch.ud['accepted_by'] = self
+            touch.ud.setdefault('accepted_by', self)
         return ret
     
     def on_touch_up(self, touch):
@@ -2688,7 +2726,7 @@ class LoginScreen(FloatLayout):
         if ret and not hasattr(touch, 'ud'):
             touch.ud = {}
         if ret:
-            touch.ud['accepted_by'] = self
+            touch.ud.setdefault('accepted_by', self)
         return ret
     
     def _on_focus(self, textinput, focused):
