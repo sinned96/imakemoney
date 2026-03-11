@@ -1026,8 +1026,19 @@ class PortraitContainer(FloatLayout):
             ret = super(PortraitContainer, self).on_touch_down(touch)
             # Log accepted-by information
             self._log_accepted_by(touch, "down", ret)
-            touch.pop()
-            
+            # Mirror the matrix grab-path: if a widget grabbed the touch, keep it
+            # in portrait space across the whole gesture lifecycle so that Kivy's
+            # grab-dispatch on move/up sees consistent portrait-space coordinates.
+            # ButtonBehavior.on_touch_up checks collide_point when grab_current is
+            # self; popping too early restores window-space coords and prevents
+            # on_release from firing.
+            if touch.grab_list:
+                touch.ud['_portrait_transformed'] = True
+                touch.ud['_portrait_transform_mode'] = 'analytic'
+                # Do NOT pop – touch remains in portrait space until on_touch_up
+            else:
+                touch.pop()
+
             # Log diagnostics if enabled
             if diag.enabled():
                 path_entries.append((self, True, ret))
@@ -1128,6 +1139,24 @@ class PortraitContainer(FloatLayout):
         use_analytic = os.getenv("INPUT_ANALYTIC_MAP", "0") == "1"
         
         if use_analytic and self._portrait_params:
+            # If touch is already in portrait space from the grab-path in on_touch_down,
+            # dispatch directly without re-mapping (mirrors the matrix grab-path).
+            if touch.ud.get('_portrait_transformed'):
+                orig_x, orig_y = touch.x, touch.y
+                self._log_touch_candidates(touch, orig_x, orig_y, "move")
+                ret = super(PortraitContainer, self).on_touch_move(touch)
+                self._log_accepted_by(touch, "move", ret)
+
+                if diag.enabled():
+                    path_entries.append((self, True, ret))
+                    if ret:
+                        accepted_by = self
+                    diag.log_touch_event("move", touch, path_entries, accepted_by)
+                    if diag.overlay_enabled():
+                        diag.mark_point(self.canvas.after, touch.pos)
+
+                return ret
+
             # Use analytical mapping
             params = self._portrait_params
             orig_x, orig_y = touch.x, touch.y
@@ -1234,6 +1263,35 @@ class PortraitContainer(FloatLayout):
         use_analytic = os.getenv("INPUT_ANALYTIC_MAP", "0") == "1"
         
         if use_analytic and self._portrait_params:
+            # If touch is already in portrait space from the grab-path in on_touch_down,
+            # dispatch directly and use a deferred pop – same as the matrix grab-path
+            # (PR #107).  The deferred pop ensures Kivy's Window-level grab-dispatch
+            # still sees portrait-space coordinates when it fires after the normal
+            # widget-tree walk, so ButtonBehavior.on_release can fire correctly.
+            if touch.ud.get('_portrait_transformed'):
+                orig_x, orig_y = touch.x, touch.y
+                self._log_touch_candidates(touch, orig_x, orig_y, "up")
+                ret = super(PortraitContainer, self).on_touch_up(touch)
+                self._log_accepted_by(touch, "up", ret)
+                def _deferred_pop_analytic(dt, _touch=touch):
+                    try:
+                        _touch.pop()  # paired with push in on_touch_down
+                    except IndexError:
+                        pass
+                    _touch.ud.pop('_portrait_transformed', None)
+                    _touch.ud.pop('_portrait_transform_mode', None)
+                Clock.schedule_once(_deferred_pop_analytic, 0)
+
+                if diag.enabled():
+                    path_entries.append((self, True, ret))
+                    if ret:
+                        accepted_by = self
+                    diag.log_touch_event("up", touch, path_entries, accepted_by)
+                    if diag.overlay_enabled():
+                        diag.mark_point(self.canvas.after, touch.pos)
+
+                return ret
+
             # Use analytical mapping
             params = self._portrait_params
             orig_x, orig_y = touch.x, touch.y

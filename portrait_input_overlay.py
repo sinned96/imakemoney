@@ -92,6 +92,11 @@ class InputOverlayContainer(Widget):
         """
         if not self._remap_enabled or not self._target:
             return None
+
+        # If PortraitContainer already keeps this touch in portrait space (grab path),
+        # skip remapping to prevent double-transformation of coordinates.
+        if touch.ud.get('_portrait_transformed'):
+            return None
         
         # Store original window coordinates
         orig_x, orig_y = touch.x, touch.y
@@ -134,22 +139,7 @@ class InputOverlayContainer(Widget):
         # Tag the event so PortraitContainer bypasses its own transform
         touch._ioverlay_mapped = True
         
-        # Temporarily disable target's inverse during dispatch to prevent double-transform
-        if hasattr(self._target, '_inverse_matrix'):
-            setattr(touch, '_ioverlay_prev_inv', self._target._inverse_matrix)
-            self._target._inverse_matrix = None
-        
         return (orig_x, orig_y, tx, ty, True)
-    
-    def _restore_target_after_dispatch(self, touch):
-        """Restore target's inverse matrix after event dispatch"""
-        prev = getattr(touch, '_ioverlay_prev_inv', None)
-        if prev is not None and self._target is not None:
-            self._target._inverse_matrix = prev
-            try:
-                delattr(touch, '_ioverlay_prev_inv')
-            except Exception:
-                pass
 
     def _on_window_touch_down(self, window, touch):
         if self._remap_enabled:
@@ -187,8 +177,6 @@ class InputOverlayContainer(Widget):
                            f"to=({round(tx,1)},{round(ty,1)}) inv_present={inv_present}")
             else:
                 Logger.info(f"[InputOverlay] up mode=remap (no inv) window={round(touch.x,1)},{round(touch.y,1)}")
-            # Restore target mapping after gesture completes
-            self._restore_target_after_dispatch(touch)
         else:
             # Logging-only mode: do not modify touch or target
             Logger.info(f"[InputOverlay] up mode=logging-only passthrough window={round(touch.x,1)},{round(touch.y,1)}")
