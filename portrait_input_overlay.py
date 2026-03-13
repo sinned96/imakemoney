@@ -29,10 +29,23 @@ def window_to_portrait_overlay(xw, yw, ox, oy, s, Pw):
 class InputOverlayContainer(Widget):
     """
     Non-intrusive overlay with optional touch remap fix for matrix portrait pipeline.
-    - Default: logging-only (does not consume or re-dispatch events)
-    - Optional fix: if INPUT_OVERLAY_REMAP=1, remap Window touch coords to the
-      portrait virtual space and transparently pass them on. Dabei wird pro Event
-      die inverse Matrix des Zielwidgets vorübergehend deaktiviert (kein Double-Mapping).
+
+    Modes (controlled by env vars):
+    - Default (INPUT_OVERLAY_REMAP=0): logging-only.  Does NOT consume or modify
+      touch events.  PortraitContainer handles all coordinate mapping on its own
+      (using the inverse matrix or analytical mapping + deferred-pop for grabs).
+    - Remap (INPUT_OVERLAY_REMAP=1): maps Window touch coords to portrait virtual
+      space in-place and marks the touch with ``touch._ioverlay_mapped = True`` so
+      that PortraitContainer skips its own transform.  Use this only if the default
+      matrix path in PortraitContainer is not available.
+
+    Safety rules for remap mode:
+    - Touches already in portrait space (``touch.ud['_portrait_transformed']``)
+      are never remapped (prevents double-transform on grab path).
+    - ``touch._ioverlay_mapped`` is cleared on touch-up so stale state cannot
+      affect subsequent gestures.
+    - Touches outside the portrait viewport (black letterbox bars) are NOT
+      remapped, so out-of-bounds system events are left in window space.
     """
 
     def __init__(self, **kwargs):
@@ -55,7 +68,8 @@ class InputOverlayContainer(Widget):
 
         mode = "remap" if self._remap_enabled else "logging-only"
         mapping = "analytical" if self._use_analytic else "matrix"
-        Logger.info(f"[portrait_input_overlay]: installed mode={mode} mapping={mapping}")
+        Logger.info(f"[portrait_input_overlay]: installed mode={mode} mapping={mapping} "
+                    f"(set INPUT_OVERLAY_REMAP=1 to enable active remapping)")
 
     def _resize_to_window(self):
         self.size = Window.size
@@ -87,8 +101,14 @@ class InputOverlayContainer(Widget):
     # ----------------- Window-level observers -----------------
     def _maybe_remap_in_place(self, touch):
         """
-        If remap is enabled, use target's analytical mapping or inverse matrix to transform touch coords.
-        Returns tuple (wx, wy, tx, ty, inv_present) if remapped, None otherwise.
+        If remap is enabled, use target's analytical mapping or inverse matrix to
+        transform touch coords.  Returns (wx, wy, tx, ty, inv_present) if remapped,
+        None otherwise.
+
+        Safety checks:
+        - Skip if touch is already in portrait space (_portrait_transformed flag).
+        - Skip if the mapped coordinates fall outside the virtual portrait area
+          (touch is in a black letterbox bar).
         """
         if not self._remap_enabled or not self._target:
             return None
@@ -97,48 +117,59 @@ class InputOverlayContainer(Widget):
         # skip remapping to prevent double-transformation of coordinates.
         if touch.ud.get('_portrait_transformed'):
             return None
-        
+
         # Store original window coordinates
         orig_x, orig_y = touch.x, touch.y
-        
+
         # Try analytical mapping first if enabled
         if self._use_analytic:
             params = getattr(self._target, '_portrait_params', None)
             if params:
                 try:
                     tx, ty = window_to_portrait_overlay(
-                        orig_x, orig_y, 
-                        params['ox'], params['oy'], 
+                        orig_x, orig_y,
+                        params['ox'], params['oy'],
                         params['s'], params['Pw']
                     )
-                    
+
+                    # Reject touches outside the virtual portrait area (letterbox bars)
+                    if tx < 0 or tx > params['Pw'] or ty < 0 or ty > params['Ph']:
+                        return None
+
                     # Mutate touch in-place
                     touch.x, touch.y = tx, ty
-                    
+
                     # Tag the event so PortraitContainer bypasses its own transform
                     touch._ioverlay_mapped = True
-                    
+
                     return (orig_x, orig_y, tx, ty, True)
                 except Exception as e:
                     Logger.warning(f"[InputOverlay] Analytical mapping failed: {e}")
-        
+
         # Fallback to inverse matrix
         inv = getattr(self._target, '_inverse_matrix', None)
         if inv is None:
             return None
-        
+
         # Transform using the target's actual inverse matrix
         try:
             tx, ty, _ = inv.transform_point(orig_x, orig_y, 0)
         except Exception:
             return None
-        
+
+        # Reject touches outside the virtual portrait area (letterbox bars)
+        virtual_w = getattr(self._target, 'virtual_w', None)
+        virtual_h = getattr(self._target, 'virtual_h', None)
+        if virtual_w is not None and virtual_h is not None:
+            if tx < 0 or tx > virtual_w or ty < 0 or ty > virtual_h:
+                return None
+
         # Mutate touch in-place
         touch.x, touch.y = tx, ty
-        
+
         # Tag the event so PortraitContainer bypasses its own transform
         touch._ioverlay_mapped = True
-        
+
         return (orig_x, orig_y, tx, ty, True)
 
     def _on_window_touch_down(self, window, touch):
@@ -149,10 +180,10 @@ class InputOverlayContainer(Widget):
                 Logger.info(f"[InputOverlay] down mode=remap from=({round(wx,1)},{round(wy,1)}) "
                            f"to=({round(tx,1)},{round(ty,1)}) inv_present={inv_present}")
             else:
-                Logger.info(f"[InputOverlay] down mode=remap (no inv) window={round(touch.x,1)},{round(touch.y,1)}")
+                Logger.debug(f"[InputOverlay] down mode=remap (skipped) window={round(touch.x,1)},{round(touch.y,1)}")
         else:
             # Logging-only mode: do not modify touch or target
-            Logger.info(f"[InputOverlay] down mode=logging-only passthrough window={round(touch.x,1)},{round(touch.y,1)}")
+            Logger.debug(f"[InputOverlay] down mode=logging-only window={round(touch.x,1)},{round(touch.y,1)}")
         # Do not consume; allow normal Kivy routing
         return False
 
@@ -161,11 +192,10 @@ class InputOverlayContainer(Widget):
             result = self._maybe_remap_in_place(touch)
             if result:
                 wx, wy, tx, ty, inv_present = result
-                Logger.info(f"[InputOverlay] move mode=remap from=({round(wx,1)},{round(wy,1)}) "
+                Logger.debug(f"[InputOverlay] move mode=remap from=({round(wx,1)},{round(wy,1)}) "
                            f"to=({round(tx,1)},{round(ty,1)}) inv_present={inv_present}")
         else:
-            # Logging-only mode: do not modify touch or target
-            Logger.info(f"[InputOverlay] move mode=logging-only passthrough window={round(touch.x,1)},{round(touch.y,1)}")
+            Logger.debug(f"[InputOverlay] move mode=logging-only window={round(touch.x,1)},{round(touch.y,1)}")
         return False
 
     def _on_window_touch_up(self, window, touch):
@@ -176,10 +206,12 @@ class InputOverlayContainer(Widget):
                 Logger.info(f"[InputOverlay] up mode=remap from=({round(wx,1)},{round(wy,1)}) "
                            f"to=({round(tx,1)},{round(ty,1)}) inv_present={inv_present}")
             else:
-                Logger.info(f"[InputOverlay] up mode=remap (no inv) window={round(touch.x,1)},{round(touch.y,1)}")
+                Logger.debug(f"[InputOverlay] up mode=remap (skipped) window={round(touch.x,1)},{round(touch.y,1)}")
+            # Clean up overlay marker so stale state does not affect future gestures
+            if hasattr(touch, '_ioverlay_mapped'):
+                del touch._ioverlay_mapped
         else:
-            # Logging-only mode: do not modify touch or target
-            Logger.info(f"[InputOverlay] up mode=logging-only passthrough window={round(touch.x,1)},{round(touch.y,1)}")
+            Logger.debug(f"[InputOverlay] up mode=logging-only window={round(touch.x,1)},{round(touch.y,1)}")
         return False
 
     # Ensure we never consume via widget dispatch path

@@ -249,27 +249,27 @@ PORTRAIT_VIRTUAL_SIZE = (1080, 1920)  # Virtual portrait size for FBO rendering
 
 # Debug overlay configuration (env: DEBUG_ROTATION_OVERLAY)
 # When enabled, shows neon border, crosshair, and debug info on portrait content
-DEBUG_ROTATION_OVERLAY = os.getenv("DEBUG_ROTATION_OVERLAY", "1") == "1"
+DEBUG_ROTATION_OVERLAY = os.getenv("DEBUG_ROTATION_OVERLAY", "0") == "1"
 
 # Debug force-size configuration (env: DEBUG_FORCE_LOGIN_SIZE)
 # When enabled, forces LoginScreen to known size/pos during diagnostics
-DEBUG_FORCE_LOGIN_SIZE = os.getenv("DEBUG_FORCE_LOGIN_SIZE", "1") == "1"
+DEBUG_FORCE_LOGIN_SIZE = os.getenv("DEBUG_FORCE_LOGIN_SIZE", "0") == "1"
 
 # Debug overlay configuration (env: DEBUG_TOP_OVERLAY)
 # When enabled, shows top-most diagnostic overlay with crosshair and banner
-DEBUG_TOP_OVERLAY = os.getenv("DEBUG_TOP_OVERLAY", "1") == "1"
+DEBUG_TOP_OVERLAY = os.getenv("DEBUG_TOP_OVERLAY", "0") == "1"
 
 # Debug auto-screenshot configuration (env: DEBUG_AUTO_SCREENSHOT)
 # When enabled, takes a screenshot on first rendered frame
-DEBUG_AUTO_SCREENSHOT = os.getenv("DEBUG_AUTO_SCREENSHOT", "1") == "1"
+DEBUG_AUTO_SCREENSHOT = os.getenv("DEBUG_AUTO_SCREENSHOT", "0") == "1"
 
 # Debug LoginScreen paint configuration (env: DEBUG_LOGIN_PAINT)
 # When enabled, adds colored rectangle and label to LoginScreen
-DEBUG_LOGIN_PAINT = os.getenv("DEBUG_LOGIN_PAINT", "1") == "1"
+DEBUG_LOGIN_PAINT = os.getenv("DEBUG_LOGIN_PAINT", "0") == "1"
 
 # Debug force rotated modal configuration (env: DEBUG_FORCE_ROTATED_MODAL)
 # When enabled, forces modals/dialogs to use RotatedModalView
-DEBUG_FORCE_ROTATED_MODAL = os.getenv("DEBUG_FORCE_ROTATED_MODAL", "1") == "1"
+DEBUG_FORCE_ROTATED_MODAL = os.getenv("DEBUG_FORCE_ROTATED_MODAL", "0") == "1"
 
 # Debug Window overlay configuration (env: DEBUG_WINDOW_OVERLAY)
 # When enabled, shows a bright overlay (semi-transparent red + banner text) directly on Window.canvas.after
@@ -923,14 +923,28 @@ class PortraitContainer(FloatLayout):
         """Override to set child size to virtual dimensions"""
         widget_name = type(widget).__name__
         
-        # Check if this is LoginScreen and force-size is enabled
-        if DEBUG_FORCE_LOGIN_SIZE and PORTRAIT_PIPELINE == "matrix" and widget_name == "LoginScreen":
-            # Force size and position for diagnostics
+        # In portrait matrix mode, always size children to virtual portrait dimensions
+        # so that collide_point checks work correctly in portrait coordinate space
+        # after touch coordinate mapping.  The canvas MatrixInstruction handles the
+        # visual scaling/rotation; widget geometry must live in virtual (1080×1920)
+        # space regardless.
+        #
+        # Widgets that are already explicitly positioned (size_hint == (None, None))
+        # are left unchanged – these are debug labels and overlays added by this
+        # class itself that have their own precise positioning.
+        if PORTRAIT_PIPELINE == "matrix" and widget.size_hint != (None, None):
             widget.size_hint = (None, None)
             widget.size = (self.virtual_w, self.virtual_h)
             widget.pos = (0, 0)
             debug_logger.info(
-                f"[Portrait matrix] Forced size for {widget_name}: "
+                f"[Portrait matrix] Auto-sized {widget_name} to virtual portrait: "
+                f"size=({self.virtual_w},{self.virtual_h}) pos=(0,0)"
+            )
+        
+        # Debug-only: add diagnostic overlays when a LoginScreen is added
+        if DEBUG_FORCE_LOGIN_SIZE and PORTRAIT_PIPELINE == "matrix" and widget_name == "LoginScreen":
+            debug_logger.info(
+                f"[Portrait matrix] DEBUG_FORCE_LOGIN_SIZE: confirmed size for {widget_name}: "
                 f"size=({self.virtual_w},{self.virtual_h}) pos=(0,0)"
             )
             
@@ -968,10 +982,6 @@ class PortraitContainer(FloatLayout):
                 self._top_overlay_banner_label.text_size = (banner_w, banner_h)
                 # Add banner as a child of this container (will be in transformed space)
                 Clock.schedule_once(lambda dt: super(PortraitContainer, self).add_widget(self._top_overlay_banner_label), 0.2)
-        elif not widget.size_hint or widget.size_hint == (None, None):
-            # Set widget size to virtual portrait dimensions if it doesn't have size_hint
-            widget.size = (self.virtual_w, self.virtual_h)
-            widget.pos = (0, 0)
         
         super().add_widget(widget, *args, **kwargs)
         
