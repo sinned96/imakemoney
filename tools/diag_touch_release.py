@@ -8,35 +8,48 @@ Purpose
 Reproduces and verifies the fix for the Kivy portrait-mode touch bug where
 Login/Register buttons appeared to do nothing.
 
-Root cause
-----------
+Root cause (PR #107 regression)
+---------------------------------
 PortraitContainer.on_touch_down applied an inverse-matrix transform to put
-touch coordinates into virtual portrait space (1080×1920) and then called
-touch.pop() unconditionally after the dispatch.  When a Button called
-touch.grab(self) during on_touch_down, Kivy's grab-dispatch phase later
-called Button.on_touch_up directly with the *window* coordinates (not
-portrait).  ButtonBehavior's on_touch_up checks collide_point when
-always_release=False (the default), so the position check failed and
+touch coordinates into virtual portrait space (1080×1920).  When a Button
+grabbed the touch, the container *skipped* touch.pop() so the touch object
+remained in portrait-space.  The intent was that Kivy's grab-dispatch phase
+(Button.on_touch_up with grab_current=self) would see portrait coords and
+pass the collide_point check.
+
+The regression: Kivy's input provider **overwrites** touch.x/y with the
+current window coords for *every* new event (move/up).  So by the time
+on_touch_up fires, the portrait coords set during on_touch_down are gone.
+The stale "don't pop" push had no effect.  The container dispatched on_touch_up
+with window-space coords, ButtonBehavior.collide_point() failed, and
 on_release never fired.
 
-Fix
----
-After on_touch_down dispatch, if touch.grab_list is non-empty, the container
-now skips touch.pop() and records touch.ud['_portrait_transformed'] = True.
-The touch stays in portrait space for the entire gesture lifecycle.
-on_touch_move/up detect the flag and skip re-applying the transform.
-on_touch_up pops the touch (restoring window coords) and clears the flag.
+Fix (this PR)
+-------------
+1. on_touch_down: **always** pop after dispatch.  Set
+   touch.ud['_portrait_transformed'] when a widget grabbed the touch so that
+   on_touch_up knows to use the deferred-pop pattern.
+
+2. on_touch_move: always apply a fresh inverse transform (push → apply →
+   dispatch → pop).  Never short-circuit on _portrait_transformed.
+
+3. on_touch_up: when _portrait_transformed is True, apply a fresh inverse
+   transform (push → apply), dispatch, then *defer* the pop.  The deferred
+   pop keeps portrait coords on the touch object until after Kivy's
+   grab-dispatch fires (which happens after the normal tree walk on
+   RPi / Kivy 2.3.1).  ButtonBehavior.on_touch_up checks collide_point when
+   grab_current is self; with portrait coords in place this check passes and
+   on_release fires correctly.
 
 How to run
 ----------
-This script works in two modes:
-
 1. Pure-Python simulation (no Kivy required) – run directly:
 
        python3 tools/diag_touch_release.py
 
-   The mock Kivy classes simulate the grab mechanism and verify that
-   on_release fires for a simulated down→up sequence.
+   The mock Kivy classes simulate the grab mechanism *and* the provider
+   coord-reset behaviour (MockTouch.reset_coords()) to verify on_release
+   fires for a realistic down→up sequence.
 
 2. Live app – set env var before launching main.py:
 
@@ -46,7 +59,8 @@ This script works in two modes:
    like::
 
        [Portrait] on_touch_down matrix map pos=(...)
-       [Portrait] on_touch_down grab detected – keeping touch in portrait space
+       [Portrait] on_touch_down grab detected – will apply fresh transform on up
+       [Portrait] on_touch_up matrix map (grab) pos=(...)
        [diag] touch up win=(...) accepted_by=Button path=[...]
        try_login called
 
@@ -140,6 +154,18 @@ class MockTouch:
 
     def grab(self, widget):
         self.grab_list.append(widget)
+
+    def reset_coords(self, x, y):
+        """Simulate Kivy's input provider resetting touch.x/y for a new event.
+
+        In real Kivy the input provider overwrites touch.x/y (and their
+        normalised counterparts) for every move/up event.  The push/pop stack
+        is NOT affected – it retains whatever was pushed earlier.  Calling
+        this method before dispatching move/up accurately reproduces that
+        behaviour.
+        """
+        self.x = x
+        self.y = y
 
 
 class MockButton:
@@ -237,11 +263,13 @@ class MockPortraitContainer:
         ret = self._dispatch_down(touch)
 
         if touch.grab_list:
-            print("[PortraitContainer] grab detected – keeping touch in portrait space")
+            print("[PortraitContainer] grab detected – will apply fresh transform on up")
             touch.ud['_portrait_transformed'] = True
-            # Do NOT pop
-        else:
-            touch.pop()
+        # Always pop: Kivy's input provider resets touch.x/y to window coords for
+        # every subsequent event (move/up), so keeping portrait coords on the
+        # touch object between events provides no benefit.  on_touch_up applies a
+        # fresh transform and uses deferred-pop instead.
+        touch.pop()
         return ret
 
     def on_touch_move(self, touch):
@@ -249,9 +277,8 @@ class MockPortraitContainer:
         if inv is None:
             return self._dispatch_move(touch)
 
-        if touch.ud.get('_portrait_transformed'):
-            return self._dispatch_move(touch)
-
+        # Always apply a fresh inverse transform.  The provider has reset
+        # touch.x/y to window coords for this event.
         touch.push()
         touch.apply_transform_2d(lambda x, y: inv.transform_point(x, y, 0)[:2])
         ret = self._dispatch_move(touch)
@@ -264,12 +291,18 @@ class MockPortraitContainer:
             return self._dispatch_up(touch)
 
         if touch.ud.get('_portrait_transformed'):
+            # Grab path: apply a fresh inverse transform for this event.
+            # (touch.x/y was reset to window coords by the input provider.)
+            # Push the current (window) coords, transform to portrait, dispatch,
+            # then defer the pop so that Kivy's grab-dispatch (which fires after
+            # the normal tree walk) still sees portrait coords when
+            # ButtonBehavior.on_touch_up checks collide_point.
+            touch.push()
+            touch.apply_transform_2d(lambda x, y: inv.transform_point(x, y, 0)[:2])
             ret = self._dispatch_up(touch)
-            # Defer the pop so that grab-dispatch (which fires after the normal
-            # widget-tree walk in real Kivy) still sees portrait-space coords.
             def _deferred_pop(dt, _touch=touch):
                 try:
-                    _touch.pop()  # paired with push in on_touch_down
+                    _touch.pop()  # paired with push above
                 except IndexError:
                     pass
                 _touch.ud.pop('_portrait_transformed', None)
@@ -289,27 +322,32 @@ class MockPortraitContainer:
 
 def _simulate_grab_dispatch_up(touch, container):
     """
-    Simulate Kivy's Window-level grab dispatch.
+    Simulate Kivy's Window-level grab dispatch for on_touch_up.
 
-    In some Kivy versions / platforms (including Kivy 2.3.1 on Raspberry Pi)
-    grab-dispatch fires *after* the normal on_touch_up widget-tree walk.  In
-    others it fires before.  Both orderings are covered by the test suite.
+    In Kivy 2.3.1 on Raspberry Pi, grab-dispatch fires *after* the normal
+    on_touch_up widget-tree walk.  Kivy wraps each grab-dispatch call with
+    push()/pop() so the widget sees the current touch state (portrait coords
+    if we have not yet popped them via the deferred callback).
 
     Kivy calls widget.dispatch('on_touch_up', touch) with grab_current set
     to each grabbing widget.
     """
     for widget in list(touch.grab_list):
+        touch.push()           # Kivy wraps each grab dispatch with push/pop
         touch.grab_current = widget
         widget.on_touch_up(touch)
         touch.grab_current = None
+        touch.pop()            # restore after grab dispatch
 
 
 def _simulate_grab_dispatch_move(touch, container):
     """Same as above but for move events."""
     for widget in list(touch.grab_list):
+        touch.push()
         touch.grab_current = widget
         widget.on_touch_move(touch)
         touch.grab_current = None
+        touch.pop()
 
 
 # ---------------------------------------------------------------------------
@@ -336,51 +374,65 @@ def run_test(name, fn):
 
 def test_button_release_fires_in_portrait():
     """
-    A touch that starts and ends inside the Login button should fire on_release
-    when grab-dispatch fires before the normal widget-tree walk.
-    Window: 1920×1080 (landscape SDL2 window rendering portrait content rotated -90°).
-    Button in portrait space: x=300, y=50, w=200, h=70.
-    Corresponding window-space center of button:
-      xw = ox + s * v_center,  yw = oy + s * (Pw - u_center)
-    where u_center=400, v_center=85 (center of button).
+    Full down→up cycle with provider-reset simulation (realistic Kivy behaviour).
+
+    Kivy's input provider overwrites touch.x/y with window coords for every
+    new event (move/up).  We simulate this with reset_coords().  Grab-dispatch
+    fires *after* the normal tree walk (Kivy 2.3.1 / Raspberry Pi order).
+
+    Sequence:
+      1. provider sets down coords → container.on_touch_down → grab → pop
+      2. provider resets touch to up window coords
+      3. container.on_touch_up → fresh transform → deferred pop scheduled
+      4. grab-dispatch (with Kivy-style push/pop) → portrait coords → on_release
+      5. MockClock.flush → deferred pop → stack balanced
     """
     MockClock.reset()
     mat = MockMatrix(virtual_w=1080, virtual_h=1920, win_w=1920, win_h=1080)
-    # Forward mapping helper: portrait (u,v) → window (xw, yw)
-    # xw = ox + s*v,  yw = oy + s*(Pw - u)  (from -90° rotation formulation)
     s = mat._scale
-    ox = mat._ox
-    oy = mat._oy
-    Pw = 1080
+    ox, oy, Pw = mat._ox, mat._oy, 1080
 
-    # Button lives at portrait (x=300,y=50) size (200,70), center=(400,85)
+    # Button lives at portrait (300, 50, 200, 70), center=(400, 85)
     button = MockButton(x=300, y=50, w=200, h=70)
     container = MockPortraitContainer(inv_matrix=mat)
     container.add_child(button)
 
-    # Window coordinate of button center
+    # Window coords for the centre of the portrait button
     u_c, v_c = 400, 85
-    xw = ox + s * v_c
-    yw = oy + s * (Pw - u_c)
+    xw_down = ox + s * v_c
+    yw_down = oy + s * (Pw - u_c)
 
-    touch = MockTouch(x=xw, y=yw)
+    touch = MockTouch(x=xw_down, y=yw_down)
 
-    # --- down ---
+    # 1. down
     container.on_touch_down(touch)
     assert button in touch.grab_list, "Button should have grabbed the touch"
     assert touch.ud.get('_portrait_transformed'), "_portrait_transformed flag must be set"
+    # After always-pop, touch is back in window coords
+    assert touch.x == xw_down, "touch must be back in window coords after on_touch_down"
 
-    # --- Kivy grab dispatch fires first (before normal on_touch_up tree walk) ---
-    _simulate_grab_dispatch_up(touch, container)
+    # 2. Kivy input provider resets touch.x/y to the up-event window coords
+    #    (may differ from down coords if the finger moved slightly)
+    xw_up = xw_down + 2   # slight drift, still maps onto the button
+    yw_up = yw_down + 1
+    touch.reset_coords(xw_up, yw_up)
 
-    # Button should have fired on_release during grab dispatch
-    assert button.released, "Button on_release must fire during grab dispatch"
-
-    # --- normal on_touch_up tree walk ---
+    # 3. normal on_touch_up tree walk
     container.on_touch_up(touch)
-    # Flag is cleared and stack is popped via the deferred callback; flush it.
+    assert not button.released, "on_release must NOT have fired before grab-dispatch"
+    assert touch.ud.get('_portrait_transformed'), \
+        "Touch must still carry _portrait_transformed until deferred pop runs"
+
+    # 4. grab-dispatch fires (Kivy wraps with push/pop)
+    _simulate_grab_dispatch_up(touch, container)
+    assert button.released, "Button on_release must fire during grab-dispatch"
+
+    # 5. next-frame clock flush executes the deferred pop
     MockClock.flush()
-    assert '_portrait_transformed' not in touch.ud, "Flag must be cleared after deferred pop"
+    assert '_portrait_transformed' not in touch.ud, \
+        "Flag must be cleared after deferred pop"
+    assert len(touch._stack) == 0, \
+        f"Push/pop imbalance after flush: stack={touch._stack}"
 
 
 def test_out_of_bounds_touch_ignored():
@@ -404,10 +456,14 @@ def test_out_of_bounds_touch_ignored():
     assert button not in touch.grab_list, "Button must NOT grab an out-of-bounds touch"
 
 
-def test_no_double_transform_on_move():
+def test_fresh_transform_on_move():
     """
-    When _portrait_transformed is set, on_touch_move must not push/transform
-    the touch again.  If it did, the coordinates would be wrong.
+    on_touch_move must apply a fresh inverse transform even for grabbed touches.
+
+    With the new always-pop design, on_touch_down pops the touch back to window
+    coords.  Kivy's provider then resets touch.x/y to new window coords for the
+    move event.  on_touch_move must therefore always push/transform/dispatch/pop
+    to give children portrait-space coordinates.
     """
     mat = MockMatrix()
     button = MockButton(x=300, y=50, w=200, h=70)
@@ -422,23 +478,30 @@ def test_no_double_transform_on_move():
 
     container.on_touch_down(touch)
     assert touch.ud.get('_portrait_transformed')
+    # After always-pop, touch is in window coords
+    assert touch.x == xw, "touch must be in window coords after on_touch_down"
 
-    x_after_down = touch.x
-    y_after_down = touch.y
+    # Simulate provider reset for move event
+    xw_move = xw + 3
+    yw_move = yw - 2
+    touch.reset_coords(xw_move, yw_move)
 
-    # Simulate Kivy grab dispatch for move
-    _simulate_grab_dispatch_move(touch, container)
-
-    # Normal on_touch_move – coordinates must not change
+    # on_touch_move must transform fresh and restore after (no dangling push)
+    stack_depth_before = len(touch._stack)
     container.on_touch_move(touch)
-    assert touch.x == x_after_down, "on_touch_move must not re-transform x"
-    assert touch.y == y_after_down, "on_touch_move must not re-transform y"
+    assert len(touch._stack) == stack_depth_before, \
+        "on_touch_move must leave push/pop stack balanced"
+    # After the pop, touch is back in window coords
+    assert touch.x == xw_move, \
+        "touch must be back in window coords after on_touch_move"
 
 
 def test_push_pop_balanced():
     """
     touch._stack should be empty (no dangling push) after a full down→up cycle
     with a grabbed widget once the deferred pop has been flushed.
+
+    Includes provider-reset simulation for move and up events.
     """
     MockClock.reset()
     mat = MockMatrix()
@@ -452,8 +515,14 @@ def test_push_pop_balanced():
     touch = MockTouch(x=xw, y=yw)
 
     container.on_touch_down(touch)
+
+    # Simulate provider reset + move
+    touch.reset_coords(xw + 2, yw + 1)
     _simulate_grab_dispatch_move(touch, container)
     container.on_touch_move(touch)
+
+    # Simulate provider reset + up
+    touch.reset_coords(xw + 1, yw)
     _simulate_grab_dispatch_up(touch, container)
     container.on_touch_up(touch)
     # Flush the deferred pop scheduled by on_touch_up.
@@ -466,14 +535,14 @@ def test_button_release_fires_real_kivy_order():
     """
     On Kivy 2.3.1 / Raspberry Pi the Window-level grab-dispatch fires *after*
     the normal widget-tree walk.  Verify that on_release still fires when this
-    ordering is used.
+    ordering is used, including the provider-reset simulation.
 
     Sequence:
-      1. container.on_touch_down   → transforms, grabs, sets _portrait_transformed
-      2. container.on_touch_up     → dispatches normally, schedules deferred pop
-      3. grab-dispatch             → Button.on_touch_up with touch in portrait-space
-                                     (pop not yet executed) → on_release fires
-      4. MockClock.flush           → deferred pop executes, stack balanced
+      1. container.on_touch_down   → transforms, grabs, always pops
+      2. provider resets touch to up-event window coords
+      3. container.on_touch_up     → fresh transform, dispatches, deferred pop
+      4. grab-dispatch             → Kivy push/pop → portrait coords → on_release
+      5. MockClock.flush           → deferred pop → stack balanced
     """
     MockClock.reset()
     mat = MockMatrix(virtual_w=1080, virtual_h=1920, win_w=1920, win_h=1080)
@@ -493,19 +562,24 @@ def test_button_release_fires_real_kivy_order():
     # 1. touch down
     container.on_touch_down(touch)
     assert touch.ud.get('_portrait_transformed'), "_portrait_transformed must be set after down"
+    # After always-pop, touch is back in window coords
+    assert touch.x == xw
 
-    # 2. normal on_touch_up tree walk (grab-dispatch has NOT happened yet)
+    # 2. provider resets touch to up-event window coords
+    touch.reset_coords(xw, yw)   # same position (finger didn't move)
+
+    # 3. normal on_touch_up tree walk (grab-dispatch has NOT happened yet)
     container.on_touch_up(touch)
     assert not button.released, "on_release must NOT have fired before grab-dispatch"
-    # Touch must still be in portrait-space (deferred pop not yet flushed)
+    # Touch must still carry _portrait_transformed (deferred pop not yet flushed)
     assert touch.ud.get('_portrait_transformed'), \
-        "Touch must remain in portrait-space until deferred pop runs"
+        "Touch must remain flagged until deferred pop runs"
 
-    # 3. grab-dispatch fires after the normal tree walk
+    # 4. grab-dispatch fires after the normal tree walk (Kivy push/pop wrapping)
     _simulate_grab_dispatch_up(touch, container)
     assert button.released, "on_release must fire during grab-dispatch"
 
-    # 4. next-frame clock flush executes the deferred pop
+    # 5. next-frame clock flush executes the deferred pop
     MockClock.flush()
     assert '_portrait_transformed' not in touch.ud, \
         "Flag must be cleared after deferred pop"
@@ -522,10 +596,13 @@ if __name__ == '__main__':
     print("diag_touch_release.py – portrait touch mapping self-check")
     print("=" * 60)
 
-    run_test("Button on_release fires in portrait mode", test_button_release_fires_in_portrait)
+    run_test("Button on_release fires in portrait mode (provider-reset simulation)",
+             test_button_release_fires_in_portrait)
     run_test("Out-of-bounds touch is ignored", test_out_of_bounds_touch_ignored)
-    run_test("No double transform on move", test_no_double_transform_on_move)
-    run_test("Push/pop balanced after full gesture", test_push_pop_balanced)
+    run_test("Fresh transform on move (provider-reset simulation)",
+             test_fresh_transform_on_move)
+    run_test("Push/pop balanced after full gesture (provider-reset simulation)",
+             test_push_pop_balanced)
     run_test("Button on_release fires – real Kivy grab-dispatch order (after normal walk)",
              test_button_release_fires_real_kivy_order)
 
