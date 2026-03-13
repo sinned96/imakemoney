@@ -280,6 +280,19 @@ DEBUG_WINDOW_OVERLAY = os.getenv("DEBUG_WINDOW_OVERLAY", "0") == "1"
 # When enabled, draws small colored corner markers in virtual portrait space to confirm rotation/scale mapping
 DEBUG_FRAME_CORNERS = os.getenv("DEBUG_FRAME_CORNERS", "0") == "1"
 
+# Debug LoginScreen touch dispatch (env: DEBUG_LOGIN_TOUCH)
+# When enabled, logs whether LoginScreen passes touch to children or consumes it itself
+DEBUG_LOGIN_TOUCH = os.getenv("DEBUG_LOGIN_TOUCH", "0") == "1"
+
+# Deep child touch candidate logging (env: TOUCH_DEEP_LOG)
+# When enabled, _log_touch_candidates also walks into children of PortraitContainer's
+# direct children (e.g. Buttons and TextInputs inside LoginScreen) so you can confirm
+# whether the mapped tap coordinate actually collides with a button.
+TOUCH_DEEP_LOG = os.getenv("TOUCH_DEEP_LOG", "0") == "1"
+
+# Maximum recursion depth for TOUCH_DEEP_LOG widget walk (avoids very deep trees being slow)
+_TOUCH_DEEP_LOG_MAX_DEPTH = 8
+
 # ------------------ WINDOW DEBUG OVERLAY ------------------
 class WindowDebugOverlay:
     """
@@ -569,6 +582,35 @@ class PortraitContainer(FloatLayout):
             f"[TouchTrace] phase={phase} at=({round(orig_x,1)},{round(orig_y,1)})->({round(touch.x,1)},{round(touch.y,1)}) "
             f"candidates={candidates}"
         )
+
+        # Optional: walk deep into children to show Button/TextInput collision
+        if TOUCH_DEEP_LOG:
+            from kivy.uix.textinput import TextInput
+            from kivy.uix.button import Button as KivyButton
+            deep_hits = []
+
+            def _walk(widget, depth=0):
+                if depth > _TOUCH_DEEP_LOG_MAX_DEPTH:
+                    return
+                for child in widget.children:
+                    if isinstance(child, (KivyButton, TextInput)):
+                        deep_hits.append({
+                            'cls': child.__class__.__name__,
+                            'id': getattr(child, 'id', None),
+                            'pos': (round(child.x, 1), round(child.y, 1)),
+                            'size': (round(child.width, 1), round(child.height, 1)),
+                            'collide': child.collide_point(touch.x, touch.y),
+                            'depth': depth,
+                        })
+                    _walk(child, depth + 1)
+
+            for child in self.children:
+                _walk(child)
+
+            if deep_hits:
+                Logger.debug(
+                    f"[TouchTrace] phase={phase} deep_widgets={deep_hits}"
+                )
     
     def _log_accepted_by(self, touch, phase, ret_value):
         """
@@ -2811,31 +2853,39 @@ class LoginScreen(FloatLayout):
         return '/'.join(reversed(path_parts))
     
     def on_touch_down(self, touch):
-        """Override to mark accepted touches"""
+        """Forward touch to children; only mark accepted_by for diagnostics, never block."""
         ret = super().on_touch_down(touch)
-        if ret and not hasattr(touch, 'ud'):
-            touch.ud = {}
         if ret:
-            # Only set accepted_by if a child has not already set a more specific value
+            # Only set accepted_by if a child has not already claimed the touch
             touch.ud.setdefault('accepted_by', self)
+        if DEBUG_LOGIN_TOUCH:
+            _ab = touch.ud.get('accepted_by', None)
+            Logger.debug(
+                f"[LoginScreen] on_touch_down pos=({round(touch.x, 1)},{round(touch.y, 1)}) "
+                f"ret={ret} accepted_by={_ab.__class__.__name__ if _ab is not None else 'None'}"
+            )
         return ret
-    
+
     def on_touch_move(self, touch):
-        """Override to mark accepted touches"""
+        """Forward touch to children; only mark accepted_by for diagnostics, never block."""
         ret = super().on_touch_move(touch)
-        if ret and not hasattr(touch, 'ud'):
-            touch.ud = {}
         if ret:
             touch.ud.setdefault('accepted_by', self)
+        if DEBUG_LOGIN_TOUCH:
+            Logger.debug(
+                f"[LoginScreen] on_touch_move pos=({round(touch.x, 1)},{round(touch.y, 1)}) ret={ret}"
+            )
         return ret
-    
+
     def on_touch_up(self, touch):
-        """Override to mark accepted touches"""
+        """Forward touch to children; only mark accepted_by for diagnostics, never block."""
         ret = super().on_touch_up(touch)
-        if ret and not hasattr(touch, 'ud'):
-            touch.ud = {}
         if ret:
             touch.ud.setdefault('accepted_by', self)
+        if DEBUG_LOGIN_TOUCH:
+            Logger.debug(
+                f"[LoginScreen] on_touch_up pos=({round(touch.x, 1)},{round(touch.y, 1)}) ret={ret}"
+            )
         return ret
     
     def _on_focus(self, textinput, focused):
