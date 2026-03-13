@@ -612,6 +612,25 @@ class PortraitContainer(FloatLayout):
         else:
             Logger.info(f"[TouchTrace] phase={phase} not_accepted (ret=False)")
     
+    def _sync_touch_pos_norm(self, touch):
+        """Sync touch.pos and normalised sx/sy after manually setting touch.x/touch.y.
+
+        Kivy's ButtonBehavior (and some other behaviours) uses touch.pos and/or
+        touch.sx/sy for collision checks.  When we remap coordinates by directly
+        writing touch.x, touch.y (analytic path) or via apply_transform_2d
+        (matrix path), touch.pos is NOT automatically updated, which causes
+        collide_point tests inside child widgets to fail.  Calling this helper
+        immediately after each coordinate update keeps all three representations
+        in sync so downstream dispatch works correctly.
+        """
+        touch.pos = (touch.x, touch.y)
+        try:
+            if self.virtual_w and self.virtual_h:
+                touch.sx = touch.x / float(self.virtual_w)
+                touch.sy = touch.y / float(self.virtual_h)
+        except (AttributeError, TypeError):
+            pass
+
     def _get_widget_path(self, widget):
         """Get a string representation of the widget path in the tree"""
         path_parts = []
@@ -1044,6 +1063,7 @@ class PortraitContainer(FloatLayout):
             # Apply analytical mapping
             touch.push()
             touch.x, touch.y = u, v
+            self._sync_touch_pos_norm(touch)
             # Log touch candidates AFTER coordinate mapping
             self._log_touch_candidates(touch, orig_x, orig_y, "down")
             ret = super(PortraitContainer, self).on_touch_down(touch)
@@ -1078,6 +1098,7 @@ class PortraitContainer(FloatLayout):
             Logger.info(f"[Portrait] on_touch_down matrix map pos=({round(touch.x,1)},{round(touch.y,1)})")
             touch.push()
             touch.apply_transform_2d(lambda x, y: inv.transform_point(x, y, 0)[:2])
+            self._sync_touch_pos_norm(touch)
             # Bounds check: ignore touches that land outside the virtual portrait area
             # (e.g. in letterboxed black bars).  Still pop before returning False.
             if (touch.x < 0 or touch.x >= self.virtual_w or
@@ -1172,6 +1193,7 @@ class PortraitContainer(FloatLayout):
             # Apply analytical mapping
             touch.push()
             touch.x, touch.y = u, v
+            self._sync_touch_pos_norm(touch)
             # Log touch candidates AFTER coordinate mapping
             self._log_touch_candidates(touch, orig_x, orig_y, "move")
             ret = super(PortraitContainer, self).on_touch_move(touch)
@@ -1201,6 +1223,7 @@ class PortraitContainer(FloatLayout):
             Logger.info(f"[Portrait] on_touch_move matrix map pos=({round(touch.x,1)},{round(touch.y,1)})")
             touch.push()
             touch.apply_transform_2d(lambda x, y: inv.transform_point(x, y, 0)[:2])
+            self._sync_touch_pos_norm(touch)
             self._log_touch_candidates(touch, orig_x, orig_y, "move")
             ret = super(PortraitContainer, self).on_touch_move(touch)
             self._log_accepted_by(touch, "move", ret)
@@ -1281,6 +1304,7 @@ class PortraitContainer(FloatLayout):
                 )
                 touch.push()
                 touch.x, touch.y = u, v
+                self._sync_touch_pos_norm(touch)
                 self._log_touch_candidates(touch, orig_x, orig_y, "up")
                 ret = super(PortraitContainer, self).on_touch_up(touch)
                 self._log_accepted_by(touch, "up", ret)
@@ -1314,6 +1338,7 @@ class PortraitContainer(FloatLayout):
             # Apply analytical mapping
             touch.push()
             touch.x, touch.y = u, v
+            self._sync_touch_pos_norm(touch)
             # Log touch candidates AFTER coordinate mapping
             self._log_touch_candidates(touch, orig_x, orig_y, "up")
             ret = super(PortraitContainer, self).on_touch_up(touch)
@@ -1349,6 +1374,7 @@ class PortraitContainer(FloatLayout):
                 Logger.info(f"[Portrait] on_touch_up matrix map (grab) pos=({round(touch.x,1)},{round(touch.y,1)})")
                 touch.push()
                 touch.apply_transform_2d(lambda x, y: inv.transform_point(x, y, 0)[:2])
+                self._sync_touch_pos_norm(touch)
                 self._log_touch_candidates(touch, orig_x, orig_y, "up")
                 ret = super(PortraitContainer, self).on_touch_up(touch)
                 self._log_accepted_by(touch, "up", ret)
@@ -1363,6 +1389,7 @@ class PortraitContainer(FloatLayout):
                 Logger.info(f"[Portrait] on_touch_up matrix map pos=({round(touch.x,1)},{round(touch.y,1)})")
                 touch.push()
                 touch.apply_transform_2d(lambda x, y: inv.transform_point(x, y, 0)[:2])
+                self._sync_touch_pos_norm(touch)
                 self._log_touch_candidates(touch, orig_x, orig_y, "up")
                 ret = super(PortraitContainer, self).on_touch_up(touch)
                 self._log_accepted_by(touch, "up", ret)
