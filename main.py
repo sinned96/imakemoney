@@ -3,6 +3,7 @@ import json
 import hashlib
 import subprocess
 import time
+import weakref
 from datetime import datetime, time as dt_time
 from pathlib import Path
 from random import shuffle, choice, uniform, random
@@ -310,6 +311,13 @@ TOUCH_DEEP_TRACE = os.getenv("TOUCH_DEEP_TRACE", "0") == "1"
 # Default: disabled (0) — normal behavior is unchanged.
 _FIX_UP_USES_DOWN_POS = os.getenv("FIX_UP_USES_DOWN_POS", "0") == "1"
 
+# DEBUG_PORTRAIT_GRAB: gate verbose grab-dispatch diagnostics.
+# Set to 1 to log manual grab-up dispatch events (useful when debugging
+# ButtonBehavior.on_release not firing in portrait matrix pipeline).
+# Usage: DEBUG_PORTRAIT_GRAB=1 python3 main.py
+# Default: disabled (0) — no extra output.
+_DEBUG_PORTRAIT_GRAB = os.getenv("DEBUG_PORTRAIT_GRAB", "0") == "1"
+
 # ------------------ WINDOW DEBUG OVERLAY ------------------
 class WindowDebugOverlay:
     """
@@ -579,6 +587,25 @@ class PortraitContainer(FloatLayout):
             self._sync_touch_pos_norm(touch)
             return True
         return False
+
+    @staticmethod
+    def _normalize_grabbers(touch):
+        """Return the live widget objects registered in touch.grab_list.
+
+        In Kivy 2.x, touch.grab_list holds weakref.ref objects, not widget
+        references directly.  This helper dereferences each entry and filters
+        out any that have been garbage-collected (weakref returns None).  It
+        also accepts plain widget references in case Kivy internals ever change.
+        """
+        result = []
+        for item in touch.grab_list:
+            if isinstance(item, weakref.ref):
+                obj = item()
+                if obj is not None:
+                    result.append(obj)
+            elif item is not None:
+                result.append(item)
+        return result
 
     def _log_touch_candidates(self, touch, orig_x, orig_y, phase):
         """
@@ -1424,6 +1451,31 @@ class PortraitContainer(FloatLayout):
                 self._log_touch_candidates(touch, orig_x, orig_y, "up")
                 ret = super(PortraitContainer, self).on_touch_up(touch)
                 self._log_accepted_by(touch, "up", ret)
+                # Manual grab-up dispatch fallback: Kivy's EventLoop grab dispatch
+                # may not fire if grab_list entries are stale weakrefs or if timing
+                # causes touch coords to be in window-space by the time it runs.
+                # If grab_current is still None after the tree walk, manually dispatch
+                # on_touch_up to each live grabber with grab_current set, then clear
+                # grab_list so Kivy's EventLoop does not double-fire them.
+                if touch.grab_current is None:
+                    _grabbers = self._normalize_grabbers(touch)
+                    if _grabbers:
+                        if _DEBUG_PORTRAIT_GRAB:
+                            Logger.info(
+                                f"[Portrait] analytic grab-up manual dispatch: "
+                                f"{[g.__class__.__name__ for g in _grabbers]}"
+                            )
+                        for _g in _grabbers:
+                            touch.grab_current = _g
+                            try:
+                                _g.dispatch('on_touch_up', touch)
+                            except Exception as _exc:
+                                Logger.error(f"[Portrait] analytic grab dispatch error: {_exc}")
+                        touch.grab_current = None
+                        # Clear after dispatch so grabbers can inspect grab_list
+                        # during their handler; clearing prevents Kivy's EventLoop
+                        # from double-firing the same grabbers afterward.
+                        touch.grab_list[:] = []
                 def _deferred_pop_analytic(dt, _touch=touch):
                     try:
                         _touch.pop()  # paired with push above
@@ -1500,6 +1552,31 @@ class PortraitContainer(FloatLayout):
                 self._log_touch_candidates(touch, orig_x, orig_y, "up")
                 ret = super(PortraitContainer, self).on_touch_up(touch)
                 self._log_accepted_by(touch, "up", ret)
+                # Manual grab-up dispatch fallback: Kivy's EventLoop grab dispatch
+                # may not fire if grab_list entries are stale weakrefs or if timing
+                # causes touch coords to be in window-space by the time it runs.
+                # If grab_current is still None after the tree walk, manually dispatch
+                # on_touch_up to each live grabber with grab_current set, then clear
+                # grab_list so Kivy's EventLoop does not double-fire them.
+                if touch.grab_current is None:
+                    _grabbers = self._normalize_grabbers(touch)
+                    if _grabbers:
+                        if _DEBUG_PORTRAIT_GRAB:
+                            Logger.info(
+                                f"[Portrait] matrix grab-up manual dispatch: "
+                                f"{[g.__class__.__name__ for g in _grabbers]}"
+                            )
+                        for _g in _grabbers:
+                            touch.grab_current = _g
+                            try:
+                                _g.dispatch('on_touch_up', touch)
+                            except Exception as _exc:
+                                Logger.error(f"[Portrait] matrix grab dispatch error: {_exc}")
+                        touch.grab_current = None
+                        # Clear after dispatch so grabbers can inspect grab_list
+                        # during their handler; clearing prevents Kivy's EventLoop
+                        # from double-firing the same grabbers afterward.
+                        touch.grab_list[:] = []
                 def _deferred_pop(dt, _touch=touch):
                     try:
                         _touch.pop()  # paired with push above
