@@ -231,8 +231,8 @@ DEBUG_SHOW_BOUNDS = False  # Draw debug rectangle around transformed content bou
 # "matrix" = Matrix rotation at container level (default, reliable)
 # "fbo" = FBO-based rendering with letterboxing (legacy, for testing)
 # "off" = Disable portrait rotation entirely
-# Auto-detect: On Broadcom V3D (RPi), default to FBO unless forced to matrix
-_default_pipeline = "matrix"  # Will be updated after GL detection
+# Default: "matrix" on all platforms (PORTRAIT_FORCE_FBO=1 or PORTRAIT_FORCE_MATRIX=1 to override)
+_default_pipeline = "matrix"
 PORTRAIT_PIPELINE = os.getenv("PORTRAIT_PIPELINE", _default_pipeline).lower()
 
 # Force overrides
@@ -307,9 +307,9 @@ TOUCH_DEEP_TRACE = os.getenv("TOUCH_DEEP_TRACE", "0") == "1"
 # event in touch.ud['_portrait_down_pos'] and re-uses those coords for the up dispatch
 # instead of the (possibly drifted) mapped up coordinates.
 #
-# Usage: FIX_UP_USES_DOWN_POS=1 python3 main.py
-# Default: disabled (0) — normal behavior is unchanged.
-_FIX_UP_USES_DOWN_POS = os.getenv("FIX_UP_USES_DOWN_POS", "0") == "1"
+# Usage: FIX_UP_USES_DOWN_POS=0 python3 main.py  (to disable)
+# Default: enabled (1) — ensures Login/Registrieren buttons work reliably in portrait matrix mode.
+_FIX_UP_USES_DOWN_POS = os.getenv("FIX_UP_USES_DOWN_POS", "1") == "1"
 
 # DEBUG_PORTRAIT_GRAB: gate verbose grab-dispatch diagnostics.
 # Set to 1 to log manual grab-up dispatch events (useful when debugging
@@ -6860,10 +6860,6 @@ def apply_gl_pipeline_detection():
     elif PORTRAIT_FORCE_MATRIX:
         PORTRAIT_PIPELINE = "matrix"
         debug_logger.info("[Startup] PORTRAIT_FORCE_MATRIX=1, using matrix pipeline")
-    elif is_broadcom_v3d and not os.getenv("PORTRAIT_PIPELINE"):
-        # On Broadcom V3D, default to FBO unless explicitly overridden
-        PORTRAIT_PIPELINE = "fbo"
-        debug_logger.info(f"[Startup] Detected Broadcom V3D, defaulting to FBO pipeline (vendor={gl_vendor}, renderer={gl_renderer})")
 
 if __name__ == "__main__":
     # Apply GL detection and pipeline selection
