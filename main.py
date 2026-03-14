@@ -293,6 +293,23 @@ TOUCH_DEEP_LOG = os.getenv("TOUCH_DEEP_LOG", "0") == "1"
 # Maximum recursion depth for TOUCH_DEEP_LOG widget walk (avoids very deep trees being slow)
 _TOUCH_DEEP_LOG_MAX_DEPTH = 8
 
+# TOUCH_DEEP_TRACE: enables compact [TouchDeep] log lines showing which Button/TextInput
+# widgets are actually hit by the mapped touch coordinate.  Purely diagnostic: never
+# mutates touch coordinates.  Set TOUCH_DEEP_TRACE=1 to enable.
+TOUCH_DEEP_TRACE = os.getenv("TOUCH_DEEP_TRACE", "0") == "1"
+
+# FIX_UP_USES_DOWN_POS: optional workaround for input pipelines (e.g. portrait matrix on
+# Raspberry Pi) where the input provider reports drifted window coordinates on touch_up,
+# causing ButtonBehavior.on_touch_up to miss the button.
+#
+# When set to 1, PortraitContainer stores the portrait-mapped coordinates from the down
+# event in touch.ud['_portrait_down_pos'] and re-uses those coords for the up dispatch
+# instead of the (possibly drifted) mapped up coordinates.
+#
+# Usage: FIX_UP_USES_DOWN_POS=1 python3 main.py
+# Default: disabled (0) — normal behavior is unchanged.
+_FIX_UP_USES_DOWN_POS = os.getenv("FIX_UP_USES_DOWN_POS", "0") == "1"
+
 # ------------------ WINDOW DEBUG OVERLAY ------------------
 class WindowDebugOverlay:
     """
@@ -545,6 +562,24 @@ class PortraitContainer(FloatLayout):
         except Exception as e:
             debug_logger.error(f"[DEBUG_AUTO_SCREENSHOT] Failed to take screenshot: {e}")
     
+    def _apply_fix_up_down_pos(self, touch):
+        """
+        If FIX_UP_USES_DOWN_POS is enabled and a stored portrait down-position exists,
+        override the current touch coordinates with the down-position and return True.
+        Returns False if the override was not applied.
+
+        This must be called AFTER touch.push() and the inverse transform, so the
+        stored portrait down-pos replaces the (potentially drifted) mapped up coords
+        before dispatching to children.
+        """
+        if _FIX_UP_USES_DOWN_POS and hasattr(touch, 'ud') and '_portrait_down_pos' in touch.ud:
+            _px, _py = touch.ud['_portrait_down_pos']
+            touch.x, touch.y = _px, _py
+            touch.pos = (_px, _py)
+            self._sync_touch_pos_norm(touch)
+            return True
+        return False
+
     def _log_touch_candidates(self, touch, orig_x, orig_y, phase):
         """
         Log which direct children of PortraitContainer collide with the touch.
@@ -611,7 +646,37 @@ class PortraitContainer(FloatLayout):
                 Logger.debug(
                     f"[TouchTrace] phase={phase} deep_widgets={deep_hits}"
                 )
-    
+
+        # TOUCH_DEEP_TRACE: compact [TouchDeep] log showing only hit Button/TextInput widgets.
+        # Purely diagnostic — does NOT mutate touch coordinates.
+        if TOUCH_DEEP_TRACE:
+            from kivy.uix.textinput import TextInput as _TextInput
+            from kivy.uix.button import Button as _KivyButton
+            deep_trace_hits = []
+
+            def _walk_trace(widget, depth=0):
+                if depth > _TOUCH_DEEP_LOG_MAX_DEPTH:
+                    return
+                for child in widget.children:
+                    if isinstance(child, (_KivyButton, _TextInput)):
+                        if child.collide_point(touch.x, touch.y):
+                            deep_trace_hits.append({
+                                'cls': child.__class__.__name__,
+                                'pos': (round(child.x, 1), round(child.y, 1)),
+                                'size': (round(child.width, 1), round(child.height, 1)),
+                                'disabled': getattr(child, 'disabled', False),
+                                'opacity': round(getattr(child, 'opacity', 1.0), 2),
+                                'text': getattr(child, 'text', ''),
+                            })
+                    _walk_trace(child, depth + 1)
+
+            for child in self.children:
+                _walk_trace(child)
+
+            Logger.info(
+                f"[TouchDeep] phase={phase} mapped=({round(touch.x,1)},{round(touch.y,1)}) hits={deep_trace_hits}"
+            )
+
     def _log_accepted_by(self, touch, phase, ret_value):
         """
         Log which widget accepted the touch event.
@@ -1106,6 +1171,8 @@ class PortraitContainer(FloatLayout):
             touch.push()
             touch.x, touch.y = u, v
             self._sync_touch_pos_norm(touch)
+            # Store portrait-mapped down position for optional FIX_UP_USES_DOWN_POS on touch_up
+            touch.ud['_portrait_down_pos'] = (touch.x, touch.y)
             # Log touch candidates AFTER coordinate mapping
             self._log_touch_candidates(touch, orig_x, orig_y, "down")
             ret = super(PortraitContainer, self).on_touch_down(touch)
@@ -1151,6 +1218,8 @@ class PortraitContainer(FloatLayout):
                 )
                 touch.pop()
                 return False
+            # Store portrait-mapped down position for optional FIX_UP_USES_DOWN_POS on touch_up
+            touch.ud['_portrait_down_pos'] = (touch.x, touch.y)
             # Log touch candidates AFTER coordinate mapping
             self._log_touch_candidates(touch, orig_x, orig_y, "down")
             ret = super(PortraitContainer, self).on_touch_down(touch)
@@ -1307,6 +1376,8 @@ class PortraitContainer(FloatLayout):
         # Collect dispatch path if diagnostics enabled
         path_entries = []
         accepted_by = None
+        # Ensure ret is always defined even if an unexpected early path is taken
+        ret = False
         
         # Check if overlay already remapped this touch - bypass container transform if so
         if getattr(touch, '_ioverlay_mapped', False):
@@ -1347,6 +1418,9 @@ class PortraitContainer(FloatLayout):
                 touch.push()
                 touch.x, touch.y = u, v
                 self._sync_touch_pos_norm(touch)
+                # FIX_UP_USES_DOWN_POS: override drifted up coords with stored portrait down-pos
+                if self._apply_fix_up_down_pos(touch):
+                    Logger.info(f"[Portrait] FIX_UP_USES_DOWN_POS: applied down-pos ({round(touch.x,1)},{round(touch.y,1)}) for analytic grab up")
                 self._log_touch_candidates(touch, orig_x, orig_y, "up")
                 ret = super(PortraitContainer, self).on_touch_up(touch)
                 self._log_accepted_by(touch, "up", ret)
@@ -1381,6 +1455,9 @@ class PortraitContainer(FloatLayout):
             touch.push()
             touch.x, touch.y = u, v
             self._sync_touch_pos_norm(touch)
+            # FIX_UP_USES_DOWN_POS: override drifted up coords with stored portrait down-pos
+            if self._apply_fix_up_down_pos(touch):
+                Logger.info(f"[Portrait] FIX_UP_USES_DOWN_POS: applied down-pos ({round(touch.x,1)},{round(touch.y,1)}) for analytic up")
             # Log touch candidates AFTER coordinate mapping
             self._log_touch_candidates(touch, orig_x, orig_y, "up")
             ret = super(PortraitContainer, self).on_touch_up(touch)
@@ -1417,6 +1494,9 @@ class PortraitContainer(FloatLayout):
                 touch.push()
                 touch.apply_transform_2d(lambda x, y: inv.transform_point(x, y, 0)[:2])
                 self._sync_touch_pos_norm(touch)
+                # FIX_UP_USES_DOWN_POS: override drifted up coords with stored portrait down-pos
+                if self._apply_fix_up_down_pos(touch):
+                    Logger.info(f"[Portrait] FIX_UP_USES_DOWN_POS: applied down-pos ({round(touch.x,1)},{round(touch.y,1)}) for matrix grab up")
                 self._log_touch_candidates(touch, orig_x, orig_y, "up")
                 ret = super(PortraitContainer, self).on_touch_up(touch)
                 self._log_accepted_by(touch, "up", ret)
@@ -1432,6 +1512,9 @@ class PortraitContainer(FloatLayout):
                 touch.push()
                 touch.apply_transform_2d(lambda x, y: inv.transform_point(x, y, 0)[:2])
                 self._sync_touch_pos_norm(touch)
+                # FIX_UP_USES_DOWN_POS: override drifted up coords with stored portrait down-pos
+                if self._apply_fix_up_down_pos(touch):
+                    Logger.info(f"[Portrait] FIX_UP_USES_DOWN_POS: applied down-pos ({round(touch.x,1)},{round(touch.y,1)}) for matrix up")
                 self._log_touch_candidates(touch, orig_x, orig_y, "up")
                 ret = super(PortraitContainer, self).on_touch_up(touch)
                 self._log_accepted_by(touch, "up", ret)
