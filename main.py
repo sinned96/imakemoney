@@ -3631,22 +3631,26 @@ class SettingsRootPopup(RotatedModalView):
         self.background_color = (0, 0, 0, 0.7)  # Dim overlay
         self.background = ''
         
-        # Calculate panel size based on aspect ratio using portrait factors
-        from kivy.core.window import Window
+        # Calculate panel size based on aspect ratio using portrait virtual coordinates
         aspect = slideshow.aspect_ratio if slideshow else "16:9"
         if aspect == "9:16":
-            # Portrait mode: apply portrait factors (0.62×w, 0.86×h, min 320×260)
-            content_w = Window.width
-            content_h = Window.height
-            panel_w = max(int(content_w * 0.62), dp(320))
-            panel_h = max(int(content_h * 0.86), dp(260))
+            # Portrait mode: size relative to virtual portrait space (1080×1920), not Window
+            virtual_w, virtual_h = PORTRAIT_VIRTUAL_SIZE
+            panel_w = max(int(virtual_w * 0.80), dp(400))  # 80% of virtual width ≈ 864dp
+            panel_h = dp(480)  # Content-driven height (title+3 buttons+padding ≈ 370dp, padded to 480dp)
             panel_size = (panel_w, panel_h)
         else:
             # Landscape mode: use standard size
             panel_size = (dp(500), dp(480))
         
-        # Use AnchorLayout to center the content panel
-        anchor = AnchorLayout(size_hint=(1, 1), anchor_x='center', anchor_y='center')
+        # AnchorLayout: in portrait+matrix mode, use virtual portrait dims so centering
+        # works correctly in the transformed coordinate space (1080×1920).
+        if aspect == "9:16" and PORTRAIT_PIPELINE == "matrix":
+            virtual_w, virtual_h = PORTRAIT_VIRTUAL_SIZE
+            anchor = AnchorLayout(size_hint=(None, None), size=(virtual_w, virtual_h),
+                                  pos=(0, 0), anchor_x='center', anchor_y='center')
+        else:
+            anchor = AnchorLayout(size_hint=(1, 1), anchor_x='center', anchor_y='center')
         
         panel=BoxLayout(orientation='vertical',size_hint=(None, None),size=panel_size,
                         padding=dp(24),spacing=dp(18))
@@ -3773,23 +3777,27 @@ class AufnahmePopup(RotatedModalView):
         self.background_color = (0, 0, 0, 0.7)
         self.background = ''
         
-        # Calculate panel size based on aspect ratio using portrait factors
-        # Portrait factors: width=0.62×content width, height=0.86×content height (min w≥320, h≥260)
-        from kivy.core.window import Window
+        # Calculate panel size based on aspect ratio using portrait virtual coordinates
+        # Portrait: size relative to virtual portrait space (1080×1920), not Window dims
         aspect = slideshow.aspect_ratio if slideshow else "16:9"
         if aspect == "9:16":
-            # Portrait mode: apply portrait factors
-            content_w = Window.width
-            content_h = Window.height
-            panel_w = max(int(content_w * 0.62), dp(320))
-            panel_h = max(int(content_h * 0.86), dp(260))
+            # Portrait mode: size relative to virtual portrait space (1080×1920)
+            virtual_w, virtual_h = PORTRAIT_VIRTUAL_SIZE
+            panel_w = max(int(virtual_w * 0.88), dp(400))  # 88% of virtual width ≈ 950dp
+            panel_h = max(int(virtual_h * 0.82), dp(400))  # 82% of virtual height ≈ 1574dp
             panel_size = (panel_w, panel_h)
         else:
             # Landscape mode: use standard size
             panel_size = (dp(600), dp(500))
         
-        # Use AnchorLayout to center the content panel
-        anchor = AnchorLayout(size_hint=(1, 1), anchor_x='center', anchor_y='center')
+        # AnchorLayout: in portrait+matrix mode, use virtual portrait dims so centering
+        # works correctly in the transformed coordinate space (1080×1920).
+        if aspect == "9:16" and PORTRAIT_PIPELINE == "matrix":
+            virtual_w, virtual_h = PORTRAIT_VIRTUAL_SIZE
+            anchor = AnchorLayout(size_hint=(None, None), size=(virtual_w, virtual_h),
+                                  pos=(0, 0), anchor_x='center', anchor_y='center')
+        else:
+            anchor = AnchorLayout(size_hint=(1, 1), anchor_x='center', anchor_y='center')
         
         self.panel = BoxLayout(
             orientation='vertical',
@@ -5319,7 +5327,8 @@ class GalleryEditor(FloatLayout):
         with self.canvas.before:
             GColor(0,0,0,0.7)
             self.bg=Rectangle(pos=self.pos,size=self.size)
-        self.bind(pos=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)))
+        self.bind(pos=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)),
+                  size=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)))
         root=BoxLayout(orientation="horizontal",size_hint=(0.95,0.92),
                        pos_hint={"center_x":0.5,"center_y":0.5},spacing=dp(18))
         with root.canvas.before:
@@ -5624,10 +5633,19 @@ class ScheduleEditor(FloatLayout):
         self.mode_rows={}
         with self.canvas.before:
             GColor(0,0,0,0.65); self.bg=Rectangle(pos=self.pos,size=self.size)
-        self.bind(pos=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)))
-        panel=BoxLayout(orientation="vertical",size_hint=(0.7,0.6),
-                        pos_hint={"center_x":0.5,"center_y":0.5},
-                        spacing=dp(16),padding=dp(20))
+        self.bind(pos=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)),
+                  size=lambda *a:(setattr(self.bg,'pos',self.pos),setattr(self.bg,'size',self.size)))
+        _aspect = getattr(slideshow, 'aspect_ratio', '16:9')
+        if _aspect == "9:16":
+            _vw, _vh = PORTRAIT_VIRTUAL_SIZE
+            panel=BoxLayout(orientation="vertical",size_hint=(None,None),
+                            size=(max(int(_vw*0.88),dp(400)),dp(520)),  # 88% width ≈ 950dp, content-driven 520dp height
+                            pos_hint={"center_x":0.5,"center_y":0.5},
+                            spacing=dp(16),padding=dp(20))
+        else:
+            panel=BoxLayout(orientation="vertical",size_hint=(0.7,0.6),
+                            pos_hint={"center_x":0.5,"center_y":0.5},
+                            spacing=dp(16),padding=dp(20))
         with panel.canvas.before:
             GColor(0.16,0.16,0.2,0.97); self.pbg=Rectangle(pos=panel.pos,size=panel.size)
         panel.bind(pos=lambda *a:setattr(self.pbg,'pos',panel.pos),
