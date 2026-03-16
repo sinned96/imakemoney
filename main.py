@@ -2282,6 +2282,14 @@ class RotatingRootFbo(FloatLayout):
 
 # ------------------ ROTATING ROOT ------------------
 class RotatingRoot(FloatLayout):
+
+    def set_orientation_and_rewrap(self, aspect_ratio):
+        """Update orientation on this RotatingRoot's provider and rebuild wrapping (portrait container vs landscape)."""
+        try:
+            self.orientation_provider.set_orientation(aspect_ratio)
+        except Exception as e:
+            debug_logger.error(f"[RotatingRoot] set_orientation failed: {e}")
+        self.apply_rotation()
     """Root widget that wraps content in appropriate container for portrait mode"""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -3624,7 +3632,17 @@ class SettingsRootPopup(RotatedModalView):
     def __init__(self, slideshow, **kw):
         # Set ModalView properties for full-screen with centered content
         kw_copy = kw.copy()
-        kw_copy.setdefault('size_hint', (1, 1))  # Full screen
+        aspect0 = slideshow.aspect_ratio if slideshow else "16:9"
+
+        if aspect0 == "9:16" and PORTRAIT_PIPELINE == "matrix":
+
+            kw_copy["size_hint"] = (None, None)
+
+            kw_copy["size"] = PORTRAIT_VIRTUAL_SIZE
+
+        else:
+
+            kw_copy.setdefault('size_hint', (1, 1))  # Full screen
         kw_copy.setdefault('auto_dismiss', True)
         super().__init__(**kw_copy)
         self.slideshow=slideshow
@@ -3753,7 +3771,17 @@ class AufnahmePopup(RotatedModalView):
         
         # Set ModalView properties for full-screen with semi-transparent background
         kw_copy = kwargs.copy()
-        kw_copy.setdefault('size_hint', (1, 1))  # Full screen
+        aspect0 = slideshow.aspect_ratio if slideshow else "16:9"
+
+        if aspect0 == "9:16" and PORTRAIT_PIPELINE == "matrix":
+
+            kw_copy["size_hint"] = (None, None)
+
+            kw_copy["size"] = PORTRAIT_VIRTUAL_SIZE
+
+        else:
+
+            kw_copy.setdefault('size_hint', (1, 1))  # Full screen
         kw_copy.setdefault('auto_dismiss', False)
         super().__init__(**kw_copy)
         self.slideshow = slideshow  # Reference to parent slideshow for gallery navigation
@@ -3784,7 +3812,7 @@ class AufnahmePopup(RotatedModalView):
             # Portrait mode: size relative to virtual portrait space (1080×1920)
             virtual_w, virtual_h = PORTRAIT_VIRTUAL_SIZE
             panel_w = max(int(virtual_w * 0.88), dp(400))  # 88% of virtual width ≈ 950dp
-            panel_h = max(int(virtual_h * 0.82), dp(400))  # 82% of virtual height ≈ 1574dp
+            panel_h = dp(650)
             panel_size = (panel_w, panel_h)
         else:
             # Landscape mode: use standard size
@@ -5720,7 +5748,17 @@ class FormatSelectionPopup(RotatedModalView):
     def __init__(self, slideshow, **kw):
         # Set ModalView properties for full-screen with centered content
         kw_copy = kw.copy()
-        kw_copy.setdefault('size_hint', (1, 1))  # Full screen
+        aspect0 = slideshow.aspect_ratio if slideshow else "16:9"
+
+        if aspect0 == "9:16" and PORTRAIT_PIPELINE == "matrix":
+
+            kw_copy["size_hint"] = (None, None)
+
+            kw_copy["size"] = PORTRAIT_VIRTUAL_SIZE
+
+        else:
+
+            kw_copy.setdefault('size_hint', (1, 1))  # Full screen
         kw_copy.setdefault('auto_dismiss', True)
         super().__init__(**kw_copy)
         self.slideshow = slideshow
@@ -5728,21 +5766,23 @@ class FormatSelectionPopup(RotatedModalView):
         self.background = ''
         
         # Calculate panel size based on aspect ratio using portrait factors
-        from kivy.core.window import Window
         aspect = slideshow.aspect_ratio if slideshow else "16:9"
         if aspect == "9:16":
-            # Portrait mode: apply portrait factors (0.62×w, 0.86×h, min 320×260)
-            content_w = Window.width
-            content_h = Window.height
-            panel_w = max(int(content_w * 0.62), dp(320))
-            panel_h = max(int(content_h * 0.86), dp(260))
+            # Portrait mode: match ScheduleEditor ("Zeiten") sizing
+            _vw, _vh = PORTRAIT_VIRTUAL_SIZE
+            panel_w = max(int(_vw * 0.88), dp(400))
+            panel_h = dp(520)
             panel_size = (panel_w, panel_h)
         else:
             # Landscape mode: use standard size
             panel_size = (dp(400), dp(300))
-        
         # Use AnchorLayout to center the content panel
-        anchor = AnchorLayout(size_hint=(1, 1), anchor_x='center', anchor_y='center')
+        # In portrait+matrix mode, use virtual portrait dims so centering works in transformed space
+        if aspect == "9:16" and PORTRAIT_PIPELINE == "matrix":
+            _vw, _vh = PORTRAIT_VIRTUAL_SIZE
+            anchor = AnchorLayout(size_hint=(None, None), size=(_vw, _vh), pos=(0, 0), anchor_x="center", anchor_y="center")
+        else:
+            anchor = AnchorLayout(size_hint=(1, 1), anchor_x="center", anchor_y="center")
         
         panel = BoxLayout(orientation='vertical', size_hint=(None, None), size=panel_size,
                          padding=dp(22), spacing=dp(16))
@@ -5837,56 +5877,147 @@ class FormatSelectionPopup(RotatedModalView):
         return False
     
     def _select_format(self, aspect_ratio):
+
         from kivy.core.window import Window
-        
+        from kivy.app import App
+        from kivy.clock import Clock
+        import os
+        app = App.get_running_app()
+        root = getattr(app, "root_widget", None)
+
+        # Persist choice
         self.slideshow.aspect_ratio = aspect_ratio
         self.slideshow.persist_meta()
         self.current_label.text = f"Aktuell: {aspect_ratio}"
-        
-        # Close any currently open panels before switching aspect ratio
-        self.slideshow._close_current_panel()
-        
-        # Update OrientationProvider to trigger global rotation
-        orientation_provider = OrientationProvider()
-        orientation_provider.set_orientation(aspect_ratio)
-        
-        # Apply rotation to root widget
-        app = App.get_running_app()
-        if hasattr(app, 'root_widget') and isinstance(app.root_widget, RotatingRoot):
-            app.root_widget.apply_rotation()
-        
-        # Adjust window size when not in fullscreen mode
-        if not Window.fullscreen:
-            if aspect_ratio == "16:9":
-                Window.size = (1280, 720)  # Horizontal
-            elif aspect_ratio == "9:16":
-                Window.size = (720, 1280)  # Vertical
-        
-        # Apply new layout based on aspect ratio
-        self.slideshow._apply_layout()
-        
-        # Reload images with new aspect ratio filter
-        if self.slideshow.current_mode:
-            mode = self.slideshow.current_mode
-            if mode.name in ("Alle Bilder","Standard"):
-                self.slideshow.images = self.slideshow._scan_global()
-            elif mode.name == "Import":
-                self.slideshow.images = self.slideshow._scan_import()
-            else:
-                self.slideshow.images = self.slideshow._filter_by_aspect_ratio(mode.existing_images())
-            if mode.randomize:
-                from random import shuffle
-                shuffle(self.slideshow.images)
-            # Reset to first image and update display
-            self.slideshow.index = 0
-            self.slideshow.show_current_image(initial=True)
-            self.slideshow.update_info()
-        # Show feedback
-        from kivy.animation import Animation
-        from kivy.clock import Clock
-        original_color = self.current_label.color
-        self.current_label.color = (0.3, 1, 0.3, 1)  # Green feedback
-        Clock.schedule_once(lambda dt: setattr(self.current_label, 'color', original_color), 0.5)
+
+        # Close any currently open overlay panels before switching
+        try:
+            self.slideshow._close_current_panel()
+        except Exception:
+            pass
+
+        # Update orientation (OrientationProvider is a singleton)
+        OrientationProvider().set_orientation(aspect_ratio)
+
+        # Window sizing in non-fullscreen only
+        try:
+            if not Window.fullscreen:
+                Window.size = (1280, 720) if aspect_ratio == "16:9" else (720, 1280)
+        except Exception as e:
+            debug_logger.warning(f"Window.size adjust failed: {e}")
+
+        # Rewrap root (portrait container / overlay install+remove)
+        try:
+            if isinstance(root, RotatingRoot):
+                debug_logger.info(
+                    f"[FormatSwitch] before apply_rotation: aspect={aspect_ratio} "
+                    f"is_portrait={OrientationProvider().is_portrait()} "
+                    f"rotating_surface={bool(getattr(root,'_rotating_surface',None))} "
+                    f"overlay={bool(getattr(root,'_input_overlay',None))}"
+                )
+                root.apply_rotation()
+                try:
+                    Window.dispatch("on_resize", *Window.size)
+                except Exception:
+                    pass
+                debug_logger.info(
+                    f"[FormatSwitch] after apply_rotation: aspect={aspect_ratio} "
+                    f"is_portrait={OrientationProvider().is_portrait()} "
+                    f"rotating_surface={bool(getattr(root,'_rotating_surface',None))} "
+                    f"overlay={bool(getattr(root,'_input_overlay',None))}"
+                )
+        except Exception as e:
+            debug_logger.error(f"[FormatSwitch] apply_rotation failed: {e}")
+
+        # Apply layout + reload images next frame
+        def _after(dt):
+            try:
+                ss = getattr(app, "slideshow", None) or self.slideshow
+                # Normalize slideshow geometry after re-wrapping (portrait sets fixed virtual size)
+                try:
+                    if aspect_ratio == "16:9":
+                        ss.size_hint = (1, 1)
+                        if hasattr(ss, "pos_hint"):
+                            ss.pos_hint = {}
+                        ss.pos = (0, 0)
+                        ss.size = Window.size
+                    else:
+                        # 9:16 portrait virtual space (matrix pipeline)
+                        if PORTRAIT_PIPELINE == "matrix":
+                            ss.size_hint = (None, None)
+                            ss.pos = (0, 0)
+                            ss.size = PORTRAIT_VIRTUAL_SIZE
+                except Exception as e:
+                    debug_logger.warning(f"[FormatSwitch] geometry normalize failed: {e}")
+
+                ss._apply_layout()
+
+                if ss.current_mode:
+                    mode = ss.current_mode
+                    if mode.name in ("Alle Bilder", "Standard"):
+                        ss.images = ss._scan_global()
+                    elif mode.name == "Import":
+                        ss.images = ss._scan_import()
+                    else:
+                        ss.images = ss._filter_by_aspect_ratio(mode.existing_images())
+                    if mode.randomize:
+                        from random import shuffle
+                        shuffle(ss.images)
+                    ss.index = 0
+                    ss.show_current_image(initial=True)
+                    ss.update_info()
+            except Exception as e:
+                debug_logger.error(f"[FormatSwitch] post-apply failed: {e}")
+
+        Clock.schedule_once(_after, 0)
+
+        # Close this popup
+        try:
+            self.dismiss()
+        except Exception:
+            try:
+                self.close()
+            except Exception:
+                pass
+
+        def _after(dt):
+            try:
+                ss = getattr(app, "slideshow", None) or self.slideshow
+                ss._apply_layout()
+
+                # Reload images with new aspect ratio filter
+                if ss.current_mode:
+                    mode = ss.current_mode
+                    if mode.name in ("Alle Bilder", "Standard"):
+                        ss.images = ss._scan_global()
+                    elif mode.name == "Import":
+                        ss.images = ss._scan_import()
+                    else:
+                        ss.images = ss._filter_by_aspect_ratio(mode.existing_images())
+
+                    if mode.randomize:
+                        from random import shuffle
+                        shuffle(ss.images)
+
+                    ss.index = 0
+                    ss.show_current_image(initial=True)
+                    ss.update_info()
+            except Exception as e:
+                debug_logger.error(f"Format switch post-apply failed: {e}")
+
+        Clock.schedule_once(_after, 0)
+
+        # Close this popup
+        try:
+            self.dismiss()
+        except Exception:
+            try:
+                self.close()
+            except Exception:
+                pass
+
+
+
     
     def close(self):
         from kivy.core.window import Window
@@ -6026,6 +6157,16 @@ class Slideshow(FloatLayout):
 
     def _apply_layout(self):
         """Apply layout based on current aspect ratio"""
+        # Debounce rapid re-entries (format switch can trigger resize + manual layout)
+        try:
+            now = Clock.get_time()
+            last = getattr(self, '_last_apply_layout_t', 0)
+            if last and (now - last) < 0.10:
+                return
+            self._last_apply_layout_t = now
+        except Exception:
+            pass
+
         from kivy.core.window import Window
         
         debug_logger.info(f"Applying layout for aspect ratio: {self.aspect_ratio}, window size: {Window.width}x{Window.height}")
@@ -6075,10 +6216,32 @@ class Slideshow(FloatLayout):
 
     # Overlay Manager
     def open_single(self, widget):
-        if self.current_overlay and self.current_overlay.parent:
-            self.remove_widget(self.current_overlay)
+        # Remove currently open overlay widget (if any)
+        if getattr(self, "current_overlay", None) and self.current_overlay.parent:
+            try:
+                self.remove_widget(self.current_overlay)
+            except Exception:
+                pass
         self.current_overlay = widget
+
+        # Inject a consistent close/dismiss API so old ModalView-style code still works
+        def _overlay_close(*args, **kwargs):
+            try:
+                if widget.parent:
+                    widget.parent.remove_widget(widget)
+            finally:
+                if getattr(self, "current_overlay", None) is widget:
+                    self.current_overlay = None
+
+        # Provide both names - some panels call close(), some call dismiss()
+        setattr(widget, "close", _overlay_close)
+        setattr(widget, "dismiss", _overlay_close)
+
         self.add_widget(widget)
+
+        # Keep toolbar on top
+        if hasattr(self, "_bring_toolbar_to_front"):
+            self._bring_toolbar_to_front()
 
     # Upscaling / Resize
     def _resize_image(self,img_widget):
@@ -6234,29 +6397,25 @@ class Slideshow(FloatLayout):
     
     def open_settings_root(self): 
         debug_logger.info("Opening settings panel")
-        popup = SettingsRootPopup(self)
-        popup.open()
+        widget = SettingsRootPopup(self)
+        self.open_single(widget)
         app = App.get_running_app()
         if app:
-            app._open_panel = ("settings", popup)
-    
+            app._open_panel = ("settings", widget)
     def open_aufnahme_popup(self): 
         debug_logger.info("Opening aufnahme panel")
-        popup = AufnahmePopup(slideshow=self)
-        popup.open()
+        widget = AufnahmePopup(slideshow=self)
+        self.open_single(widget)
         app = App.get_running_app()
         if app:
-            app._open_panel = ("aufnahme", popup)
-    
+            app._open_panel = ("aufnahme", widget)
     def open_format_selection(self): 
         debug_logger.info("Opening format selection panel")
-        popup = FormatSelectionPopup(self)
-        popup.open()
+        widget = FormatSelectionPopup(self)
+        self.open_single(widget)
         app = App.get_running_app()
         if app:
-            app._open_panel = ("format", popup)
-    # Note: Image selection is now integrated into the Aufnahme popup
-
+            app._open_panel = ("format", widget)
     def force_reschedule(self):
         scheduled=self.mode_manager.scheduled_mode()
         target=scheduled.name if scheduled else "Alle Bilder"
@@ -6815,6 +6974,8 @@ if KIVYMD_OK:
             self.clear_root()
             self.slideshow=Slideshow(self.mode_manager)
             self.root_widget.add_widget(self.slideshow)
+
+
         def on_stop(self):
             """Clean up resources when app is closing to fix recording restart issue"""
             debug_logger.info("App is stopping - performing cleanup")
